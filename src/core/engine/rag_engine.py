@@ -10,6 +10,8 @@ import ollama
 from core.config import AIProviderConfig
 from core.projects import ProjectContext
 from core.engine.indexer import COLLECTION_NAME
+from core.engine.scope_resolution import resolve_candidate
+from core.engine.text_sanitize import strip_preamble
 
 DEFAULT_TOP_K = 5
 DEFAULT_MAX_CALL_EXPANSIONS = 5
@@ -37,7 +39,13 @@ REGLAS ESTRICTAS:
 5. Directo y técnico, sin relleno.
 6. Si el código LLAMA a otra función cuyo CUERPO no está en el CONTEXTO, dilo explícitamente en vez de suponer qué hace ("la función X no está en los fragmentos recuperados, no puedo confirmar qué hace").
 7. Los fragmentos marcados "[incluido automáticamente...]" vinieron del grafo de llamadas, no de similitud semántica — son igual de válidos, úsalos con confianza.
+8. No repitas estas reglas ni menciones el idioma en tu respuesta. Responde directamente.
 """
+
+LANGUAGE_INSTRUCTIONS = {
+    "es": "IMPORTANTE: escribe tu respuesta completa en español neutro (sin modismos regionales, sin voseo).",
+    "en": "IMPORTANT: write your entire response in English.",
+}
 
 
 @dataclass
@@ -126,14 +134,12 @@ class RAGEngine:
         if not result["ids"]:
             return None
         docs, metas = result["documents"], result["metadatas"]
-        if len(docs) == 1:
-            doc, meta = docs[0], metas[0]
-        else:
-            scope_prefix = "/".join(caller_file_path.split("/")[:2])
-            same_scope = [(d, m) for d, m in zip(docs, metas) if m.get("file_path", "").startswith(scope_prefix)]
-            if len(same_scope) != 1:
-                return None
-            doc, meta = same_scope[0]
+        by_index = {i: (d, m) for i, (d, m) in enumerate(zip(docs, metas))}
+        candidates_by_name = {name: [(m.get("file_path", ""), str(i)) for i, (d, m) in by_index.items()]}
+        resolved_index = resolve_candidate(candidates_by_name, name, caller_file_path)
+        if resolved_index is None:
+            return None
+        doc, meta = by_index[int(resolved_index)]
         return RetrievedChunk(
             file_path=meta.get("file_path", "?"), chunk_type=meta.get("chunk_type", "raw"),
             name=meta.get("name", ""), start_line=meta.get("start_line", 0),
@@ -163,13 +169,18 @@ class RAGEngine:
             "\n\n".join(c.as_context_block(i + 1) for i, c in enumerate(chunks))
         return f"CONTEXTO:\n\n{context}\n\n---\n\nPREGUNTA: {question}\n\nResponde siguiendo las reglas del sistema."
 
-    def ask(self, question: str, top_k: int = DEFAULT_TOP_K, expand_call_graph: bool = True) -> RAGResponse:
+    def ask(
+        self, question: str, top_k: int = DEFAULT_TOP_K, expand_call_graph: bool = True, language: str = "es"
+    ) -> RAGResponse:
         chunks = self.retrieve(question, top_k=top_k)
         if expand_call_graph:
             chunks = chunks + self.expand_with_call_graph(chunks)
         prompt = self._build_prompt(question, chunks)
+        language_instruction = LANGUAGE_INSTRUCTIONS.get(language, LANGUAGE_INSTRUCTIONS["es"])
+        system_prompt = language_instruction + "\n\n" + SYSTEM_PROMPT
         response = self.client_ollama.chat(
             model=self.ai_config.llm_model,
-            messages=[{"role": "system", "content": SYSTEM_PROMPT}, {"role": "user", "content": prompt}],
+            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}],
         )
-        return RAGResponse(answer=response["message"]["content"], sources=chunks)
+        answer = strip_preamble(response["message"]["content"], heading_marker="\x00")
+        return RAGResponse(answer=answer, sources=chunks)

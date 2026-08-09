@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "beacon-serve",
+      "runtimeExecutable": ".venv/Scripts/beacon.exe",
+      "runtimeArgs": ["serve"],
+      "port": 8000
+    }
+  ]
+}
