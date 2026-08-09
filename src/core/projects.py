@@ -40,6 +40,12 @@ def get_project(project_id: str) -> ProjectContext:
     raise ProjectNotFoundError(f"Proyecto '{project_id}' no encontrado. Proyectos conocidos: {known}")
 
 
+def ensure_project_dirs(project_id: str):
+    project_dir = DATA_ROOT / project_id
+    (project_dir / "chroma_db").mkdir(parents=True, exist_ok=True)
+    (project_dir / "docs").mkdir(parents=True, exist_ok=True)
+
+
 def _to_context(entry) -> ProjectContext:
     project_dir = DATA_ROOT / entry.id
     return ProjectContext(

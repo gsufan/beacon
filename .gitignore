@@ -14,10 +14,15 @@ dist/
 
 # Configuración con secretos/local (usar .env.example como plantilla)
 .env
+config/credentials.yaml
 
 # Generado por el sistema: índice vectorial y documentación por proyecto
 # (docs/ generada por proyecto vive bajo data/<project_id>/docs/, ya cubierta abajo)
 data/
+
+# Frontend (Vite/React)
+frontend/node_modules/
+frontend/*.tsbuildinfo
 
 # Sistema operativo
 .DS_Store
@@ -26,3 +31,6 @@ Thumbs.db
 # Editor
 .vscode/
 .idea/
+
+# Claude Code: permisos/config local de sesión, no del proyecto
+.claude/settings.local.json
