@@ -10,9 +10,14 @@ clase, método), nombre, lenguaje, archivo de origen y rango de líneas.
 Estos metadatos son los que luego se guardan junto al embedding en ChromaDB.
 """
 
+import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import List, Optional
+
+# Ruido inofensivo: tree-sitter-languages usa una API antigua de tree-sitter
+# (funciona bien, solo avisa). No es información accionable para el usuario.
+warnings.filterwarnings("ignore", message=r"Language\(path, name\) is deprecated.*")
 
 from tree_sitter_languages import get_parser
 
