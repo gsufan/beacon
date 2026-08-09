@@ -1,7 +1,9 @@
 [project]
 name = "beacon"
-version = "0.2.0"
-description = "Beacon — plataforma local de mitigación de deuda técnica"
+version = "0.3.0"
+description = "Plataforma local (RAG) para detectar y mitigar deuda técnica en repositorios de código"
+readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
 
 [project.scripts]
