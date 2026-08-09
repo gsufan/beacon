@@ -1,0 +1,28 @@
+# Entorno virtual
+.venv/
+venv/
+env/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+
+# Configuración con secretos/local (usar .env.example como plantilla)
+.env
+
+# Generado por el sistema: índice vectorial y documentación por proyecto
+# (docs/ generada por proyecto vive bajo data/<project_id>/docs/, ya cubierta abajo)
+data/
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
