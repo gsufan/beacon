@@ -1,0 +1,13 @@
+chromadb==0.5.23
+ollama==0.4.4
+fastapi==0.115.6
+uvicorn==0.32.1
+gitpython==3.1.43
+python-dotenv==1.0.1
+pydantic==2.10.3
+
+# Requeridos por chunker.py para parsear el AST de cada lenguaje.
+# OJO: el orden/versión importa — tree-sitter 0.23.x rompe la API que usa
+# tree-sitter-languages 1.10.2. No actualizar tree-sitter sin probar chunker.py después.
+tree-sitter==0.21.3
+tree-sitter-languages==1.10.2
