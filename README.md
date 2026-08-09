@@ -59,6 +59,9 @@ ollama pull llama3:8b
 cp config/config.example.yaml config/config.yaml
 # edita config/config.yaml: agrega el/los repo(s) que quieras indexar
 
+# 4b. (Opcional) Tokens para repos privados clonados por URL
+cp config/credentials.example.yaml config/credentials.yaml
+
 # 5. (Opcional) Compilar la UI web
 cd frontend
 npm install
