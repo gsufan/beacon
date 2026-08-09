@@ -34,3 +34,6 @@ Thumbs.db
 
 # Claude Code: permisos/config local de sesión, no del proyecto
 .claude/settings.local.json
+
+# Notas personales del autor, no propósito general del repo
+/DEFENSA.md

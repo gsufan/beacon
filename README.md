@@ -109,7 +109,6 @@ pytest tests/
 ## Documentación técnica
 
 - [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) — pipeline, decisiones de diseño, estructura del código.
-- [docs/DEFENSA.md](docs/DEFENSA.md) — preguntas probables y respuestas de referencia.
 
 ## Licencia
 
