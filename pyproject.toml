@@ -1,0 +1,15 @@
+[project]
+name = "beacon"
+version = "0.2.0"
+description = "Beacon — plataforma local de mitigación de deuda técnica"
+requires-python = ">=3.10"
+
+[project.scripts]
+beacon = "core.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
