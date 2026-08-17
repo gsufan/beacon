@@ -7,7 +7,7 @@ gitpython==3.1.43
 python-dotenv==1.0.1
 pydantic==2.10.3
 pyyaml==6.0.2
-typer==0.15.1
+typer==0.15.4  # 0.15.1 crashea con click>=8.2 al pedir --help (Parameter.make_metavar)
 rich==13.9.4
 
 # Requeridos por chunker.py. OJO: el orden/versión importa — tree-sitter
