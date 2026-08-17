@@ -31,13 +31,45 @@ tools/                   # scripts de diagnóstico
 
 Cada proyecto indexado vive aislado en `data/<project_id>/` (su propio índice ChromaDB y su propia documentación generada) — varios repos conviven sin pisarse.
 
-## Requisitos
+## Instalación con Docker (recomendada)
+
+Levanta Beacon **y** Ollama en contenedores, sin instalar Python ni Node en tu máquina.
+
+```bash
+git clone https://github.com/<tu-usuario>/beacon.git
+cd beacon
+cp config/config.example.yaml config/config.yaml
+```
+
+Edita `config/config.yaml`: deja `ollama_host: http://ollama:11434` (el nombre `ollama` lo resuelve la red interna de Docker Compose — no uses `localhost` ahí) y agrega el/los repo(s) que quieras indexar.
+
+```bash
+docker compose up -d --build
+
+# primera vez: descargar los modelos dentro del contenedor de Ollama
+docker compose exec ollama ollama pull nomic-embed-text
+docker compose exec ollama ollama pull llama3:8b
+
+# indexar un proyecto
+docker compose exec beacon beacon sync <project_id>
+docker compose exec beacon beacon docs <project_id>
+```
+
+La UI queda en `http://localhost:8000`. `./config` y `./data` quedan
+montados desde tu máquina, así que la configuración y los índices
+persisten entre reinicios del contenedor.
+
+**Nota sobre `repo_path` local**: si registras un proyecto con `source_type: local` apuntando a una ruta de tu máquina, esa ruta tiene que estar además montada como volumen en `docker-compose.yml` para que el contenedor la vea — el modo **"Clonar desde URL"** (ver Configuración en la UI) no tiene este problema, porque el clonado ocurre dentro del contenedor.
+
+Sin GPU, Ollama corre sobre CPU (más lento pero funciona). El compose incluye, comentada, la configuración para usar GPU NVIDIA si el host la tiene.
+
+## Instalación manual (sin Docker)
+
+### Requisitos
 
 - Python 3.10+
 - [Node.js](https://nodejs.org/) 18+ (para compilar la UI)
 - [Ollama](https://ollama.com/) corriendo localmente (o accesible por red)
-
-## Instalación
 
 ```bash
 # 1. Clonar y entrar al proyecto
