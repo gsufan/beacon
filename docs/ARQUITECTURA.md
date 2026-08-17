@@ -206,14 +206,35 @@ exponer secretos) guiaron las siguientes decisiones:
   y se valida que el resultado siga dentro de `docs_dir` del proyecto antes
   de leer, en vez de concatenar la ruta directo.
 
-**Limitación conocida, deliberada dado el alcance del proyecto**: la API no
-tiene autenticación — cualquiera con acceso de red al puerto puede leer y
-modificar configuración. Aceptable para una herramienta de uso local/interno
-de un dev o equipo, pero **no** debe exponerse a internet sin un proxy de
-autenticación delante (ver README). Agregar auth real (API key o similar)
-queda documentado como trabajo futuro, no crítico para el alcance actual.
+**Autenticación**: opcional, vía la variable de entorno `BEACON_API_KEY`. Si
+está seteada, un middleware (`api_key_middleware` en `api.py`) exige el
+header `X-API-Key` en los prefijos `/projects`, `/config` y `/system` —
+deliberadamente NO en `/healthz` (para que el healthcheck de Docker no
+necesite conocer la clave) ni en las rutas de la SPA/estáticos (para que la
+UI cargue siempre; la clave se ingresa después desde Configuración y queda
+en `localStorage` del navegador). Sin la variable seteada (default), la API
+sigue abierta — sigue siendo responsabilidad de quien despliega Beacon no
+exponerlo así más allá de `localhost`/red interna sin un proxy de auth real
+delante (ver README).
 
-## 10. Testing
+## 10. Portabilidad y confiabilidad de despliegue
+
+- **`beacon export`/`beacon import`** (`cli.py`): empaquetan
+  `data/<project_id>/` (índice ChromaDB + docs) en un `.zip` con un
+  `manifest.json` (metadata del proyecto, sin secretos). Pensado para poder
+  llevar un proyecto ya indexado a otra máquina — típicamente para una
+  demo o la defensa — sin depender de reindexar en vivo. El import valida
+  que ningún miembro del zip pueda escribir fuera de `data/<id>/` (defensa
+  contra "zip slip": rutas `../` en los nombres de archivo del zip).
+- **Healthcheck real en Docker Compose**: el contenedor `ollama` expone
+  `healthcheck: ollama list`, y `beacon` usa
+  `depends_on: ollama: condition: service_healthy` — sin esto, `beacon`
+  podía arrancar antes de que Ollama estuviera listo para responder,
+  fallando la primera consulta. `GET /healthz` (sin auth, sin
+  dependencias externas) es lo que usa el propio contenedor `beacon` para
+  su `HEALTHCHECK` en el `Dockerfile`.
+
+## 11. Testing
 
 `pytest tests/` corre tests unitarios (chunker, config, doc_generator) y
 de integración de la API (`fastapi.testclient.TestClient`) usando

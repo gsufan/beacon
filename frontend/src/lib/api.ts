@@ -20,9 +20,24 @@ export class ApiError extends Error {
   }
 }
 
+const API_KEY_STORAGE_KEY = "beacon:apiKey";
+
+export function getApiKey(): string {
+  return localStorage.getItem(API_KEY_STORAGE_KEY) ?? "";
+}
+
+export function setApiKey(key: string) {
+  if (key) localStorage.setItem(API_KEY_STORAGE_KEY, key);
+  else localStorage.removeItem(API_KEY_STORAGE_KEY);
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const apiKey = getApiKey();
   const res = await fetch(path, {
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...(apiKey ? { "X-API-Key": apiKey } : {}),
+    },
     ...init,
   });
   if (!res.ok) {

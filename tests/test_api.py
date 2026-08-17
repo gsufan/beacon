@@ -191,3 +191,27 @@ def test_docs_path_traversal_blocked_existing_project(monkeypatch):
     monkeypatch.setattr(api_module, "_require_project", lambda project_id: FakeProject())
     resp = client.get("/projects/any-id/docs", params={"file_path": "../../../../windows/win.ini"})
     assert resp.status_code == 403
+
+
+def test_healthz_always_open():
+    resp = client.get("/healthz")
+    assert resp.status_code == 200
+    assert resp.json() == {"status": "ok"}
+
+
+def test_api_key_blocks_protected_paths_when_set(monkeypatch):
+    monkeypatch.setattr(api, "API_KEY", "secreto123")
+    resp = client.get("/projects")
+    assert resp.status_code == 401
+
+
+def test_api_key_accepts_correct_header(monkeypatch):
+    monkeypatch.setattr(api, "API_KEY", "secreto123")
+    resp = client.get("/projects", headers={"X-API-Key": "secreto123"})
+    assert resp.status_code == 200
+
+
+def test_api_key_does_not_protect_healthz(monkeypatch):
+    monkeypatch.setattr(api, "API_KEY", "secreto123")
+    resp = client.get("/healthz")
+    assert resp.status_code == 200

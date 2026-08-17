@@ -1,5 +1,6 @@
 """API REST multi-proyecto. La UI (frontend/dist) se sirve como estáticos, ver el final del archivo."""
 
+import os
 import threading
 import time
 from functools import lru_cache
@@ -8,8 +9,9 @@ from typing import Optional
 
 import git
 import ollama
-from fastapi import BackgroundTasks, FastAPI, HTTPException
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from core.config import (
@@ -40,6 +42,29 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# API key opcional: si BEACON_API_KEY está seteada, se exige en el header
+# X-API-Key para los endpoints de datos/config (no para servir la SPA ni
+# para /healthz). Sin la env var (default), la API queda abierta — igual
+# que hoy — pensada para uso local/interno; ver README para exponerla
+# de forma más segura.
+API_KEY = os.environ.get("BEACON_API_KEY")
+_PROTECTED_PREFIXES = ("/projects", "/config", "/system")
+
+
+@app.middleware("http")
+async def api_key_middleware(request: Request, call_next):
+    if API_KEY and request.url.path.startswith(_PROTECTED_PREFIXES):
+        if request.headers.get("x-api-key") != API_KEY:
+            return JSONResponse({"detail": "Falta o es inválido el header X-API-Key."}, status_code=401)
+    return await call_next(request)
+
+
+@app.get("/healthz", include_in_schema=False)
+def healthz():
+    """Sin autenticación ni dependencias externas — para healthchecks de Docker/orquestadores."""
+    return {"status": "ok"}
+
 
 _sync_status: dict = {}
 _sync_lock = threading.Lock()

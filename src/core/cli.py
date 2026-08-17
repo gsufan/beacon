@@ -9,8 +9,14 @@ Uso:
     beacon sync <id>                       # indexa + purga generado
     beacon docs <id>                       # genera documentación
     beacon ask <id> "pregunta"
+    beacon export <id>                     # empaqueta el índice+docs en un .zip portable
+    beacon import <archivo.zip>            # registra un proyecto desde un .zip exportado
     beacon serve                           # levanta la API + UI
 """
+
+import json
+import zipfile
+from pathlib import Path
 
 import git
 import ollama
@@ -19,8 +25,8 @@ from rich.console import Console
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from core.config import load_config
-from core.projects import list_projects, get_project, ProjectNotFoundError
+from core.config import ProjectAlreadyExistsError, ProjectEntry, add_project, load_config
+from core.projects import DATA_ROOT, list_projects, get_project, ProjectNotFoundError
 from core.engine.indexer import CodebaseIndexer
 from core.engine.doc_generator import DocGenerator
 from core.engine.rag_engine import RAGEngine
@@ -125,6 +131,96 @@ def cmd_ask(project_id: str, question: str, top_k: int = 5):
         origen = "grafo de llamadas" if s.expanded else f"semántico ({s.distance:.3f})"
         table.add_row(f"{s.file_path}:{s.start_line}-{s.end_line}", s.chunk_type, s.name, origen)
     console.print(table)
+
+
+@app.command("export")
+def cmd_export(project_id: str, output: str = typer.Option(None, "--output", "-o")):
+    """Empaqueta el índice (ChromaDB) y la documentación de un proyecto en un .zip portable.
+
+    Útil para llevar un proyecto ya indexado a otra máquina (ej. una demo o
+    la defensa) sin depender de reindexar en vivo.
+    """
+    cfg = load_config()
+    entry = next((p for p in cfg.projects if p.id == project_id), None)
+    if entry is None:
+        console.print(f"[red]Proyecto '{project_id}' no encontrado en config.yaml.[/red]")
+        raise typer.Exit(code=1)
+
+    project_dir = DATA_ROOT / project_id
+    if not project_dir.exists():
+        console.print(f"[red]No hay datos indexados para '{project_id}' todavía — corre 'beacon sync {project_id}' primero.[/red]")
+        raise typer.Exit(code=1)
+
+    output_path = Path(output) if output else Path(f"{project_id}.beacon.zip")
+    manifest = {
+        "id": entry.id, "name": entry.name, "repo_path": entry.repo_path,
+        "source_type": entry.source_type, "repo_url": entry.repo_url,
+    }
+    with console.status(f"Empaquetando {project_id}..."):
+        with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
+            zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
+            for file in project_dir.rglob("*"):
+                if file.is_file():
+                    zf.write(file, arcname=str(Path("data") / file.relative_to(project_dir)))
+
+    size_mb = output_path.stat().st_size / 1_048_576
+    console.print(f"[green]OK[/green] Exportado a {output_path} ({size_mb:.1f} MB)")
+
+
+@app.command("import")
+def cmd_import(
+    zip_path: str,
+    project_id: str = typer.Option(None, "--id", help="Sobreescribe el id del manifest (por si ya existe)."),
+    repo_path: str = typer.Option(None, "--repo-path", help="Sobreescribe repo_path (útil si cambió de máquina)."),
+):
+    """Registra un proyecto a partir de un .zip generado con 'beacon export'."""
+    zpath = Path(zip_path)
+    if not zpath.exists():
+        console.print(f"[red]No existe el archivo '{zip_path}'.[/red]")
+        raise typer.Exit(code=1)
+
+    with zipfile.ZipFile(zpath) as zf:
+        try:
+            manifest = json.loads(zf.read("manifest.json"))
+        except KeyError:
+            console.print("[red]El .zip no tiene manifest.json — ¿fue generado con 'beacon export'?[/red]")
+            raise typer.Exit(code=1)
+
+        target_id = project_id or manifest["id"]
+        target_dir = (DATA_ROOT / target_id).resolve()
+        if target_dir.exists():
+            console.print(f"[red]Ya existe data/{target_id}/ — usa --id para elegir otro nombre, o borra esa carpeta primero.[/red]")
+            raise typer.Exit(code=1)
+
+        target_dir.mkdir(parents=True, exist_ok=True)
+        with console.status(f"Extrayendo a data/{target_id}/..."):
+            for member in zf.namelist():
+                if member == "manifest.json" or not member.startswith("data/"):
+                    continue
+                dest = (target_dir / Path(member).relative_to("data")).resolve()
+                if not dest.is_relative_to(target_dir):
+                    continue  # zip malicioso/corrupto intentando escapar de target_dir
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                with zf.open(member) as src, open(dest, "wb") as out:
+                    out.write(src.read())
+
+    final_repo_path = repo_path or manifest["repo_path"]
+    try:
+        add_project(ProjectEntry(
+            id=target_id, name=manifest["name"], repo_path=final_repo_path,
+            source_type=manifest.get("source_type", "local"), repo_url=manifest.get("repo_url"),
+        ))
+    except ProjectAlreadyExistsError as e:
+        console.print(f"[red]{e}[/red] [dim](los datos ya se copiaron a data/{target_id}/, pero no se registró en config.yaml)[/dim]")
+        raise typer.Exit(code=1)
+
+    console.print(f"[green]OK[/green] Importado como '{target_id}'. Probá: beacon ask {target_id} \"...\"")
+    if not Path(final_repo_path).exists():
+        console.print(
+            f"[yellow]![/yellow] 'repo_path' ({final_repo_path}) no existe en esta máquina — "
+            "las consultas sobre lo ya indexado funcionan igual, pero 'sync'/'docs' incrementales "
+            "van a fallar hasta que ajustes la ruta en config.yaml (o reimportes con --repo-path)."
+        )
 
 
 @app.command("status")
