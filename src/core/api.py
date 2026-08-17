@@ -17,6 +17,7 @@ from core.config import (
     ProjectEntry,
     add_project,
     delete_project_token,
+    get_project_token,
     load_config,
     remove_project,
     set_auto_watch,
@@ -29,7 +30,16 @@ from core.engine.indexer import CodebaseIndexer
 from core.engine.rag_engine import RAGEngine
 
 app = FastAPI(title="Beacon API", version="0.3.0", docs_url="/api/docs", redoc_url="/api/redoc")
-app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
+# Beacon se sirve same-origin en producción (la UI compilada vive en el mismo
+# host:puerto que la API); el único caso legítimo de origen cruzado es el dev
+# server de Vite. No usar "*" — sin auth en la API (ver README/ARQUITECTURA),
+# un CORS abierto ampliaría la superficie de ataque sin necesidad real.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 _sync_status: dict = {}
 _sync_lock = threading.Lock()
@@ -145,7 +155,10 @@ def docs_tree(project_id: str):
 @app.get("/projects/{project_id}/docs")
 def docs(project_id: str, file_path: str):
     project = _require_project(project_id)
-    doc_path = Path(project.docs_dir) / f"{file_path}.md"
+    docs_dir = Path(project.docs_dir).resolve()
+    doc_path = (docs_dir / f"{file_path}.md").resolve()
+    if not doc_path.is_relative_to(docs_dir):
+        raise HTTPException(status_code=403, detail="Ruta fuera del directorio de documentación del proyecto.")
     if not doc_path.exists():
         raise HTTPException(status_code=404, detail=f"No hay documentación generada para '{file_path}'.")
     return {"file_path": file_path, "content_markdown": doc_path.read_text(encoding="utf-8")}
@@ -168,6 +181,21 @@ def put_ai_provider(body: AIProviderUpdate):
     )
     _get_engine.cache_clear()
     return updated.__dict__
+
+
+ALLOWED_GIT_URL_PREFIXES = ("http://", "https://", "git@", "ssh://")
+
+
+def _validate_repo_url(repo_url: str):
+    """Rechaza esquemas que no sean http(s)/ssh — en particular `ext::`, que
+    git soporta para invocar un comando de transporte arbitrario y es un
+    vector de inyección de comandos conocido si se deja pasar sin validar.
+    """
+    if not repo_url.startswith(ALLOWED_GIT_URL_PREFIXES):
+        raise HTTPException(
+            status_code=400,
+            detail="'repo_url' debe ser http(s)://, ssh:// o git@... — otros esquemas no están permitidos.",
+        )
 
 
 def _clone_url(repo_url: str, auth_token: Optional[str]) -> str:
@@ -196,6 +224,9 @@ def system_available_models(ollama_host: Optional[str] = None):
     return {"models": models}
 
 
+BROWSE_ROOT = Path.home().resolve()
+
+
 @app.get("/system/browse-dirs")
 def system_browse_dirs(path: Optional[str] = None):
     """Explora el filesystem DEL SERVIDOR donde corre este backend (no el del navegador).
@@ -203,8 +234,14 @@ def system_browse_dirs(path: Optional[str] = None):
     Beacon siempre lee repos desde el disco donde se ejecuta `beacon serve`; un
     selector de archivos del navegador vería el filesystem equivocado si el
     backend corre en otra máquina. Por eso el explorador vive acá.
+
+    Acotado a BROWSE_ROOT (home del usuario): sin esto, cualquiera con acceso
+    a la API podría enumerar cualquier carpeta del disco (la API no tiene
+    autenticación — ver limitaciones conocidas en el README).
     """
-    base = Path(path) if path else Path.home()
+    base = (Path(path) if path else BROWSE_ROOT).resolve()
+    if not base.is_relative_to(BROWSE_ROOT):
+        raise HTTPException(status_code=403, detail=f"Fuera del directorio permitido ({BROWSE_ROOT}).")
     if not base.exists() or not base.is_dir():
         raise HTTPException(status_code=400, detail=f"'{base}' no es una carpeta válida en este servidor.")
     try:
@@ -215,7 +252,7 @@ def system_browse_dirs(path: Optional[str] = None):
         raise HTTPException(status_code=403, detail=f"Sin permisos para leer '{base}'.")
     return {
         "path": str(base),
-        "parent": str(base.parent) if base.parent != base else None,
+        "parent": str(base.parent) if base != BROWSE_ROOT else None,
         "directories": entries,
     }
 
@@ -235,9 +272,16 @@ def create_project(body: ProjectCreate):
     else:
         if not body.repo_url:
             raise HTTPException(status_code=400, detail="'repo_url' es requerido para source_type='git'.")
+        _validate_repo_url(body.repo_url)
         resolved_path = str(DATA_ROOT / body.id / "repo")
         try:
-            git.Repo.clone_from(_clone_url(body.repo_url, body.auth_token), resolved_path)
+            cloned = git.Repo.clone_from(_clone_url(body.repo_url, body.auth_token), resolved_path)
+            if body.auth_token:
+                # La URL con el token quedó guardada en .git/config del clon
+                # (remote "origin"); la reemplazamos por la URL limpia para
+                # no persistir el secreto ahí también, además de en
+                # credentials.yaml.
+                cloned.remotes.origin.set_url(body.repo_url)
         except git.GitCommandError as e:
             raise HTTPException(status_code=400, detail=f"No se pudo clonar '{body.repo_url}': {e}")
 
@@ -330,10 +374,29 @@ def _auto_watch_loop():
                     continue
             try:
                 if entry.source_type == "git":
-                    git.Repo(entry.repo_path).remotes.origin.pull()
+                    _pull_git_project(entry)
                 _run_sync(entry.id)
             except Exception:
                 continue
+
+
+def _pull_git_project(entry: ProjectEntry):
+    """Actualiza un proyecto clonado antes de sincronizarlo. Si tiene token
+    guardado (repo privado), lo reinyecta en la URL solo para el pull y
+    restaura la URL limpia después — igual que en el clonado inicial, para
+    no dejar el secreto persistido en .git/config.
+    """
+    repo = git.Repo(entry.repo_path)
+    token = get_project_token(entry.id)
+    if not token:
+        repo.remotes.origin.pull()
+        return
+    original_url = entry.repo_url or next(repo.remotes.origin.urls)
+    try:
+        repo.remotes.origin.set_url(_clone_url(original_url, token))
+        repo.remotes.origin.pull()
+    finally:
+        repo.remotes.origin.set_url(original_url)
 
 
 _auto_watch_thread = threading.Thread(target=_auto_watch_loop, daemon=True)
