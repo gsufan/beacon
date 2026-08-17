@@ -164,8 +164,15 @@ proyectos marcados — reutiliza la misma lógica idempotente del sync manual
   expansión por grafo ya integrada al RAG. Se removió junto con el panel
   de "Arquitectura" y el pipeline de riesgos de deuda técnica estructurados
   (JSON) que solo alimentaba esa vista.
-- **Empaquetado multiplataforma / Docker** (Fase D): deliberadamente la
-  fase de menor prioridad del proyecto. No se ha empezado.
+- **Ejecutable nativo por SO** (PyInstaller para Windows/Mac/Linux): se
+  evaluó como parte de la Fase D y se descartó por ahora. Ollama es una
+  dependencia externa pesada (varios GB con modelos) que no tiene sentido
+  embeber en un instalador liviano — el usuario lo instala aparte de
+  todos modos, así que un ejecutable standalone del backend no resuelve
+  el problema real de "instalación fácil". Docker Compose sí resuelve eso
+  con menos esfuerzo: `docker compose up` levanta Beacon y Ollama juntos,
+  en cualquier SO con Docker instalado (ver `Dockerfile` y
+  `docker-compose.yml` en la raíz).
 
 ## 9. Testing
 
