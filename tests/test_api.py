@@ -122,8 +122,15 @@ def test_system_available_models_bad_host():
     assert resp.status_code == 502
 
 
-def test_system_browse_dirs_invalid_path():
+def test_system_browse_dirs_outside_allowed_root_403():
     resp = client.get("/system/browse-dirs", params={"path": "C:/no/existe/de/verdad"})
+    assert resp.status_code == 403
+
+
+def test_system_browse_dirs_invalid_path_inside_root_400():
+    import core.api as api_module
+    fake_path = str(api_module.BROWSE_ROOT / "no-existe-de-verdad-jamas")
+    resp = client.get("/system/browse-dirs", params={"path": fake_path})
     assert resp.status_code == 400
 
 
@@ -158,3 +165,29 @@ def test_create_project_git_missing_url_400():
         "id": "temp-git-project", "name": "Temp", "source_type": "git",
     })
     assert resp.status_code == 400
+
+
+def test_create_project_rejects_dangerous_url_scheme():
+    resp = client.post("/projects", json={
+        "id": "temp-evil-project", "name": "Temp", "source_type": "git",
+        "repo_url": "ext::sh -c 'echo pwned'",
+    })
+    assert resp.status_code == 400
+
+
+def test_docs_path_traversal_blocked():
+    resp = client.get(f"/projects/{UNKNOWN_PROJECT}/docs", params={"file_path": "../../../../etc/passwd"})
+    # 404 (proyecto no existe) o 403 (traversal bloqueado) son ambos correctos
+    # acá; lo que no puede pasar es un 200 leyendo fuera de docs_dir.
+    assert resp.status_code in (403, 404)
+
+
+def test_docs_path_traversal_blocked_existing_project(monkeypatch):
+    import core.api as api_module
+
+    class FakeProject:
+        docs_dir = "C:/some/project/docs"
+
+    monkeypatch.setattr(api_module, "_require_project", lambda project_id: FakeProject())
+    resp = client.get("/projects/any-id/docs", params={"file_path": "../../../../windows/win.ini"})
+    assert resp.status_code == 403

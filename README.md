@@ -141,6 +141,16 @@ npm run dev   # http://localhost:5173, con proxy hacia la API en :8000
 pytest tests/
 ```
 
+## Seguridad — limitaciones conocidas
+
+Beacon está pensado para uso local o en red interna, por un desarrollador o equipo — **no** para exponerse directamente a internet:
+
+- **La API no tiene autenticación.** Cualquiera con acceso de red al puerto puede leer/escribir configuración, registrar proyectos y ver código indexado. Si necesitás exponerlo más allá de `localhost`, poné un proxy con autenticación delante (nginx + basic auth, un VPN, etc.) — no lo publiques directo.
+- **Sin rate limiting.** No hay límite de frecuencia en `sync`/`query`; en uso interno normal no es un problema, pero no está pensado para tráfico público.
+- El explorador de carpetas (`/system/browse-dirs`) está acotado al directorio home del usuario del proceso, y el clonado de repos valida el esquema de la URL (solo http(s)/ssh) — pero ambos asumen que quien llega a la API ya es de confianza, dado el punto anterior.
+
+Más detalle de cada decisión en [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
+
 ## Documentación técnica
 
 - [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md) — pipeline, decisiones de diseño, estructura del código.

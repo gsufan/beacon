@@ -174,7 +174,46 @@ proyectos marcados — reutiliza la misma lógica idempotente del sync manual
   en cualquier SO con Docker instalado (ver `Dockerfile` y
   `docker-compose.yml` en la raíz).
 
-## 9. Testing
+## 9. Seguridad
+
+Auditoría aplicada contra OWASP Top 10 y, como marco de referencia legal,
+la Ley 21.719 de Chile (moderniza la protección de datos personales,
+vigente desde diciembre de 2026). Beacon indexa código fuente y metadata
+de archivos, no datos de autores de commits (`git_watcher.py` solo trabaja
+con paths, nunca con `commit.author`/`committer`) — la ley aplica de forma
+marginal dado el alcance actual, pero sus principios (minimización, no
+exponer secretos) guiaron las siguientes decisiones:
+
+- **CORS** restringido a los orígenes reales de desarrollo (`vite.config.ts`
+  dev server), no `allow_origins=["*"]` — sin esto, cualquier página que el
+  usuario visitara podría hacer requests al backend si estaba en la misma
+  red.
+- **`/system/browse-dirs` acotado a `BROWSE_ROOT`** (home del usuario del
+  proceso): sin esta restricción, se podía enumerar cualquier carpeta del
+  disco (`?path=C:\` o `?path=/etc`) — reconocimiento total del sistema vía
+  un endpoint pensado solo para elegir la ruta de un repo.
+- **Validación de esquema en `repo_url`** antes de pasarlo a
+  `git.Repo.clone_from`: solo se aceptan `http(s)://`, `ssh://` o `git@...`.
+  Git soporta un esquema `ext::` que invoca un comando de transporte
+  arbitrario — un vector de inyección de comandos conocido si se deja pasar
+  una URL sin validar.
+- **El token de repos privados no se persiste en `.git/config`**: se
+  reinyecta en la URL solo para el `clone`/`pull` puntual (tanto al
+  registrar el proyecto como en cada ciclo del watcher automático) y se
+  restaura la URL sin token inmediatamente después — reduce a un solo lugar
+  (`config/credentials.yaml`, gitignoreado) dónde vive el secreto en disco.
+- **Path traversal en `GET /projects/{id}/docs`**: `file_path` se resuelve
+  y se valida que el resultado siga dentro de `docs_dir` del proyecto antes
+  de leer, en vez de concatenar la ruta directo.
+
+**Limitación conocida, deliberada dado el alcance del proyecto**: la API no
+tiene autenticación — cualquiera con acceso de red al puerto puede leer y
+modificar configuración. Aceptable para una herramienta de uso local/interno
+de un dev o equipo, pero **no** debe exponerse a internet sin un proxy de
+autenticación delante (ver README). Agregar auth real (API key o similar)
+queda documentado como trabajo futuro, no crítico para el alcance actual.
+
+## 10. Testing
 
 `pytest tests/` corre tests unitarios (chunker, config, doc_generator) y
 de integración de la API (`fastapi.testclient.TestClient`) usando
