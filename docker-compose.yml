@@ -4,8 +4,14 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
     # Sin GPU por defecto (funciona en CPU, más lento). Para usar GPU NVIDIA,
-    # descomentá lo de abajo (requiere nvidia-container-toolkit instalado):
+    # descomenta lo de abajo (requiere nvidia-container-toolkit instalado):
     # deploy:
     #   resources:
     #     reservations:
@@ -21,8 +27,15 @@ services:
     volumes:
       - ./config:/app/config
       - ./data:/app/data
+    environment:
+      # Opcional: protege la API con un header X-API-Key. Sin esto, queda
+      # abierta (ver "Seguridad" en README). Si lo activás acá, también
+      # tenés que cargar la misma clave en Configuración > (campo API Key)
+      # en la UI, o la SPA no va a poder llamar a la API.
+      - BEACON_API_KEY=${BEACON_API_KEY:-}
     depends_on:
-      - ollama
+      ollama:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:

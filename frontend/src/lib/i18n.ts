@@ -20,6 +20,12 @@ export const translations = {
     dirbrowser_up: "Subir",
     dirbrowser_empty: "Sin subcarpetas.",
 
+    settings_security: "Seguridad",
+    settings_api_key: "Clave de API (opcional)",
+    settings_api_key_placeholder: "Solo si el servidor la exige",
+    settings_api_key_hint: "Si el servidor se levantó con BEACON_API_KEY, ingresa acá el mismo valor para que la interfaz pueda usar la API. Se guarda solo en este navegador.",
+    settings_api_key_save: "Guardar y recargar",
+
     settings_ai_provider: "Proveedor de IA",
     settings_provider: "Proveedor",
     settings_ollama_host: "Host de Ollama",
@@ -67,6 +73,12 @@ export const translations = {
 
     dirbrowser_up: "Up",
     dirbrowser_empty: "No subfolders.",
+
+    settings_security: "Security",
+    settings_api_key: "API key (optional)",
+    settings_api_key_placeholder: "Only if the server requires one",
+    settings_api_key_hint: "If the server was started with BEACON_API_KEY, enter the same value here so the UI can use the API. Stored only in this browser.",
+    settings_api_key_save: "Save and reload",
 
     settings_ai_provider: "AI Provider",
     settings_provider: "Provider",

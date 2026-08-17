@@ -63,6 +63,8 @@ persisten entre reinicios del contenedor.
 
 Sin GPU, Ollama corre sobre CPU (más lento pero funciona). El compose incluye, comentada, la configuración para usar GPU NVIDIA si el host la tiene.
 
+El contenedor `beacon` espera a que `ollama` pase su healthcheck (`depends_on: condition: service_healthy`) antes de arrancar, así que no falla la primera consulta por arrancar antes de que Ollama esté listo.
+
 ## Instalación manual (sin Docker)
 
 ### Requisitos
@@ -109,6 +111,8 @@ beacon projects                      # lista proyectos registrados
 beacon sync <project_id>             # indexa/reindexa incrementalmente
 beacon docs <project_id>             # genera documentación .md
 beacon ask <project_id> "pregunta"   # consulta el RAG desde la terminal
+beacon export <project_id>           # empaqueta el índice+docs en un .zip portable
+beacon import <archivo.zip>          # registra un proyecto desde un .zip exportado
 beacon serve                         # levanta la API + UI en http://127.0.0.1:8000
 ```
 
@@ -145,11 +149,40 @@ pytest tests/
 
 Beacon está pensado para uso local o en red interna, por un desarrollador o equipo — **no** para exponerse directamente a internet:
 
-- **La API no tiene autenticación.** Cualquiera con acceso de red al puerto puede leer/escribir configuración, registrar proyectos y ver código indexado. Si necesitás exponerlo más allá de `localhost`, poné un proxy con autenticación delante (nginx + basic auth, un VPN, etc.) — no lo publiques directo.
+- **La API no tiene autenticación por defecto.** Cualquiera con acceso de red al puerto puede leer/escribir configuración, registrar proyectos y ver código indexado. Podés activar una clave simple con la variable de entorno `BEACON_API_KEY` (ver más abajo) — sirve para no dejarlo abierto a cualquiera en la misma red, pero no reemplaza un proxy de autenticación real si lo vas a exponer más allá de `localhost`.
 - **Sin rate limiting.** No hay límite de frecuencia en `sync`/`query`; en uso interno normal no es un problema, pero no está pensado para tráfico público.
 - El explorador de carpetas (`/system/browse-dirs`) está acotado al directorio home del usuario del proceso, y el clonado de repos valida el esquema de la URL (solo http(s)/ssh) — pero ambos asumen que quien llega a la API ya es de confianza, dado el punto anterior.
 
 Más detalle de cada decisión en [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
+
+### Activar la clave de API (opcional)
+
+```bash
+# Sin Docker
+BEACON_API_KEY=algo-secreto beacon serve      # Linux/Mac
+$env:BEACON_API_KEY="algo-secreto"; beacon serve   # PowerShell
+
+# Con Docker: crea un archivo .env junto a docker-compose.yml
+echo "BEACON_API_KEY=algo-secreto" > .env
+docker compose up -d
+```
+
+Con la variable seteada, todos los endpoints de datos/configuración exigen el header `X-API-Key`. La UI web te deja ingresar la misma clave en **Configuración > Seguridad** (se guarda solo en tu navegador, vía `localStorage`). Sin la variable seteada (default), la API queda abierta como hasta ahora.
+
+## Exportar/importar proyectos
+
+Para llevar un proyecto ya indexado a otra máquina (útil para una demo o defensa, sin depender de reindexar en vivo ni de que Ollama responda rápido ese día):
+
+```bash
+beacon export <project_id> --output mi-proyecto.beacon.zip
+
+# en la otra máquina:
+beacon import mi-proyecto.beacon.zip
+# o con otro id/ruta si cambió de máquina:
+beacon import mi-proyecto.beacon.zip --id otro-id --repo-path /ruta/nueva/al/repo
+```
+
+El `.zip` incluye el índice de ChromaDB y la documentación generada — las consultas (`ask`/`query`) funcionan inmediatamente después de importar. `sync`/`docs` incrementales van a necesitar que `repo_path` apunte a un clon real del repo en la máquina destino.
 
 ## Documentación técnica
 

@@ -3,12 +3,13 @@ import DirBrowser from "../components/DirBrowser";
 import Toggle from "../components/Toggle";
 import { useLanguage } from "../components/LanguageSelector";
 import { useProject } from "../components/ProjectSelector";
-import { api, ApiError } from "../lib/api";
+import { api, ApiError, getApiKey, setApiKey } from "../lib/api";
 import type { AIProviderConfig, ProjectCreatePayload, ProjectEntry, SyncStatus, SystemProvider } from "../lib/types";
 
 export default function Settings() {
   const { reloadProjects, setProjectId } = useProject();
   const { t } = useLanguage();
+  const [apiKeyInput, setApiKeyInput] = useState(getApiKey());
   const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>([]);
   const [aiConfig, setAiConfig] = useState<AIProviderConfig | null>(null);
   const [providers, setProviders] = useState<SystemProvider[]>([]);
@@ -141,6 +142,32 @@ export default function Settings() {
     <div className="mx-auto flex max-w-2xl flex-col gap-10">
       {message && <p className="text-sm text-green-600 dark:text-green-400">{message}</p>}
       {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
+
+      <section className="flex flex-col gap-3">
+        <h2 className="text-lg font-semibold">{t("settings_security")}</h2>
+        <div className={`flex flex-col gap-2 ${cardClass}`}>
+          <label className="flex flex-col gap-1 text-sm">
+            <span className="text-stone-500">{t("settings_api_key")}</span>
+            <input
+              type="password"
+              placeholder={t("settings_api_key_placeholder")}
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
+              className={inputClass}
+            />
+          </label>
+          <p className="text-xs text-stone-400">{t("settings_api_key_hint")}</p>
+          <button
+            onClick={() => {
+              setApiKey(apiKeyInput);
+              window.location.reload();
+            }}
+            className="w-fit rounded-lg border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-100 dark:border-stone-700 dark:hover:bg-stone-800"
+          >
+            {t("settings_api_key_save")}
+          </button>
+        </div>
+      </section>
 
       <section className="flex flex-col gap-3">
         <h2 className="text-lg font-semibold">{t("settings_ai_provider")}</h2>
