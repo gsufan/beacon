@@ -2,6 +2,7 @@ import { FileText, MessageSquare, Radar, Settings as SettingsIcon } from "lucide
 import { NavLink, Route, Routes } from "react-router-dom";
 import { LanguageProvider, LanguageSelector, useLanguage } from "./components/LanguageSelector";
 import { ProjectProvider, ProjectSelector } from "./components/ProjectSelector";
+import ThemeToggle from "./components/ThemeToggle";
 import Chat from "./routes/Chat";
 import Docs from "./routes/Docs";
 import Settings from "./routes/Settings";
@@ -15,10 +16,12 @@ function Sidebar() {
   ];
 
   return (
-    <aside className="flex w-60 shrink-0 flex-col gap-6 border-r border-stone-200 p-4 dark:border-stone-700">
+    <aside className="flex w-60 shrink-0 flex-col gap-6 border-r border-beacon-11 p-4 dark:border-beacon-6">
       <div className="flex items-center gap-2 px-2 pt-1">
-        <Radar size={20} strokeWidth={1.75} className="text-amber-600 dark:text-amber-400" />
-        <span className="text-base font-semibold tracking-tight">Beacon</span>
+        <Radar size={22} strokeWidth={1.75} className="text-beacon-9 dark:text-beacon-10" />
+        <span className="font-display text-xl font-bold tracking-wide text-beacon-9 dark:text-beacon-10">
+          Beacon
+        </span>
       </div>
       <nav className="flex flex-col gap-1">
         {navItems.map(({ to, label, icon: Icon, end }) => (
@@ -29,8 +32,8 @@ function Sidebar() {
             className={({ isActive }) =>
               `flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm transition-colors ${
                 isActive
-                  ? "bg-amber-50 font-medium text-amber-700 dark:bg-amber-400/10 dark:text-amber-400"
-                  : "text-stone-600 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-800"
+                  ? "bg-beacon-11 font-medium text-beacon-9 dark:bg-beacon-9/15 dark:text-beacon-10"
+                  : "text-stone-600 hover:bg-beacon-11 dark:text-stone-400 dark:hover:bg-beacon-4"
               }`
             }
           >
@@ -40,6 +43,7 @@ function Sidebar() {
         ))}
       </nav>
       <div className="mt-auto flex flex-col gap-2 px-2">
+        <ThemeToggle />
         <LanguageSelector />
         <ProjectSelector />
       </div>
@@ -51,7 +55,7 @@ export default function App() {
   return (
     <LanguageProvider>
       <ProjectProvider>
-        <div className="flex h-screen bg-stone-50 text-stone-900 dark:bg-stone-900 dark:text-stone-100">
+        <div className="flex h-screen bg-beacon-12 text-beacon-2 dark:bg-beacon-2 dark:text-beacon-11">
           <Sidebar />
           <main className="flex-1 overflow-y-auto px-10 py-8">
             <div className="mx-auto max-w-5xl">

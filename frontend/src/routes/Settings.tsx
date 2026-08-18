@@ -134,9 +134,9 @@ export default function Settings() {
   };
 
   const inputClass =
-    "rounded-lg border border-stone-200 px-3 py-1.5 text-sm dark:border-stone-700 dark:bg-stone-800";
+    "rounded-lg border border-beacon-11 px-3 py-1.5 text-sm dark:border-beacon-6 dark:bg-beacon-4";
   const cardClass =
-    "rounded-2xl border border-stone-200 bg-white p-4 dark:border-stone-700 dark:bg-stone-800";
+    "rounded-2xl border border-beacon-11 bg-white p-4 dark:border-beacon-6 dark:bg-beacon-4";
 
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-10">
@@ -162,7 +162,7 @@ export default function Settings() {
               setApiKey(apiKeyInput);
               window.location.reload();
             }}
-            className="w-fit rounded-lg border border-stone-200 px-4 py-2 text-sm font-medium hover:bg-stone-100 dark:border-stone-700 dark:hover:bg-stone-800"
+            className="w-fit rounded-lg border border-beacon-11 px-4 py-2 text-sm font-medium hover:bg-beacon-11 dark:border-beacon-6 dark:hover:bg-beacon-4"
           >
             {t("settings_api_key_save")}
           </button>
@@ -237,7 +237,7 @@ export default function Settings() {
             <button
               onClick={saveAiConfig}
               disabled={savingAi}
-              className="w-fit rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-40"
+              className="w-fit rounded-lg bg-beacon-9 px-4 py-2 text-sm font-medium text-white hover:bg-beacon-8 disabled:opacity-40"
             >
               {savingAi ? t("settings_saving") : t("settings_save")}
             </button>
@@ -258,7 +258,7 @@ export default function Settings() {
                   <button
                     onClick={() => startSync(entry.id)}
                     disabled={syncingId === entry.id && syncStatus?.status === "running"}
-                    className="rounded-md border border-stone-200 px-2 py-1 text-xs disabled:opacity-40 dark:border-stone-700"
+                    className="rounded-md border border-beacon-11 px-2 py-1 text-xs disabled:opacity-40 dark:border-beacon-6"
                   >
                     {t("settings_sync")}
                   </button>
@@ -299,14 +299,14 @@ export default function Settings() {
         <div className={`mt-2 flex flex-col gap-3 ${cardClass}`}>
           <h3 className="text-sm font-medium">{t("settings_register_project")}</h3>
 
-          <div className="flex gap-1 rounded-lg bg-stone-100 p-1 text-sm dark:bg-stone-800">
+          <div className="flex gap-1 rounded-lg bg-beacon-11 p-1 text-sm dark:bg-beacon-4">
             {(["local", "git"] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => setSourceType(mode)}
                 className={`flex-1 rounded-md py-1.5 ${
                   sourceType === mode
-                    ? "bg-white shadow-sm dark:bg-stone-900"
+                    ? "bg-white shadow-sm dark:bg-beacon-2"
                     : "text-stone-500"
                 }`}
               >
@@ -359,7 +359,7 @@ export default function Settings() {
               !newProject.name ||
               (sourceType === "local" ? !newProject.repo_path : !newProject.repo_url)
             }
-            className="w-fit rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white hover:bg-amber-600 disabled:opacity-40"
+            className="w-fit rounded-lg bg-beacon-9 px-4 py-2 text-sm font-medium text-white hover:bg-beacon-8 disabled:opacity-40"
           >
             {creating ? t("settings_registering") : t("settings_register")}
           </button>

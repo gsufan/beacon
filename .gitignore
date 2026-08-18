@@ -41,3 +41,6 @@ Thumbs.db
 # Centro de memoria para retomar el proyecto con cualquier IA — contexto
 # interno de desarrollo, no documentación pública
 /CONTEXT.md
+
+# Entregables personales (informes para el profe, etc.), no documentación pública del repo
+*.docx

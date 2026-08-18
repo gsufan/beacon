@@ -35,13 +35,13 @@ export default function DirBrowser({ value, onChange }: Props) {
   }, []);
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-stone-200 p-2 dark:border-stone-700">
+    <div className="flex flex-col gap-2 rounded-lg border border-beacon-11 p-2 dark:border-beacon-6">
       <div className="flex items-center justify-between gap-2">
         <span className="truncate font-mono text-xs text-stone-600 dark:text-stone-400">{path}</span>
         {parent && (
           <button
             onClick={() => load(parent)}
-            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-700"
+            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-stone-500 hover:bg-beacon-11 dark:hover:bg-beacon-6"
           >
             <FolderUp size={14} /> {t("dirbrowser_up")}
           </button>
@@ -53,7 +53,7 @@ export default function DirBrowser({ value, onChange }: Props) {
           <button
             key={d}
             onClick={() => load(`${path}/${d}`)}
-            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-stone-700 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-700"
+            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-beacon-6 hover:bg-beacon-11 dark:text-beacon-8 dark:hover:bg-beacon-6"
           >
             <Folder size={14} /> {d}
           </button>
