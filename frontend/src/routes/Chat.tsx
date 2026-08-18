@@ -39,12 +39,12 @@ export default function Chat() {
         }}
         rows={3}
         placeholder={t("chat_placeholder")}
-        className="w-full resize-none rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-amber-400 dark:border-stone-700 dark:bg-stone-800 dark:focus:border-amber-500"
+        className="w-full resize-none rounded-2xl border border-beacon-11 bg-white px-4 py-3 text-sm outline-none focus:border-beacon-10 dark:border-beacon-6 dark:bg-beacon-4 dark:focus:border-beacon-9"
       />
       <button
         onClick={ask}
         disabled={loading || !projectId}
-        className="w-fit rounded-lg bg-amber-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-amber-600 disabled:opacity-40"
+        className="w-fit rounded-lg bg-beacon-9 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-beacon-8 disabled:opacity-40"
       >
         {loading ? t("chat_asking") : t("chat_ask")}
       </button>
@@ -53,7 +53,7 @@ export default function Chat() {
 
       {result && (
         <div className="flex flex-col gap-4">
-          <div className="whitespace-pre-wrap rounded-2xl border border-stone-200 bg-white p-4 text-sm dark:border-stone-700 dark:bg-stone-800">
+          <div className="whitespace-pre-wrap rounded-2xl border border-beacon-11 bg-white p-4 text-sm dark:border-beacon-6 dark:bg-beacon-4">
             {result.answer}
           </div>
           {result.sources.length > 0 && (

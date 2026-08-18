@@ -12,7 +12,7 @@ export default function Toggle({
       type="button"
       onClick={() => onChange(!checked)}
       className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-        checked ? "bg-amber-500" : "bg-stone-300 dark:bg-stone-700"
+        checked ? "bg-beacon-9" : "bg-beacon-8 dark:bg-beacon-6"
       }`}
       aria-label={label}
       aria-pressed={checked}

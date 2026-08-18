@@ -34,7 +34,7 @@ export default function Docs() {
 
   return (
     <div className="grid grid-cols-[260px_1fr] gap-6">
-      <aside className="flex flex-col gap-1 border-r border-stone-200 pr-4 dark:border-stone-700">
+      <aside className="flex flex-col gap-1 border-r border-beacon-11 pr-4 dark:border-beacon-6">
         <h2 className="mb-2 text-sm font-medium text-stone-500">{t("docs_title")}</h2>
         {files.length === 0 && <p className="text-sm text-stone-400">{t("docs_empty")}</p>}
         {files.map((f) => (
@@ -43,8 +43,8 @@ export default function Docs() {
             onClick={() => setSelected(f)}
             className={`truncate rounded-lg px-2 py-1 text-left text-xs font-mono ${
               selected === f
-                ? "bg-amber-50 text-amber-700 dark:bg-amber-400/10 dark:text-amber-400"
-                : "text-stone-600 hover:bg-stone-100 dark:text-stone-400 dark:hover:bg-stone-700"
+                ? "bg-beacon-11 text-beacon-9 dark:bg-beacon-9/15 dark:text-beacon-10"
+                : "text-stone-600 hover:bg-beacon-11 dark:text-stone-400 dark:hover:bg-beacon-6"
             }`}
             title={f}
           >
@@ -56,7 +56,7 @@ export default function Docs() {
         {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
         {!selected && !error && <p className="text-sm text-stone-400">{t("docs_select_file")}</p>}
         {content && (
-          <div className="rounded-2xl border border-stone-200 bg-white p-6 dark:border-stone-700 dark:bg-stone-800">
+          <div className="rounded-2xl border border-beacon-11 bg-white p-6 dark:border-beacon-6 dark:bg-beacon-4">
             <MarkdownViewer content={content} />
           </div>
         )}

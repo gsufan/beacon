@@ -4,9 +4,9 @@ import type { SourceItem } from "../lib/types";
 export default function SourceCitation({ source }: { source: SourceItem }) {
   const { t } = useLanguage();
   return (
-    <div className="flex items-start justify-between gap-3 rounded-xl border border-stone-200 bg-white px-3.5 py-2.5 text-sm dark:border-stone-700 dark:bg-stone-800">
+    <div className="flex items-start justify-between gap-3 rounded-xl border border-beacon-11 bg-white px-3.5 py-2.5 text-sm dark:border-beacon-6 dark:bg-beacon-4">
       <div>
-        <div className="font-mono text-stone-800 dark:text-stone-200">
+        <div className="font-mono text-beacon-4 dark:text-beacon-11">
           {source.file_path}
           <span className="text-stone-400"> ({source.start_line}-{source.end_line})</span>
         </div>
@@ -15,7 +15,7 @@ export default function SourceCitation({ source }: { source: SourceItem }) {
         </div>
       </div>
       {source.expanded ? (
-        <span className="whitespace-nowrap rounded-full bg-amber-50 px-2 py-0.5 text-xs text-amber-700 dark:bg-amber-400/10 dark:text-amber-400">
+        <span className="whitespace-nowrap rounded-full bg-beacon-11 px-2 py-0.5 text-xs text-beacon-9 dark:bg-beacon-9/15 dark:text-beacon-10">
           {t("chat_call_graph_badge")}
         </span>
       ) : (

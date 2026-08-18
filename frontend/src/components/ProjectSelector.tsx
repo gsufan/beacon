@@ -57,7 +57,7 @@ export function ProjectSelector() {
     <select
       value={projectId ?? ""}
       onChange={(e) => setProjectId(e.target.value)}
-      className="w-full rounded-lg border border-stone-200 bg-white px-3 py-2 text-sm text-stone-800 dark:border-stone-700 dark:bg-stone-800 dark:text-stone-100"
+      className="w-full rounded-lg border border-beacon-11 bg-white px-3 py-2 text-sm text-beacon-4 dark:border-beacon-6 dark:bg-beacon-4 dark:text-beacon-11"
     >
       {projects.length === 0 && <option value="">{t("no_projects")}</option>}
       {projects.map((p) => (
