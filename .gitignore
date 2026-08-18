@@ -39,8 +39,11 @@ Thumbs.db
 /DEFENSA.md
 
 # Centro de memoria para retomar el proyecto con cualquier IA — contexto
-# interno de desarrollo, no documentación pública
+# interno de desarrollo, no documentación pública. El nombre real en disco
+# es minúscula (context.md); se ignoran ambos casos para no depender de
+# que git corra en modo case-insensitive (default en Windows/Mac, no en Linux).
 /CONTEXT.md
+/context.md
 
 # Entregables personales (informes para el profe, etc.), no documentación pública del repo
 *.docx

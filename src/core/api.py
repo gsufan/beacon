@@ -1,5 +1,6 @@
 """API REST multi-proyecto. La UI (frontend/dist) se sirve como estáticos, ver el final del archivo."""
 
+import logging
 import os
 import threading
 import time
@@ -13,6 +14,8 @@ from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger("beacon.api")
 
 from core.config import (
     ProjectAlreadyExistsError,
@@ -380,29 +383,36 @@ def sync_status(project_id: str):
         return _sync_status.get(project_id, {"status": "idle", "detail": None})
 
 
-def _auto_watch_loop():
-    """Corre en background: cada AUTO_WATCH_INTERVAL_SECONDS, sincroniza los
-    proyectos con auto_watch=True. sync() ya es idempotente (no hace nada si
-    no hay commits nuevos), así que llamarlo periódicamente es seguro.
+def _auto_watch_tick():
+    """Un ciclo del watcher: sincroniza los proyectos con auto_watch=True.
+    sync() ya es idempotente (no hace nada si no hay commits nuevos), así
+    que llamarlo periódicamente es seguro. Separado de _auto_watch_loop
+    para poder probarlo sin depender del sleep infinito.
     """
+    try:
+        cfg = load_config()
+    except Exception:
+        logger.exception("auto-watch: no se pudo cargar config.yaml, se reintenta en el próximo ciclo")
+        return
+    for entry in cfg.projects:
+        if not entry.auto_watch:
+            continue
+        with _sync_lock:
+            if _sync_status.get(entry.id, {}).get("status") == "running":
+                continue
+        try:
+            if entry.source_type == "git":
+                _pull_git_project(entry)
+            _run_sync(entry.id)
+        except Exception:
+            logger.exception("auto-watch: falló el sync automático del proyecto '%s'", entry.id)
+            continue
+
+
+def _auto_watch_loop():
     while True:
         time.sleep(AUTO_WATCH_INTERVAL_SECONDS)
-        try:
-            cfg = load_config()
-        except Exception:
-            continue
-        for entry in cfg.projects:
-            if not entry.auto_watch:
-                continue
-            with _sync_lock:
-                if _sync_status.get(entry.id, {}).get("status") == "running":
-                    continue
-            try:
-                if entry.source_type == "git":
-                    _pull_git_project(entry)
-                _run_sync(entry.id)
-            except Exception:
-                continue
+        _auto_watch_tick()
 
 
 def _pull_git_project(entry: ProjectEntry):

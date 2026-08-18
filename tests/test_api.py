@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 import core.api as api  # noqa: E402
 from core.projects import ProjectNotFoundError  # noqa: E402
+from core.config import AIProviderConfig, AppConfig, ProjectEntry  # noqa: E402
 
 client = TestClient(api.app)
 
@@ -215,3 +216,52 @@ def test_api_key_does_not_protect_healthz(monkeypatch):
     monkeypatch.setattr(api, "API_KEY", "secreto123")
     resp = client.get("/healthz")
     assert resp.status_code == 200
+
+
+# --- _auto_watch_tick: antes fallaba en silencio (except Exception: continue) ---
+
+def test_auto_watch_tick_logs_instead_of_swallowing_sync_failure(monkeypatch, caplog):
+    entry = ProjectEntry(id="broken-project", name="Broken", repo_path="/tmp/x", auto_watch=True)
+    cfg = AppConfig(
+        ai_provider=AIProviderConfig(provider="ollama", ollama_host="http://x", embedding_model="e", llm_model="l"),
+        projects=[entry],
+    )
+    monkeypatch.setattr(api, "load_config", lambda: cfg)
+
+    def failing_sync(project_id):
+        raise RuntimeError("el índice está corrupto")
+
+    monkeypatch.setattr(api, "_run_sync", failing_sync)
+
+    with caplog.at_level("ERROR", logger="beacon.api"):
+        api._auto_watch_tick()  # no debe propagar la excepción
+
+    assert any("broken-project" in record.message for record in caplog.records)
+
+
+def test_auto_watch_tick_logs_config_load_failure(monkeypatch, caplog):
+    def broken_load_config():
+        raise FileNotFoundError("config.yaml no existe")
+
+    monkeypatch.setattr(api, "load_config", broken_load_config)
+
+    with caplog.at_level("ERROR", logger="beacon.api"):
+        api._auto_watch_tick()  # no debe propagar la excepción
+
+    assert any("config.yaml" in record.message for record in caplog.records)
+
+
+def test_auto_watch_tick_skips_projects_with_auto_watch_disabled(monkeypatch):
+    entry = ProjectEntry(id="quiet-project", name="Quiet", repo_path="/tmp/x", auto_watch=False)
+    cfg = AppConfig(
+        ai_provider=AIProviderConfig(provider="ollama", ollama_host="http://x", embedding_model="e", llm_model="l"),
+        projects=[entry],
+    )
+    monkeypatch.setattr(api, "load_config", lambda: cfg)
+
+    calls = []
+    monkeypatch.setattr(api, "_run_sync", lambda project_id: calls.append(project_id))
+
+    api._auto_watch_tick()
+
+    assert calls == []
