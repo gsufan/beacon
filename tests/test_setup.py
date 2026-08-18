@@ -10,9 +10,6 @@ Uso:
 
 import os
 import sys
-from dotenv import load_dotenv
-
-load_dotenv()
 
 EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama3:8b")

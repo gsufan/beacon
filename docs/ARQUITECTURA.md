@@ -217,6 +217,21 @@ sigue abierta — sigue siendo responsabilidad de quien despliega Beacon no
 exponerlo así más allá de `localhost`/red interna sin un proxy de auth real
 delante (ver README).
 
+**Auditoría de dependencias** (`pip-audit`): se encontraron 37 CVEs
+conocidos entre `gitpython`, `starlette`, `setuptools`, `click` y
+`python-dotenv`. Corregido lo seguro de arreglar: `gitpython` subido a
+`3.1.53` (de ~19 CVEs a 0 — era la dependencia más expuesta dado que
+maneja clonado/pull de URLs potencialmente no confiables), `fastapi`
+subido a `0.115.14`, y `python-dotenv` eliminado por completo (no se
+usaba en ningún lado — resabio de la v1 pre-`config.yaml`). **Pendiente,
+deliberado**: `starlette` (dependencia de `fastapi`) sigue en `0.41.3`
+con CVEs conocidos — todos los fixes disponibles requieren
+`starlette>=0.47`, pero `fastapi==0.115.x` exige `<0.47`. Arreglarlo de
+fondo implica subir `fastapi` a una serie mayor (0.116+), lo que puede
+cambiar comportamiento de la API y merece su propia ronda de testing
+completa — no se hizo apurado al final del proyecto. Anotado como
+trabajo futuro concreto (no un "no se sabía").
+
 ## 10. Portabilidad y confiabilidad de despliegue
 
 - **`beacon export`/`beacon import`** (`cli.py`): empaquetan
