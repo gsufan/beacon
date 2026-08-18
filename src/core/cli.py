@@ -15,6 +15,7 @@ Uso:
 """
 
 import json
+import logging
 import zipfile
 from pathlib import Path
 
@@ -300,10 +301,27 @@ def cmd_doctor():
         raise typer.Exit(code=1)
 
 
+def _configure_beacon_logging():
+    """Formato prolijo para lo que loguee el paquete `beacon.*` (ej. fallas
+    del watcher automático en api.py). No toca el logger raíz ni el de
+    uvicorn — solo se engancha al namespace propio, así que comandos que no
+    levantan el server (ask, sync, docs...) no se ven afectados en nada."""
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(
+        fmt="%(asctime)s  %(levelname)-7s  %(name)s  %(message)s",
+        datefmt="%H:%M:%S",
+    ))
+    beacon_logger = logging.getLogger("beacon")
+    beacon_logger.addHandler(handler)
+    beacon_logger.setLevel(logging.WARNING)
+    beacon_logger.propagate = False
+
+
 @app.command("serve")
 def cmd_serve(host: str = "127.0.0.1", port: int = 8000):
     """Levanta la API + UI web."""
     import uvicorn
+    _configure_beacon_logging()
     console.print(f"[bold]Sirviendo en[/bold] http://{host}:{port}")
     uvicorn.run("core.api:app", host=host, port=port, reload=False)
 
