@@ -1,10 +1,9 @@
 chromadb==0.5.23
 posthog==4.8.0
 ollama==0.4.4
-fastapi==0.115.6
+fastapi==0.115.14
 uvicorn==0.32.1
-gitpython==3.1.43
-python-dotenv==1.0.1
+gitpython==3.1.53  # 3.1.43 tenía ~19 CVEs conocidos; ver docs/ARQUITECTURA.md
 pydantic==2.10.3
 pyyaml==6.0.2
 typer==0.15.4  # 0.15.1 crashea con click>=8.2 al pedir --help (Parameter.make_metavar)
