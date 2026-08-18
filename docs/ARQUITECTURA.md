@@ -232,6 +232,15 @@ cambiar comportamiento de la API y merece su propia ronda de testing
 completa — no se hizo apurado al final del proyecto. Anotado como
 trabajo futuro concreto (no un "no se sabía").
 
+Mismo criterio del lado del frontend (`npm audit`): `react-router-dom`
+tiene 2 CVEs moderados (open redirect, inyección en `deserializeErrors()`
+SSR) cuyo fix solo existe en la serie mayor 7.x — la instalada es 6.30.4.
+React Router v7 cambia parte de la API de ruteo; no se subió sin poder
+retestear toda la navegación de la SPA. Trabajo futuro documentado, no
+crítico dado que Beacon no usa SSR y el riesgo de open-redirect es bajo
+en una app de un solo origen sin links a URLs externas generadas por
+usuario.
+
 ## 10. Portabilidad y confiabilidad de despliegue
 
 - **`beacon export`/`beacon import`** (`cli.py`): empaquetan
