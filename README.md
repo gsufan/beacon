@@ -142,7 +142,10 @@ npm run dev   # http://localhost:5173, con proxy hacia la API en :8000
 ## Tests
 
 ```bash
-pytest tests/
+pytest tests/              # backend
+
+cd frontend
+npm test                   # frontend (Vitest + Testing Library)
 ```
 
 ## Seguridad — limitaciones conocidas
