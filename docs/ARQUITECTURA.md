@@ -70,6 +70,16 @@ inmediatamente anterior (sin línea en blanco de por medio) al chunk que
 documenta. Esto mejora mucho la recuperación semántica porque el embedding
 incluye la intención declarada del código, no solo su implementación.
 
+En JS/TS, las funciones asignadas a una variable (`const Boton = () => {...}`,
+el estilo habitual de los componentes React) también se extraen como
+funciones, y un `export` se incluye en el chunk junto con su JSDoc.
+
+El código que no pertenece a ninguna función/clase (imports, constantes,
+licencia) va a un chunk `module_level`, calculado **restando** los rangos ya
+cubiertos por otros chunks: así el cuerpo de un `namespace { }` (C#/C++) o de
+un `export` no se duplica ahí. Su rango de líneas es el real (de la primera a
+la última pieza), aunque las piezas no sean contiguas.
+
 ## 4. Indexado (`indexer.py`)
 
 - Usa `git_watcher.py` para calcular qué archivos cambiaron desde el
@@ -77,6 +87,15 @@ incluye la intención declarada del código, no solo su implementación.
   indexado **incremental**, no reprocesa todo el repo cada vez.
 - Excluye código generado/vendor (`.pb.go`, `_pb2_grpc.py`, `node_modules/`,
   etc.) porque diluye la calidad de búsqueda.
+- Si el commit guardado ya no existe (rebase, re-clonado) o se pide
+  `beacon sync --full`, se vacía la colección antes de reindexar, para no dejar
+  chunks de archivos que ya no existen. Un rename hacia una extensión no
+  indexable se trata como borrado.
+- Si Ollama no responde o falta el modelo, el sync falla **sin** marcar el
+  commit como indexado (antes terminaba "ok" con 0 chunks).
+- `beacon docs` exige que el índice esté al día con HEAD: la documentación se
+  arma desde los chunks indexados, así que con el índice atrasado se
+  documentaría código viejo.
 - **`nomic-embed-text` requiere los prefijos `"search_document: "` /
   `"search_query: "`** en cada texto antes de embeberlo — sin esto la
   recuperación semántica es notablemente peor (bug real detectado en una
@@ -205,6 +224,14 @@ exponer secretos) guiaron las siguientes decisiones:
 - **Path traversal en `GET /projects/{id}/docs`**: `file_path` se resuelve
   y se valida que el resultado siga dentro de `docs_dir` del proyecto antes
   de leer, en vez de concatenar la ruta directo.
+- **Path traversal en el fallback de la SPA**: uvicorn decodifica `%2e%2e`
+  pero no normaliza los `..`, así que `GET /%2e%2e/%2e%2e/config/credentials.yaml`
+  devolvía el archivo (sin auth, porque las rutas de la SPA no la exigen).
+  Ahora solo se sirven archivos que resuelvan dentro de `frontend/dist`.
+- **Id de proyecto como nombre de carpeta**: el id se valida
+  (`^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$`) al crear/importar un proyecto; sin
+  esto, `id=".."` más un purge borraba la raíz del repositorio. El purge
+  además verifica que la carpeta resuelta quede dentro de `data/`.
 
 **Autenticación**: opcional, vía la variable de entorno `BEACON_API_KEY`. Si
 está seteada, un middleware (`api_key_middleware` en `api.py`) exige el

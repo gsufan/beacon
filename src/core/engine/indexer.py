@@ -66,8 +66,11 @@ class CodebaseIndexer:
         try:
             out.append((chunk_id, code, base_meta, self._embed(code)))
             return
-        except Exception:
-            pass
+        except ollama.ResponseError as e:
+            # Solo "texto demasiado largo" amerita dividir; modelo faltante u Ollama caído
+            # deben propagarse, o el sync marcaría el commit como indexado con 0 chunks.
+            if e.status_code == 404:
+                raise
         if len(code) <= self.MIN_SPLIT_CHARS or depth >= self.MAX_SPLIT_DEPTH:
             return  # se omite: no se pudo embeber ni dividiendo
         self._split_and_recurse(chunk_id, code, base_meta, out, depth)
@@ -89,6 +92,12 @@ class CodebaseIndexer:
         if existing["ids"]:
             self.collection.delete(ids=existing["ids"])
         return len(existing["ids"])
+
+    def _purge_all(self) -> int:
+        ids = self.collection.get(include=[])["ids"]
+        for i in range(0, len(ids), 5000):  # por tandas: SQLite limita las variables por consulta
+            self.collection.delete(ids=ids[i:i + 5000])
+        return len(ids)
 
     def _index_file(self, file_path: str) -> int:
         full_path = os.path.join(self.project.repo_path, file_path)
@@ -116,8 +125,10 @@ class CodebaseIndexer:
 
     # ---------- Orquestación ----------
 
-    def sync(self, include_uncommitted: bool = False, on_progress: ProgressCallback = None) -> dict:
-        last_commit = self._get_last_indexed_commit()
+    def sync(self, include_uncommitted: bool = False, on_progress: ProgressCallback = None,
+             full: bool = False) -> dict:
+        # full=True: rehace el índice entero (ej. tras actualizar el chunker)
+        last_commit = None if full else self._get_last_indexed_commit()
         changes: ChangeSet = self.watcher.get_changes_since(last_commit)
 
         if include_uncommitted:
@@ -129,13 +140,14 @@ class CodebaseIndexer:
         if changes.is_empty():
             return {"status": "sin_cambios", "detalle": changes.summary()}
 
-        purged = 0
-        for fp in changes.files_to_purge():
-            purged += self._purge_file(fp)
-        for fp in changes.modified:
-            purged += self._purge_file(fp)
-
         files = changes.files_to_reindex()
+        purged = 0
+        if changes.full_rescan:
+            purged += self._purge_all()
+        else:
+            # también los que se reindexan: un 'added' pudo quedar indexado por un --uncommitted previo
+            for fp in changes.files_to_purge() + files:
+                purged += self._purge_file(fp)
         total = len(files)
         indexed, files_indexed = 0, 0
         for i, fp in enumerate(files, 1):

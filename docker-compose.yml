@@ -29,8 +29,8 @@ services:
       - ./data:/app/data
     environment:
       # Opcional: protege la API con un header X-API-Key. Sin esto, queda
-      # abierta (ver "Seguridad" en README). Si lo activás acá, también
-      # tenés que cargar la misma clave en Configuración > (campo API Key)
+      # abierta (ver "Seguridad" en README). Si se activa aquí, también
+      # hay que cargar la misma clave en Configuración > (campo API Key)
       # en la UI, o la SPA no va a poder llamar a la API.
       - BEACON_API_KEY=${BEACON_API_KEY:-}
     depends_on:

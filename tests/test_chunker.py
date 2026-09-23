@@ -193,6 +193,103 @@ def test_go_type_declaration_is_classified_as_class():
     assert load_chunk.chunk_type == "function"
 
 
+# --- module_level sin duplicar lo que ya es chunk ----------------------------
+
+JS_EXPORTS = '''\
+import x from "y";
+
+/** Suma dos números. */
+export function suma(a, b) {
+    return a + b;
+}
+
+export class Foo {
+    bar() { return 1; }
+}
+'''
+
+
+def test_js_export_is_not_duplicated_in_module_level():
+    chunks = chunk_with_treesitter("app.js", JS_EXPORTS, "javascript")
+    raw = next(c for c in chunks if c.name == "module_level")
+    assert "import x" in raw.code
+    assert "return a + b" not in raw.code
+    assert "bar()" not in raw.code
+
+
+def test_js_export_chunk_includes_export_and_jsdoc():
+    chunks = chunk_with_treesitter("app.js", JS_EXPORTS, "javascript")
+    suma = next(c for c in chunks if c.name == "suma")
+    assert suma.code.startswith("/** Suma dos números. */\nexport function suma")
+    assert suma.start_line == 3
+
+
+CSHARP_NAMESPACE = '''\
+using System;
+
+namespace Demo {
+    public class Calc {
+        public int Suma(int a, int b) { return a + b; }
+    }
+}
+'''
+
+
+def test_csharp_namespace_body_is_not_duplicated_in_module_level():
+    chunks = chunk_with_treesitter("Calc.cs", CSHARP_NAMESPACE, "c_sharp")
+    raw = next(c for c in chunks if c.name == "module_level")
+    assert raw.code == "using System;"
+    assert {c.name for c in chunks} >= {"Calc", "Suma"}
+
+
+TSX_ARROW = '''\
+import React from "react";
+
+// Botón principal
+export const Boton = () => {
+  return <button />;
+};
+
+const helper = function () { return 1; };
+
+const { a, b } = obj;
+'''
+
+
+def test_tsx_arrow_and_function_expression_become_function_chunks():
+    chunks = chunk_with_treesitter("Boton.tsx", TSX_ARROW, "tsx")
+    boton = next(c for c in chunks if c.name == "Boton")
+    assert boton.chunk_type == "function"
+    assert boton.code.startswith("// Botón principal\nexport const Boton")
+    assert any(c.name == "helper" and c.chunk_type == "function" for c in chunks)
+    raw = next(c for c in chunks if c.name == "module_level")
+    assert "<button" not in raw.code
+    assert "const { a, b } = obj;" in raw.code  # destructuring no es función: queda a nivel de módulo
+
+
+PYTHON_SCATTERED = '''\
+import os
+
+
+def f():
+    pass
+
+
+
+
+
+
+CONST = 1
+'''
+
+
+def test_module_level_line_range_spans_its_real_pieces():
+    chunks = chunk_with_treesitter("mod.py", PYTHON_SCATTERED, "python")
+    raw = next(c for c in chunks if c.name == "module_level")
+    assert (raw.start_line, raw.end_line) == (1, 12)  # "CONST = 1" está en la línea 12
+    assert raw.chunk_id() == "mod.py::module_level"
+
+
 # --- chunk_fallback ----------------------------------------------------------
 
 def test_chunk_fallback_splits_large_file_into_multiple_chunks():

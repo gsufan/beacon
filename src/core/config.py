@@ -1,6 +1,7 @@
 """Carga config/config.yaml. Reemplaza al .env: todo lo configurable vive acá."""
 
 import os
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
@@ -95,6 +96,22 @@ class ProjectAlreadyExistsError(Exception):
     pass
 
 
+class InvalidProjectIdError(ValueError):
+    pass
+
+
+# El id es nombre de carpeta (data/<id>/): con ".." un purge borraría la raíz del proyecto.
+_PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+
+def validate_project_id(project_id: str):
+    if not _PROJECT_ID_RE.match(project_id or ""):
+        raise InvalidProjectIdError(
+            f"Id de proyecto inválido: '{project_id}'. Usa letras, números, '.', '_' o '-' "
+            "(máx. 64 caracteres, empezando con letra o número)."
+        )
+
+
 def _entry_to_raw(entry: ProjectEntry) -> dict:
     return {
         "id": entry.id, "name": entry.name, "repo_path": entry.repo_path,
@@ -104,6 +121,7 @@ def _entry_to_raw(entry: ProjectEntry) -> dict:
 
 
 def add_project(entry: ProjectEntry, path: Path = CONFIG_PATH) -> ProjectEntry:
+    validate_project_id(entry.id)
     raw = _read_raw(path)
     projects = raw.setdefault("projects", [])
     if any(p.get("id") == entry.id for p in projects):
@@ -122,6 +140,26 @@ def remove_project(project_id: str, path: Path = CONFIG_PATH) -> bool:
     raw["projects"] = remaining
     _write_raw(raw, path)
     return True
+
+
+def update_project(
+    project_id: str, name: Optional[str] = None, repo_path: Optional[str] = None,
+    path: Path = CONFIG_PATH,
+) -> bool:
+    """Actualiza campos puntuales de un proyecto ya registrado (name y/o
+    repo_path). None significa "no tocar ese campo" — para desactivar
+    auto_watch se usa set_auto_watch, que ya cubre ese caso."""
+    raw = _read_raw(path)
+    projects = raw.get("projects", [])
+    for p in projects:
+        if p.get("id") == project_id:
+            if name is not None:
+                p["name"] = name
+            if repo_path is not None:
+                p["repo_path"] = repo_path
+            _write_raw(raw, path)
+            return True
+    return False
 
 
 def set_auto_watch(project_id: str, enabled: bool, path: Path = CONFIG_PATH) -> bool:

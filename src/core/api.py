@@ -18,9 +18,11 @@ from pydantic import BaseModel, Field
 logger = logging.getLogger("beacon.api")
 
 from core.config import (
+    InvalidProjectIdError,
     ProjectAlreadyExistsError,
     ProjectEntry,
     add_project,
+    validate_project_id,
     delete_project_token,
     get_project_token,
     load_config,
@@ -29,7 +31,17 @@ from core.config import (
     set_project_token,
     update_ai_provider,
 )
-from core.projects import DATA_ROOT, ensure_project_dirs, get_project, list_projects, ProjectNotFoundError
+from core.projects import (
+    DATA_ROOT,
+    InvalidRepoUrlError,
+    build_clone_url,
+    ensure_project_dirs,
+    get_project,
+    list_projects,
+    safe_project_dir,
+    validate_repo_url,
+    ProjectNotFoundError,
+)
 from core.engine.doc_generator import DocGenerator
 from core.engine.indexer import CodebaseIndexer
 from core.engine.rag_engine import RAGEngine
@@ -145,7 +157,7 @@ def query(project_id: str, req: QueryRequest):
     except ProjectNotFoundError as e:
         raise HTTPException(status_code=404, detail=str(e))
     if engine.collection.count() == 0:
-        raise HTTPException(status_code=409, detail=f"El índice de '{project_id}' está vacío. Corre 'deuda-tecnica sync {project_id}' primero.")
+        raise HTTPException(status_code=409, detail=f"El índice de '{project_id}' está vacío. Corre 'beacon sync {project_id}' primero.")
     try:
         result = engine.ask(req.question, top_k=req.top_k, language=req.language)
     except Exception as e:
@@ -211,27 +223,16 @@ def put_ai_provider(body: AIProviderUpdate):
     return updated.__dict__
 
 
-ALLOWED_GIT_URL_PREFIXES = ("http://", "https://", "git@", "ssh://")
-
-
 def _validate_repo_url(repo_url: str):
-    """Rechaza esquemas que no sean http(s)/ssh — en particular `ext::`, que
-    git soporta para invocar un comando de transporte arbitrario y es un
-    vector de inyección de comandos conocido si se deja pasar sin validar.
-    """
-    if not repo_url.startswith(ALLOWED_GIT_URL_PREFIXES):
-        raise HTTPException(
-            status_code=400,
-            detail="'repo_url' debe ser http(s)://, ssh:// o git@... — otros esquemas no están permitidos.",
-        )
+    """Traduce la validación compartida (core.projects) a un 400 de la API."""
+    try:
+        validate_repo_url(repo_url)
+    except InvalidRepoUrlError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
 
 def _clone_url(repo_url: str, auth_token: Optional[str]) -> str:
-    """Inserta el token en la URL solo para el clonado — nunca se persiste con la URL."""
-    if not auth_token or "://" not in repo_url:
-        return repo_url
-    scheme, rest = repo_url.split("://", 1)
-    return f"{scheme}://{auth_token}@{rest}"
+    return build_clone_url(repo_url, auth_token)
 
 
 @app.get("/system/providers")
@@ -287,6 +288,10 @@ def system_browse_dirs(path: Optional[str] = None):
 
 @app.post("/projects", status_code=201)
 def create_project(body: ProjectCreate):
+    try:
+        validate_project_id(body.id)
+    except InvalidProjectIdError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     if body.source_type == "local":
         if not body.repo_path:
             raise HTTPException(status_code=400, detail="'repo_path' es requerido para source_type='local'.")
@@ -341,7 +346,10 @@ def delete_project(project_id: str, purge_data: bool = False):
     delete_project_token(project_id)
     if purge_data:
         import shutil
-        project_dir = DATA_ROOT / project_id
+        try:
+            project_dir = safe_project_dir(project_id, DATA_ROOT)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=f"Proyecto desregistrado, pero no se purgaron datos: {e}")
         if project_dir.exists():
             shutil.rmtree(project_dir)
     return {"status": "eliminado", "purge_data": purge_data}
@@ -370,11 +378,21 @@ def _run_sync(project_id: str):
 @app.post("/projects/{project_id}/sync", status_code=202)
 def trigger_sync(project_id: str, background_tasks: BackgroundTasks):
     _require_project(project_id)  # 404 si no existe
-    with _sync_lock:
-        if _sync_status.get(project_id, {}).get("status") == "running":
-            raise HTTPException(status_code=409, detail="Ya hay un sync en curso para este proyecto.")
+    if not _claim_sync(project_id):
+        raise HTTPException(status_code=409, detail="Ya hay un sync en curso para este proyecto.")
     background_tasks.add_task(_run_sync, project_id)
     return {"status": "started"}
+
+
+def _claim_sync(project_id: str) -> bool:
+    """Marca el proyecto como 'running' si no lo estaba, en una sola operación
+    bajo el lock: evita que dos pedidos seguidos lancen dos syncs en paralelo
+    sobre la misma colección (la tarea en background arranca después)."""
+    with _sync_lock:
+        if _sync_status.get(project_id, {}).get("status") == "running":
+            return False
+        _sync_status[project_id] = {"status": "running", "detail": None}
+        return True
 
 
 @app.get("/projects/{project_id}/sync-status")
@@ -397,15 +415,16 @@ def _auto_watch_tick():
     for entry in cfg.projects:
         if not entry.auto_watch:
             continue
-        with _sync_lock:
-            if _sync_status.get(entry.id, {}).get("status") == "running":
-                continue
+        if not _claim_sync(entry.id):
+            continue
         try:
             if entry.source_type == "git":
                 _pull_git_project(entry)
             _run_sync(entry.id)
-        except Exception:
+        except Exception as e:
             logger.exception("auto-watch: falló el sync automático del proyecto '%s'", entry.id)
+            with _sync_lock:  # liberar el claim, o el proyecto quedaría "running" para siempre
+                _sync_status[entry.id] = {"status": "error", "detail": str(e)}
             continue
 
 
@@ -443,6 +462,21 @@ _auto_watch_thread.start()
 # y cualquier otra ruta que no matchee una API ni un archivo real cae a
 # index.html (para que /docs, /settings, etc. funcionen al recargar).
 _FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
+
+
+def _resolve_frontend_file(full_path: str, dist: Path = _FRONTEND_DIST) -> Optional[Path]:
+    """Archivo estático pedido por la SPA, o None si no existe o si la ruta
+    intenta salir de dist/ (ej. '/%2e%2e/config/credentials.yaml': uvicorn
+    decodifica el %2e pero no normaliza los '..')."""
+    if not full_path:
+        return None
+    root = dist.resolve()
+    candidate = (root / full_path).resolve()
+    if not candidate.is_relative_to(root) or not candidate.is_file():
+        return None
+    return candidate
+
+
 if _FRONTEND_DIST.exists():
     from fastapi.responses import FileResponse
     from fastapi.staticfiles import StaticFiles
@@ -451,7 +485,4 @@ if _FRONTEND_DIST.exists():
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa_fallback(full_path: str):
-        candidate = _FRONTEND_DIST / full_path
-        if full_path and candidate.is_file():
-            return FileResponse(candidate)
-        return FileResponse(_FRONTEND_DIST / "index.html")
+        return FileResponse(_resolve_frontend_file(full_path) or (_FRONTEND_DIST / "index.html"))
