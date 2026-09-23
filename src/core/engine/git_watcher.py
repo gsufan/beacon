@@ -56,6 +56,9 @@ class ChangeSet:
     modified: List[str] = field(default_factory=list)
     deleted: List[str] = field(default_factory=list)
     renamed: List[tuple] = field(default_factory=list)  # (old_path, new_path)
+    # True cuando no hay un commit base válido y se listó el repo completo: lo
+    # que ya estaba en el índice puede ser de archivos que ya no existen.
+    full_rescan: bool = False
 
     def files_to_reindex(self) -> List[str]:
         """Archivos que hay que (re)chunkear y (re)embeber."""
@@ -79,6 +82,30 @@ def _is_indexable(path: str) -> bool:
     return Path(path).suffix.lower() in INDEXABLE_EXTENSIONS and not _is_generated_or_vendor(path)
 
 
+def _classify(changes: "ChangeSet", diff_item) -> None:
+    """Agrega un item de diff de GitPython a la categoría que corresponde."""
+    kind, old, new = diff_item.change_type, diff_item.a_path, diff_item.b_path
+    if kind in ("A", "C"):
+        if _is_indexable(new):
+            changes.added.append(new)
+    elif kind in ("M", "T"):
+        if _is_indexable(new):
+            changes.modified.append(new)
+    elif kind == "D":
+        if _is_indexable(old):
+            changes.deleted.append(old)
+    elif kind == "R":
+        # Si el rename cruza la frontera de lo indexable (ej. .py -> .txt, o a
+        # vendor/), se trata como borrado o alta para no dejar chunks huérfanos.
+        old_ok, new_ok = _is_indexable(old), _is_indexable(new)
+        if old_ok and new_ok:
+            changes.renamed.append((old, new))
+        elif old_ok:
+            changes.deleted.append(old)
+        elif new_ok:
+            changes.added.append(new)
+
+
 class GitWatcher:
     def __init__(self, repo_path: str):
         self.repo = git.Repo(repo_path)
@@ -97,6 +124,7 @@ class GitWatcher:
         changes = ChangeSet()
 
         if last_indexed_commit is None:
+            changes.full_rescan = True
             for item in head.tree.traverse():
                 if item.type == "blob" and _is_indexable(item.path):
                     changes.added.append(item.path)
@@ -104,28 +132,14 @@ class GitWatcher:
 
         try:
             old_commit = self.repo.commit(last_indexed_commit)
-        except (git.BadName, ValueError):
+            old_commit.tree  # con un sha completo, repo.commit() no verifica que el objeto exista
+        except (git.BadName, git.BadObject, ValueError):
             # El commit guardado ya no existe (ej: rebase, historia reescrita).
             # Forzamos re-indexación completa en vez de fallar silenciosamente.
             return self.get_changes_since(None)
 
-        diff_index = old_commit.diff(head)
-
-        for diff_item in diff_index:
-            # change_type: 'A' añadido, 'M' modificado, 'D' eliminado, 'R' renombrado
-            if diff_item.change_type == "A":
-                if _is_indexable(diff_item.b_path):
-                    changes.added.append(diff_item.b_path)
-            elif diff_item.change_type == "M":
-                if _is_indexable(diff_item.b_path):
-                    changes.modified.append(diff_item.b_path)
-            elif diff_item.change_type == "D":
-                if _is_indexable(diff_item.a_path):
-                    changes.deleted.append(diff_item.a_path)
-            elif diff_item.change_type == "R":
-                if _is_indexable(diff_item.b_path):
-                    changes.renamed.append((diff_item.a_path, diff_item.b_path))
-
+        for diff_item in old_commit.diff(head):
+            _classify(changes, diff_item)
         return changes
 
     def get_uncommitted_changes(self) -> ChangeSet:
@@ -135,13 +149,9 @@ class GitWatcher:
         """
         changes = ChangeSet()
 
-        # Modificados y eliminados, no commiteados (working dir vs HEAD)
-        diff_index = self.repo.head.commit.diff(None)
-        for diff_item in diff_index:
-            if diff_item.change_type == "M" and _is_indexable(diff_item.b_path):
-                changes.modified.append(diff_item.b_path)
-            elif diff_item.change_type == "D" and _is_indexable(diff_item.a_path):
-                changes.deleted.append(diff_item.a_path)
+        # Working dir vs HEAD: incluye archivos nuevos ya agregados al index y renames
+        for diff_item in self.repo.head.commit.diff(None):
+            _classify(changes, diff_item)
 
         # Archivos nuevos sin trackear
         for path in self.repo.untracked_files:

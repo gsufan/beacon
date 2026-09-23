@@ -9,9 +9,14 @@ import ollama
 from core.config import AIProviderConfig
 from core.projects import ProjectContext
 from core.engine.git_watcher import GitWatcher, ChangeSet
-from core.engine.indexer import COLLECTION_NAME, CONTROL_COLLECTION_NAME
+from core.engine.indexer import COLLECTION_NAME, CONTROL_COLLECTION_NAME, CONTROL_KEY_ID
 
 DOC_CONTROL_KEY_ID = "last_documented_commit"
+
+
+class IndexOutOfDateError(RuntimeError):
+    """La documentación se arma desde los chunks indexados: con el índice
+    atrasado se documentaría código viejo y se marcaría como al día."""
 MAX_PROMPT_CHARS = 20000
 ProgressCallback = Optional[Callable[[int, int, str], None]]
 
@@ -50,9 +55,12 @@ class DocGenerator:
         )
         self.control = self.client.get_or_create_collection(name=CONTROL_COLLECTION_NAME)
 
-    def _get_last_documented_commit(self):
-        result = self.control.get(ids=[DOC_CONTROL_KEY_ID])
+    def _get_control_commit(self, key: str):
+        result = self.control.get(ids=[key])
         return result["metadatas"][0]["commit_hash"] if result["ids"] else None
+
+    def _get_last_documented_commit(self):
+        return self._get_control_commit(DOC_CONTROL_KEY_ID)
 
     def _save_last_documented_commit(self, commit_hash: str):
         self.control.upsert(
@@ -104,24 +112,40 @@ class DocGenerator:
         if out.exists():
             out.unlink()
 
+    def _existing_doc_sources(self) -> List[str]:
+        docs_dir = Path(self.project.docs_dir)
+        if not docs_dir.exists():
+            return []
+        return [p.relative_to(docs_dir).as_posix()[: -len(".md")] for p in docs_dir.rglob("*.md")]
+
     def stats(self) -> dict:
         return {
             "ultimo_commit_documentado": self._get_last_documented_commit(),
             "commit_actual": self.watcher.current_commit_hash(),
         }
 
-    def sync(self, on_progress: ProgressCallback = None) -> dict:
-        last_commit = self._get_last_documented_commit()
+    def sync(self, on_progress: ProgressCallback = None, full: bool = False) -> dict:
+        head = self.watcher.current_commit_hash()
+        if self._get_control_commit(CONTROL_KEY_ID) != head:
+            raise IndexOutOfDateError(
+                "El índice no está al día con el último commit. Corre 'beacon sync' antes de generar la documentación."
+            )
+
+        last_commit = None if full else self._get_last_documented_commit()
         changes: ChangeSet = self.watcher.get_changes_since(last_commit)
         if changes.is_empty():
             return {"status": "sin_cambios", "detalle": changes.summary()}
 
+        files = changes.files_to_reindex()
         deleted = 0
-        for fp in changes.files_to_purge():
+        stale = changes.files_to_purge()
+        if changes.full_rescan:
+            # sin commit base no se sabe qué se borró: todo .md sin archivo fuente vigente es huérfano
+            current = set(files)
+            stale = [fp for fp in self._existing_doc_sources() if fp not in current]
+        for fp in stale:
             self.delete_doc(fp)
             deleted += 1
-
-        files = changes.files_to_reindex()
         total = len(files)
         generated, skipped = 0, []
         for i, fp in enumerate(files, 1):

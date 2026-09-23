@@ -7,6 +7,7 @@ export default defineConfig({
     proxy: {
       "/projects": "http://127.0.0.1:8000",
       "/config": "http://127.0.0.1:8000",
+      "/system": "http://127.0.0.1:8000",
     },
   },
   build: {

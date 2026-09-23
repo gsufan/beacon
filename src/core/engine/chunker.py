@@ -10,6 +10,7 @@ clase, método), nombre, lenguaje, archivo de origen y rango de líneas.
 Estos metadatos son los que luego se guardan junto al embedding en ChromaDB.
 """
 
+import re
 import warnings
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -64,6 +65,15 @@ DECORATOR_WRAPPER_TYPE = {
     "python": "decorated_definition",
 }
 
+# `const Boton = () => {...}` (el estilo de casi todo componente React) no es
+# un function_declaration: se reconoce por el valor asignado al declarador.
+ASSIGNED_FUNCTION_LANGUAGES = {"javascript", "typescript", "tsx"}
+ASSIGNED_FUNCTION_VALUE_TYPES = {"arrow_function", "function", "function_expression"}
+
+# Lo que queda de un `export ...` o `namespace X { ... }` al restarle los
+# chunks que contiene: envoltorio sin contenido propio, no vale la pena indexarlo.
+_TRIVIAL_WRAPPER_RE = re.compile(r"^(export( default)?|(declare )?(namespace|module) [\w.\"']+)?$")
+
 # Tamaño máximo de un chunk "fallback" (para archivos sin lenguaje soportado
 # o fragmentos de código fuera de cualquier función/clase, como imports globales)
 FALLBACK_CHUNK_SIZE = 1500
@@ -93,7 +103,13 @@ class CodeChunk:
 
     def chunk_id(self) -> str:
         """ID determinístico: mismo archivo+rango => mismo id (clave para re-indexación incremental)."""
+        if self.name == MODULE_LEVEL_NAME:
+            # su rango puede compartir líneas con un chunk real (`const a = 1; function f() {}`)
+            return f"{self.file_path}::{MODULE_LEVEL_NAME}"
         return f"{self.file_path}::{self.start_line}-{self.end_line}"
+
+
+MODULE_LEVEL_NAME = "module_level"
 
 
 def detect_language(file_path: str) -> Optional[str]:
@@ -166,6 +182,24 @@ def _collect_leading_comment_nodes(node) -> list:
     return comments
 
 
+def _byte_to_line(source_bytes: bytes, offset: int) -> int:
+    return source_bytes.count(b"\n", 0, offset) + 1
+
+
+def _with_export(node):
+    """`export function f` / `export class C`: el chunk incluye el `export` y el
+    JSDoc que va antes, que en el AST cuelgan del export_statement, no de la función."""
+    parent = node.parent
+    return parent if parent is not None and parent.type == "export_statement" else node
+
+
+def _assigned_function_name(declarator, source_bytes: bytes) -> Optional[str]:
+    name_node = declarator.child_by_field_name("name")
+    if name_node is None or name_node.type != "identifier":
+        return None  # destructuring (`const {a, b} = ...`), no es una función con nombre
+    return source_bytes[name_node.start_byte:name_node.end_byte].decode("utf-8", errors="ignore")
+
+
 def chunk_with_treesitter(file_path: str, source_code: str, language: str) -> List[CodeChunk]:
     parser = get_parser(language)
     source_bytes = source_code.encode("utf-8")
@@ -174,102 +208,65 @@ def chunk_with_treesitter(file_path: str, source_code: str, language: str) -> Li
     chunkable_types = CHUNKABLE_NODE_TYPES.get(language, set())
     wrapper_type = DECORATOR_WRAPPER_TYPE.get(language)
     chunks: List[CodeChunk] = []
-    covered_ranges: List[tuple] = []
-    consumed_comment_starts = set()  # start_byte de comentarios ya adjuntados a un chunk
+    covered_ranges: List[tuple] = []  # (start_byte, end_byte) ya incluidos en algún chunk
 
-    def walk(node, depth=0):
-        # Caso especial: función/clase decorada. El nodo contenedor abarca
-        # los decoradores + la definición interna; usamos su rango completo
-        # para no perder los decoradores, pero el nombre/tipo salen de la
-        # definición interna real.
+    def emit(range_node, name: Optional[str], chunk_type: str):
+        # range_node abarca todo lo que va al chunk (decoradores, `export`); los
+        # comentarios pegados justo encima se suman como su documentación.
+        leading = _collect_leading_comment_nodes(range_node)
+        first = leading[0] if leading else range_node
+        chunks.append(CodeChunk(
+            file_path=file_path,
+            language=language,
+            chunk_type=chunk_type,
+            name=name,
+            code=source_bytes[first.start_byte:range_node.end_byte].decode("utf-8", errors="ignore"),
+            start_line=first.start_point[0] + 1,
+            end_line=range_node.end_point[0] + 1,
+        ))
+        covered_ranges.append((first.start_byte, range_node.end_byte))
+
+    def walk(node):
+        # Función/clase decorada: el contenedor abarca decoradores + definición;
+        # nombre y tipo salen de la definición interna.
         if wrapper_type and node.type == wrapper_type:
             inner = next((c for c in node.children if c.type in chunkable_types), None)
             if inner is not None:
-                leading_comments = _collect_leading_comment_nodes(node)
-                comment_prefix = ""
-                start_byte = node.start_byte
-                start_line = node.start_point[0] + 1
-                if leading_comments:
-                    comment_prefix = source_bytes[leading_comments[0].start_byte:node.start_byte].decode("utf-8", errors="ignore")
-                    start_byte = leading_comments[0].start_byte
-                    start_line = leading_comments[0].start_point[0] + 1
-                    consumed_comment_starts.update(c.start_byte for c in leading_comments)
-
-                code = comment_prefix + source_bytes[node.start_byte:node.end_byte].decode("utf-8", errors="ignore")
-                name = _extract_name(inner, source_bytes)
                 chunk_type = _node_type_to_chunk_type(inner.type)
-                chunks.append(CodeChunk(
-                    file_path=file_path,
-                    language=language,
-                    chunk_type=chunk_type,
-                    name=name,
-                    code=code,
-                    start_line=start_line,
-                    end_line=node.end_point[0] + 1,
-                ))
-                covered_ranges.append((start_byte, node.end_byte))
+                emit(node, _extract_name(inner, source_bytes), chunk_type)
                 if chunk_type == "class":
-                    # Seguimos bajando dentro de la clase para capturar sus
-                    # métodos (decorados o no) como chunks propios también.
                     for child in inner.children:
-                        walk(child, depth + 1)
+                        walk(child)
                 return
-        if node.type in chunkable_types:
-            leading_comments = _collect_leading_comment_nodes(node)
-            comment_prefix = ""
-            start_byte = node.start_byte
-            start_line = node.start_point[0] + 1
-            if leading_comments:
-                comment_prefix = source_bytes[leading_comments[0].start_byte:node.start_byte].decode("utf-8", errors="ignore")
-                start_byte = leading_comments[0].start_byte
-                start_line = leading_comments[0].start_point[0] + 1
-                consumed_comment_starts.update(c.start_byte for c in leading_comments)
 
-            code = comment_prefix + source_bytes[node.start_byte:node.end_byte].decode("utf-8", errors="ignore")
-            name = _extract_name(node, source_bytes)
-            chunks.append(CodeChunk(
-                file_path=file_path,
-                language=language,
-                chunk_type=_node_type_to_chunk_type(node.type),
-                name=name,
-                code=code,
-                start_line=start_line,
-                end_line=node.end_point[0] + 1,
-            ))
-            covered_ranges.append((start_byte, node.end_byte))
-            # No seguimos bajando dentro de una función ya capturada como chunk,
-            # salvo para clases: sus métodos internos también queremos como chunks propios.
-            if _node_type_to_chunk_type(node.type) != "class":
+        if node.type in chunkable_types:
+            chunk_type = _node_type_to_chunk_type(node.type)
+            emit(_with_export(node), _extract_name(node, source_bytes), chunk_type)
+            # Dentro de una función no se sigue bajando; dentro de una clase sí,
+            # para capturar sus métodos como chunks propios.
+            if chunk_type != "class":
                 return
+
+        elif language in ASSIGNED_FUNCTION_LANGUAGES and node.type == "variable_declarator":
+            value = node.child_by_field_name("value")
+            if value is not None and value.type in ASSIGNED_FUNCTION_VALUE_TYPES:
+                range_node = node
+                declaration = node.parent
+                if (declaration is not None
+                        and declaration.type in ("lexical_declaration", "variable_declaration")
+                        and sum(c.type == "variable_declarator" for c in declaration.children) == 1):
+                    range_node = _with_export(declaration)
+                emit(range_node, _assigned_function_name(node, source_bytes), "function")
+                return
+
         for child in node.children:
-            walk(child, depth + 1)
+            walk(child)
 
     walk(tree.root_node)
 
-    # Código a nivel de módulo que no cayó dentro de ninguna función/clase
-    # (imports, constantes globales, configuración) se agrupa en un chunk "raw"
-    # aparte, para no perder ese contexto en la recuperación semántica.
-    # Los comentarios ya adjuntados como docstring de algún chunk (arriba) se
-    # excluyen aquí para no duplicarlos.
-    top_level_pieces = []
-    for child in tree.root_node.children:
-        if child.start_byte in consumed_comment_starts:
-            continue
-        if child.type not in chunkable_types and child.type != wrapper_type:
-            snippet = source_bytes[child.start_byte:child.end_byte].decode("utf-8", errors="ignore")
-            if snippet.strip():
-                top_level_pieces.append(snippet)
-    if top_level_pieces:
-        module_code = "\n".join(top_level_pieces)
-        chunks.insert(0, CodeChunk(
-            file_path=file_path,
-            language=language,
-            chunk_type="raw",
-            name="module_level",
-            code=module_code,
-            start_line=1,
-            end_line=module_code.count("\n") + 1,
-        ))
+    module_chunk = _module_level_chunk(file_path, language, source_bytes, tree.root_node, covered_ranges)
+    if module_chunk is not None:
+        chunks.insert(0, module_chunk)
 
     # Si no se encontró NADA chunkeable ni a nivel de módulo, guardamos el archivo entero
     if not chunks:
@@ -284,6 +281,62 @@ def chunk_with_treesitter(file_path: str, source_code: str, language: str) -> Li
         ))
 
     return chunks
+
+
+def _module_level_chunk(file_path, language, source_bytes: bytes, root, covered_ranges) -> Optional[CodeChunk]:
+    """Código fuera de toda función/clase (imports, constantes, configuración),
+    agrupado en un chunk "raw" para no perder ese contexto en la búsqueda.
+
+    Se calcula RESTANDO los rangos ya cubiertos por otros chunks, no por tipo de
+    nodo: así lo que vive dentro de un `export ...` o de un `namespace X { ... }`
+    no se duplica acá."""
+    covered = sorted(covered_ranges)
+
+    def uncovered(start: int, end: int) -> List[tuple]:
+        segments, cursor = [], start
+        for cs, ce in covered:
+            if ce <= cursor or cs >= end:
+                continue
+            if cs > cursor:
+                segments.append((cursor, cs))
+            cursor = max(cursor, ce)
+        if cursor < end:
+            segments.append((cursor, end))
+        return segments
+
+    pieces: List[str] = []
+    spans: List[tuple] = []
+    for child in root.children:
+        segments = uncovered(child.start_byte, child.end_byte)
+        texts, child_spans = [], []
+        for s, e in segments:
+            raw = source_bytes[s:e]
+            stripped = raw.strip()
+            if not stripped:
+                continue
+            lead = len(raw) - len(raw.lstrip())
+            texts.append(stripped.decode("utf-8", errors="ignore"))
+            child_spans.append((s + lead, s + lead + len(stripped) - 1))
+        if not texts:
+            continue
+        wraps_chunks = segments != [(child.start_byte, child.end_byte)]
+        if wraps_chunks and _TRIVIAL_WRAPPER_RE.match(re.sub(r"[\s{}();,]+", " ", " ".join(texts)).strip()):
+            continue
+        pieces.append("\n".join(texts))
+        spans.extend(child_spans)
+
+    if not pieces:
+        return None
+    return CodeChunk(
+        file_path=file_path,
+        language=language,
+        chunk_type="raw",
+        name=MODULE_LEVEL_NAME,
+        code="\n".join(pieces),
+        # rango real que abarca las piezas (no son contiguas, pero la cita apunta al lugar correcto)
+        start_line=_byte_to_line(source_bytes, spans[0][0]),
+        end_line=_byte_to_line(source_bytes, spans[-1][1]),
+    )
 
 
 def chunk_fallback(file_path: str, source_code: str) -> List[CodeChunk]:

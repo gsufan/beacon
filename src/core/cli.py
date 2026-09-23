@@ -3,9 +3,13 @@ Punto de entrada único. Antes: 5 scripts sueltos, cada uno con su propia
 consola muda. Ahora: un comando, con progreso real y mensajes claros.
 
 Uso:
-    beacon projects                        # lista proyectos registrados
-    beacon doctor                          # chequeo de salud (Ollama, modelos, repos)
+    beacon projects                        # lista proyectos registrados (Read)
+    beacon add <id> --repo-path <ruta>     # registra un proyecto local ya clonado (Create)
+    beacon add <id> --url <repo_url>       # o clona uno remoto y lo registra (Create)
+    beacon edit <id> [--name] [--repo-path] [--auto-watch/--no-auto-watch]  # (Update)
+    beacon remove <id> [--purge-data]      # desregistra un proyecto (Delete)
     beacon status <id>                     # estado del índice/documentación de un proyecto
+    beacon doctor                          # chequeo de salud (Ollama, modelos, repos)
     beacon sync <id>                       # indexa + purga generado
     beacon docs <id>                       # genera documentación
     beacon ask <id> "pregunta"
@@ -18,6 +22,7 @@ import json
 import logging
 import zipfile
 from pathlib import Path
+from typing import Optional
 
 import git
 import ollama
@@ -26,10 +31,31 @@ from rich.console import Console
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
-from core.config import ProjectAlreadyExistsError, ProjectEntry, add_project, load_config
-from core.projects import DATA_ROOT, list_projects, get_project, ProjectNotFoundError
+from core.config import (
+    InvalidProjectIdError,
+    ProjectAlreadyExistsError,
+    ProjectEntry,
+    add_project,
+    delete_project_token,
+    remove_project,
+    set_auto_watch,
+    update_project,
+    load_config,
+    validate_project_id,
+)
+from core.projects import (
+    DATA_ROOT,
+    InvalidRepoUrlError,
+    build_clone_url,
+    ensure_project_dirs,
+    list_projects,
+    get_project,
+    safe_project_dir,
+    validate_repo_url,
+    ProjectNotFoundError,
+)
 from core.engine.indexer import CodebaseIndexer
-from core.engine.doc_generator import DocGenerator
+from core.engine.doc_generator import DocGenerator, IndexOutOfDateError
 from core.engine.rag_engine import RAGEngine
 from core.engine.git_watcher import _is_generated_or_vendor
 
@@ -58,8 +84,119 @@ def cmd_list_projects():
     console.print(table)
 
 
+@app.command("add")
+def cmd_add(
+    project_id: str,
+    repo_path: str = typer.Option(None, "--repo-path", help="Ruta local a un repo git ya clonado."),
+    url: str = typer.Option(None, "--url", help="URL de un repo remoto a clonar (alternativa a --repo-path)."),
+    name: str = typer.Option(None, "--name", help="Nombre visible (por defecto, el id)."),
+    auto_watch: bool = typer.Option(False, "--auto-watch/--no-auto-watch"),
+):
+    """Registra un proyecto nuevo: un repo local ya clonado (--repo-path),
+    o clona uno remoto y lo registra (--url)."""
+    _validate_id_or_exit(project_id)
+    if not repo_path and not url:
+        console.print("[red]Hace falta --repo-path (repo local ya clonado) o --url (repo remoto a clonar).[/red]")
+        raise typer.Exit(code=1)
+    if repo_path and url:
+        console.print("[red]Usa --repo-path o --url, no ambos.[/red]")
+        raise typer.Exit(code=1)
+
+    if repo_path:
+        if not Path(repo_path).exists():
+            console.print(f"[red]'{repo_path}' no existe.[/red]")
+            raise typer.Exit(code=1)
+        try:
+            git.Repo(repo_path)
+        except git.InvalidGitRepositoryError:
+            console.print(f"[red]'{repo_path}' no es un repositorio git.[/red]")
+            raise typer.Exit(code=1)
+        resolved_path, source_type = repo_path, "local"
+    else:
+        try:
+            validate_repo_url(url)
+        except InvalidRepoUrlError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(code=1)
+        resolved_path = str(DATA_ROOT / project_id / "repo")
+        with console.status(f"Clonando {url}..."):
+            try:
+                git.Repo.clone_from(build_clone_url(url, None), resolved_path)
+            except git.GitCommandError as e:
+                console.print(f"[red]No se pudo clonar '{url}':[/red] {e}")
+                raise typer.Exit(code=1)
+        source_type = "git"
+
+    try:
+        entry = add_project(ProjectEntry(
+            id=project_id, name=name or project_id, repo_path=resolved_path,
+            source_type=source_type, repo_url=url, auto_watch=auto_watch,
+        ))
+    except ProjectAlreadyExistsError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=1)
+
+    ensure_project_dirs(entry.id)
+    console.print(f"[green]OK[/green] Proyecto '{entry.id}' registrado. Corre: beacon sync {entry.id}")
+
+
+@app.command("edit")
+def cmd_edit(
+    project_id: str,
+    name: str = typer.Option(None, "--name", help="Nuevo nombre visible."),
+    repo_path: str = typer.Option(None, "--repo-path", help="Nueva ruta local del repo."),
+    auto_watch: Optional[bool] = typer.Option(None, "--auto-watch/--no-auto-watch", help="Activa/desactiva el watcher automático."),
+):
+    """Edita un proyecto ya registrado (nombre, repo_path y/o auto_watch)."""
+    if name is None and repo_path is None and auto_watch is None:
+        console.print("[yellow]No pasaste nada para editar — usa --name, --repo-path y/o --auto-watch/--no-auto-watch.[/yellow]")
+        raise typer.Exit(code=1)
+    if repo_path is not None and not Path(repo_path).exists():
+        console.print(f"[red]'{repo_path}' no existe.[/red]")
+        raise typer.Exit(code=1)
+
+    changed = False
+    if name is not None or repo_path is not None:
+        changed = update_project(project_id, name=name, repo_path=repo_path) or changed
+    if auto_watch is not None:
+        changed = set_auto_watch(project_id, auto_watch) or changed
+
+    if not changed:
+        console.print(f"[red]Proyecto '{project_id}' no encontrado en config.yaml.[/red]")
+        raise typer.Exit(code=1)
+    console.print(f"[green]OK[/green] '{project_id}' actualizado.")
+
+
+@app.command("remove")
+def cmd_remove(
+    project_id: str,
+    purge_data: bool = typer.Option(False, "--purge-data", help="Además borra data/<id>/ (índice + docs) del disco."),
+):
+    """Desregistra un proyecto de config.yaml (y opcionalmente borra sus datos indexados)."""
+    if not remove_project(project_id):
+        console.print(f"[red]Proyecto '{project_id}' no encontrado en config.yaml.[/red]")
+        raise typer.Exit(code=1)
+    delete_project_token(project_id)
+    if purge_data:
+        import shutil
+        try:
+            project_dir = safe_project_dir(project_id, DATA_ROOT)
+        except ValueError as e:
+            console.print(f"[red]Desregistrado, pero no se purgaron datos:[/red] {e}")
+            raise typer.Exit(code=1)
+        if project_dir.exists():
+            shutil.rmtree(project_dir)
+    console.print(f"[green]OK[/green] '{project_id}' eliminado de config.yaml."
+                  + (" Datos en data/ también borrados." if purge_data else " (los datos en data/ quedaron intactos — usa --purge-data para borrarlos)."))
+
+
 @app.command("sync")
-def cmd_sync(project_id: str, purge_generated: bool = True, uncommitted: bool = False):
+def cmd_sync(
+    project_id: str,
+    purge_generated: bool = True,
+    uncommitted: bool = False,
+    full: bool = typer.Option(False, "--full", help="Rehace el índice completo en vez de solo lo que cambió."),
+):
     """Indexa un proyecto (incremental) y purga código generado/vendor."""
     project = _resolve_or_exit(project_id)
     cfg = load_config()
@@ -74,7 +211,7 @@ def cmd_sync(project_id: str, purge_generated: bool = True, uncommitted: bool = 
                 if progress.tasks[task].total != total:
                     progress.update(task, total=total)
                 progress.update(task, completed=i, current_file=fp)
-            result = indexer.sync(include_uncommitted=uncommitted, on_progress=on_progress)
+            result = indexer.sync(include_uncommitted=uncommitted, on_progress=on_progress, full=full)
         return indexer, result
 
     indexer, result = _run_safely(_do_sync, repo_path=project.repo_path)
@@ -90,8 +227,11 @@ def cmd_sync(project_id: str, purge_generated: bool = True, uncommitted: bool = 
 
 
 @app.command("docs")
-def cmd_docs(project_id: str):
-    """Genera/actualiza documentación .md incremental para un proyecto."""
+def cmd_docs(
+    project_id: str,
+    full: bool = typer.Option(False, "--full", help="Regenera toda la documentación en vez de solo lo que cambió."),
+):
+    """Genera/actualiza documentación .md incremental para un proyecto (requiere 'sync' al día)."""
     project = _resolve_or_exit(project_id)
     cfg = load_config()
 
@@ -105,7 +245,7 @@ def cmd_docs(project_id: str):
                 if progress.tasks[task].total != total:
                     progress.update(task, total=total)
                 progress.update(task, completed=i, current_file=fp)
-            return generator.sync(on_progress=on_progress)
+            return generator.sync(on_progress=on_progress, full=full)
 
     result = _run_safely(_do_docs, repo_path=project.repo_path)
     console.print(f"[green]OK[/green] {result}")
@@ -119,7 +259,7 @@ def cmd_ask(project_id: str, question: str, top_k: int = 5):
     engine = RAGEngine(project, cfg.ai_provider)
 
     if engine.collection.count() == 0:
-        console.print(f"[red]El índice de '{project_id}' está vacío. Corre 'deuda-tecnica sync {project_id}' primero.[/red]")
+        console.print(f"[red]El índice de '{project_id}' está vacío. Corre 'beacon sync {project_id}' primero.[/red]")
         raise typer.Exit(code=1)
 
     with console.status("Consultando..."):
@@ -188,6 +328,9 @@ def cmd_import(
             raise typer.Exit(code=1)
 
         target_id = project_id or manifest["id"]
+        # El id puede venir del manifest de un .zip ajeno: validarlo ANTES de
+        # tocar el disco, o un id como "../x" extraería fuera de data/.
+        _validate_id_or_exit(target_id)
         target_dir = (DATA_ROOT / target_id).resolve()
         if target_dir.exists():
             console.print(f"[red]Ya existe data/{target_id}/ — usa --id para elegir otro nombre, o borra esa carpeta primero.[/red]")
@@ -215,7 +358,7 @@ def cmd_import(
         console.print(f"[red]{e}[/red] [dim](los datos ya se copiaron a data/{target_id}/, pero no se registró en config.yaml)[/dim]")
         raise typer.Exit(code=1)
 
-    console.print(f"[green]OK[/green] Importado como '{target_id}'. Probá: beacon ask {target_id} \"...\"")
+    console.print(f"[green]OK[/green] Importado como '{target_id}'. Prueba: beacon ask {target_id} \"...\"")
     if not Path(final_repo_path).exists():
         console.print(
             f"[yellow]![/yellow] 'repo_path' ({final_repo_path}) no existe en esta máquina — "
@@ -326,6 +469,14 @@ def cmd_serve(host: str = "127.0.0.1", port: int = 8000):
     uvicorn.run("core.api:app", host=host, port=port, reload=False)
 
 
+def _validate_id_or_exit(project_id: str):
+    try:
+        validate_project_id(project_id)
+    except InvalidProjectIdError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=1)
+
+
 def _resolve_or_exit(project_id: str):
     try:
         return get_project(project_id)
@@ -347,6 +498,9 @@ def _run_safely(fn, *, repo_path: str = ""):
     except git.InvalidGitRepositoryError:
         console.print(f"[red]Esa carpeta existe pero no es un repositorio git:[/red] {repo_path}")
         console.print("[dim]¿Falta un 'git init' o 'git clone' ahí?[/dim]")
+        raise typer.Exit(code=1)
+    except IndexOutOfDateError as e:
+        console.print(f"[yellow]{e}[/yellow]")
         raise typer.Exit(code=1)
     except ollama.ResponseError as e:
         console.print(f"[red]Ollama respondió con un error:[/red] {e}")

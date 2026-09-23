@@ -108,13 +108,34 @@ cd ..
 ```bash
 beacon doctor                        # verifica Ollama, modelos, repos configurados
 beacon projects                      # lista proyectos registrados
+
+# --- gestión de proyectos (CRUD) ---
+beacon add <id> --repo-path <ruta>   # registra un repo local ya clonado
+beacon add <id> --url <repo_url>     # o clona uno remoto y lo registra
+beacon edit <id> --name "..."        # edita nombre y/o repo_path de un proyecto ya registrado
+beacon edit <id> --repo-path <ruta>
+beacon edit <id> --auto-watch        # activa el watcher automático (--no-auto-watch lo desactiva)
+beacon remove <id>                   # desregistra un proyecto (config.yaml)
+beacon remove <id> --purge-data      # además borra data/<id>/ (índice + docs) del disco
+
+# --- indexado y consultas ---
 beacon sync <project_id>             # indexa/reindexa incrementalmente
-beacon docs <project_id>             # genera documentación .md
+beacon sync <project_id> --full      # rehace el índice completo (ej. tras actualizar Beacon)
+beacon docs <project_id>             # genera documentación .md (requiere 'sync' al día)
+beacon docs <project_id> --full      # regenera toda la documentación
 beacon ask <project_id> "pregunta"   # consulta el RAG desde la terminal
 beacon export <project_id>           # empaqueta el índice+docs en un .zip portable
 beacon import <archivo.zip>          # registra un proyecto desde un .zip exportado
 beacon serve                         # levanta la API + UI en http://127.0.0.1:8000
 ```
+
+> **Nota sobre terminales en Windows**: los comandos de la CLI usan `rich` para
+> la salida con colores/checkmarks, lo que requiere una consola Win32 real.
+> En **Git Bash / MinTTY** eso puede hacer que comandos como `beacon doctor`
+> fallen con un traceback al intentar escribir un carácter con color (la
+> terminal no expone el handle de consola que `rich` necesita). No es un bug
+> de Beacon — ejecuta la CLI desde **PowerShell**, **cmd.exe** o **Windows
+> Terminal**, donde funciona sin problemas.
 
 ## Uso — UI web
 
@@ -152,9 +173,10 @@ npm test                   # frontend (Vitest + Testing Library)
 
 Beacon está pensado para uso local o en red interna, por un desarrollador o equipo — **no** para exponerse directamente a internet:
 
-- **La API no tiene autenticación por defecto.** Cualquiera con acceso de red al puerto puede leer/escribir configuración, registrar proyectos y ver código indexado. Podés activar una clave simple con la variable de entorno `BEACON_API_KEY` (ver más abajo) — sirve para no dejarlo abierto a cualquiera en la misma red, pero no reemplaza un proxy de autenticación real si lo vas a exponer más allá de `localhost`.
+- **La API no tiene autenticación por defecto.** Cualquiera con acceso de red al puerto puede leer/escribir configuración, registrar proyectos y ver código indexado. Se puede activar una clave simple con la variable de entorno `BEACON_API_KEY` (ver más abajo) — sirve para no dejarlo abierto a cualquiera en la misma red, pero no reemplaza un proxy de autenticación real si lo vas a exponer más allá de `localhost`.
 - **Sin rate limiting.** No hay límite de frecuencia en `sync`/`query`; en uso interno normal no es un problema, pero no está pensado para tráfico público.
 - El explorador de carpetas (`/system/browse-dirs`) está acotado al directorio home del usuario del proceso, y el clonado de repos valida el esquema de la URL (solo http(s)/ssh) — pero ambos asumen que quien llega a la API ya es de confianza, dado el punto anterior.
+- `/system/available-models?ollama_host=...` hace que el servidor consulte el host indicado (para poblar la lista de modelos en Configuración). Con la API abierta, eso permite usar a Beacon para hacer peticiones HTTP hacia otras máquinas de su red; otra razón para activar `BEACON_API_KEY` si Beacon no corre solo en `localhost`.
 
 Más detalle de cada decisión en [docs/ARQUITECTURA.md](docs/ARQUITECTURA.md).
 
