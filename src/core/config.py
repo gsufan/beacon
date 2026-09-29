@@ -18,6 +18,9 @@ CONFIG_PATH = Path(os.getenv("DEUDA_TECNICA_CONFIG", _DEFAULT_CONFIG_PATH))
 _DEFAULT_CREDENTIALS_PATH = Path(__file__).resolve().parents[2] / "config" / "credentials.yaml"
 CREDENTIALS_PATH = Path(os.getenv("DEUDA_TECNICA_CREDENTIALS", _DEFAULT_CREDENTIALS_PATH))
 
+# Ver core/engine/embeddings.py: elegido midiendo la recuperación (tools/eval_retrieval.py).
+DEFAULT_EMBEDDING_MODEL = "qwen3-embedding:0.6b"
+
 
 @dataclass
 class AIProviderConfig:
@@ -55,7 +58,7 @@ def load_config(path: Path = CONFIG_PATH) -> AppConfig:
     provider = AIProviderConfig(
         provider=ai.get("provider", "ollama"),
         ollama_host=ai.get("ollama_host", "http://localhost:11434"),
-        embedding_model=ai.get("embedding_model", "nomic-embed-text"),
+        embedding_model=ai.get("embedding_model", DEFAULT_EMBEDDING_MODEL),
         llm_model=ai.get("llm_model", "llama3:8b"),
     )
 

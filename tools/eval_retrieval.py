@@ -5,6 +5,9 @@ Métricas (estándar en recuperación de información):
     esperado entre los k primeros resultados.
   - MRR@10: promedio de 1/posición del primer fragmento correcto (0 si no
     aparece en los 10 primeros). Premia que el correcto quede arriba.
+  - En contexto: % de preguntas cuyo fragmento esperado queda dentro del
+    contexto que realmente se entrega al modelo (top_k=5 más los fragmentos
+    casi empatados que suma el contexto adaptativo), y su tamaño medio.
   - Latencia media de la recuperación (embedding de la pregunta + búsqueda),
     sin contar la generación del LLM.
 
@@ -43,11 +46,15 @@ def evaluate(project_id: str, questions: list) -> dict:
         latency = time.perf_counter() - t
         got = [f"{c.file_path}::{c.name}" for c in chunks]
         rank = next((i for i, key in enumerate(got, 1) if key in expected), None)
+        context = [f"{c.file_path}::{c.name}" for c in engine.select_context(item["q"], top_k=5)]
         rows.append({"q": item["q"], "expected": sorted(expected), "rank": rank, "top3": got[:3],
+                     "in_context": any(k in expected for k in context), "context_size": len(context),
                      "latency_s": round(latency, 3)})
     n = len(rows)
     summary = {f"hit@{k}": round(100 * sum(1 for r in rows if r["rank"] and r["rank"] <= k) / n, 1) for k in KS}
     summary["mrr@10"] = round(sum(1 / r["rank"] for r in rows if r["rank"]) / n, 3)
+    summary["en_contexto"] = round(100 * sum(r["in_context"] for r in rows) / n, 1)
+    summary["contexto_medio"] = round(statistics.mean(r["context_size"] for r in rows), 1)
     summary["latencia_media_s"] = round(statistics.mean(r["latency_s"] for r in rows), 3)
     summary["preguntas"] = n
     return {"summary": summary, "rows": rows}
@@ -71,7 +78,8 @@ def main():
             print(f"{'':>19}obtuvo:   {', '.join(r['top3'])}")
     s = result["summary"]
     print("\n" + "  ".join(f"{k}={v}%" for k, v in s.items() if k.startswith("hit@"))
-          + f"  MRR@10={s['mrr@10']}  latencia={s['latencia_media_s']}s  ({s['preguntas']} preguntas)")
+          + f"  MRR@10={s['mrr@10']}  en contexto={s['en_contexto']}% (media {s['contexto_medio']} fragmentos)"
+          + f"  latencia={s['latencia_media_s']}s  ({s['preguntas']} preguntas)")
     if args.json:
         Path(args.json).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
 

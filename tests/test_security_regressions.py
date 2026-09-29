@@ -100,7 +100,7 @@ class _FailingOllama:
     def __init__(self, exc):
         self.exc = exc
 
-    def embeddings(self, **kwargs):
+    def embed(self, **kwargs):
         raise self.exc
 
 

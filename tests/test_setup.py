@@ -11,7 +11,7 @@ Uso:
 import os
 import sys
 
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "qwen3-embedding:0.6b")
 LLM_MODEL = os.getenv("LLM_MODEL", "llama3:8b")
 CHROMA_DIR = os.getenv("CHROMA_PERSIST_DIR", "./data/chroma_db")
 

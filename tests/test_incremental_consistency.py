@@ -25,8 +25,8 @@ AI = AIProviderConfig(provider="ollama", ollama_host="http://127.0.0.1:9",
 
 
 class _FakeOllama:
-    def embeddings(self, **kwargs):
-        return {"embedding": [0.1, 0.2, 0.3]}
+    def embed(self, input, **kwargs):
+        return {"embeddings": [[0.1, 0.2, 0.3] for _ in input]}
 
     def chat(self, **kwargs):
         return {"message": {"content": "## Propósito\nDoc de prueba."}}

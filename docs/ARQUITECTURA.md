@@ -13,7 +13,7 @@ repo de código
 chunker.py ──────────► chunks (función/clase/método) vía AST (tree-sitter)
    │
    ▼
-indexer.py ──────────► embeddings (Ollama, nomic-embed-text) → ChromaDB
+indexer.py ──────────► embeddings (Ollama, qwen3-embedding:0.6b) → ChromaDB
    │
    ▼
 rag_engine.py ───────► retrieval + expansión por grafo de llamadas + LLM
@@ -99,10 +99,29 @@ la última pieza), aunque las piezas no sean contiguas.
 - `beacon docs` exige que el índice esté al día con HEAD: la documentación se
   arma desde los chunks indexados, así que con el índice atrasado se
   documentaría código viejo.
-- **`nomic-embed-text` requiere los prefijos `"search_document: "` /
-  `"search_query: "`** en cada texto antes de embeberlo — sin esto la
-  recuperación semántica es notablemente peor (bug real detectado en una
-  sesión anterior).
+- **Modelo de embeddings: `qwen3-embedding:0.6b`** (`engine/embeddings.py`).
+  Se eligió midiendo con `tools/eval_retrieval.py` (30 preguntas en español
+  sobre psf/requests) entre nomic-embed-text, bge-m3, embeddinggemma y
+  qwen3-embedding: nomic, entrenado casi solo en inglés, dejaba la respuesta
+  entre los 5 primeros en el 33% de las preguntas; qwen3-embedding, en el
+  93%. Pesa ~0,6 GB y cabe junto a llama3:8b en una GPU de 8 GB. También se
+  probó traducir la pregunta al inglés con llama3: con nomic ayudaba mucho,
+  pero con un modelo multilingüe no mejora de forma significativa, así que
+  se descartó para no agregar una llamada más al LLM.
+- **Formato por modelo.** Cada modelo espera su propio formato de consulta y
+  de documento (nomic: `"search_query: "`/`"search_document: "`, cuya
+  omisión fue un bug real; qwen3: una instrucción de tarea en la consulta).
+  `embeddings.profile_for` lo concentra, así que cambiar de modelo es cambiar
+  una línea de `config.yaml`. Se usa `/api/embed` por lotes (un llamado por
+  archivo) con `truncate=False`, para que un texto demasiado largo dé error
+  y se divida en vez de recortarse en silencio. nomic-embed-text admite en
+  realidad 2.048 tokens (no 8.192).
+- **Cambio de modelo.** El modelo usado queda registrado en la colección de
+  control. Si la configuración cambia, el próximo sync recrea la colección
+  (la dimensión de los vectores cambia, ej. 768 → 1024) y reindexa todo; las
+  consultas contra un índice de otro modelo responden con un error claro
+  (409 en la API) en vez de resultados sin sentido.
+- Los archivos vacíos (ej. `__init__.py`) no generan fragmentos.
 - ChromaDB se crea con métrica coseno explícita
   (`metadata={"hnsw:space": "cosine"}`) — el default (L2) no es ideal para
   embeddings de texto.
@@ -126,8 +145,17 @@ la última pieza), aunque las piezas no sean contiguas.
 
 ## 5. Motor RAG (`rag_engine.py`)
 
-1. **Retrieval semántico**: embebe la pregunta y busca los `top_k` chunks
-   más cercanos en ChromaDB.
+1. **Retrieval semántico**: embebe la pregunta y busca los chunks más
+   cercanos en ChromaDB. **Los tests se penalizan** (+0,08 de distancia)
+   salvo que la pregunta sea sobre pruebas: sus nombres repiten las palabras
+   de la pregunta (`test_http_303_changes_post_to_get`) y le ganaban a la
+   función que la responde. Medido: Hit@5 de 80% a 93%.
+   **Contexto adaptativo** (`select_context`): además de los `top_k`, se
+   suman hasta 5 fragmentos casi empatados con el último (margen 0,03), para
+   preguntas que tocan varios archivos. Medido: el fragmento correcto llega
+   al modelo en el 97% de las preguntas (vs. 93% con `top_k` fijo), con 8
+   fragmentos en promedio; márgenes menores no agregaban nada y el
+   presupuesto de tokens sigue siendo el tope final.
 2. **Expansión por grafo de llamadas**: por cada chunk función/método
    recuperado, extrae candidatos de llamada por regex
    (`CALL_CANDIDATE_PATTERN`, filtrando palabras reservadas de varios
