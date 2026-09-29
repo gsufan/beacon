@@ -67,41 +67,86 @@ El contenedor `beacon` espera a que `ollama` pase su healthcheck (`depends_on: c
 
 ## Instalación manual (sin Docker)
 
+Todo se hace desde una consola; no hace falta Docker.
+
 ### Requisitos
 
-- Python 3.10+
-- [Node.js](https://nodejs.org/) 18+ (para compilar la UI)
-- [Ollama](https://ollama.com/) corriendo localmente (o accesible por red)
+- **Python 3.10, 3.11 o 3.12** (recomendado 3.11, que es la versión que usan
+  Docker y la CI). Python 3.13 o superior **no funciona todavía**: la
+  dependencia `tree-sitter-languages` no publica paquetes para esas versiones y
+  `pip install` falla con *"No matching distribution found"*. En Windows puedes
+  tener varias versiones instaladas y elegir con `py -3.11`.
+- [Node.js](https://nodejs.org/) 18+ (solo para compilar la UI web)
+- [Ollama](https://ollama.com/) instalado y corriendo (la app de escritorio lo
+  deja corriendo en segundo plano; si no, `ollama serve` en otra consola)
+- Git
 
-```bash
+### Pasos (Windows, PowerShell)
+
+```powershell
 # 1. Clonar y entrar al proyecto
-git clone https://github.com/<tu-usuario>/beacon.git
+git clone <url-del-repositorio> beacon
 cd beacon
 
-# 2. Entorno virtual + dependencias del backend
-python -m venv .venv
-.venv/Scripts/activate   # Windows
-# source .venv/bin/activate   # Linux/Mac
+# 2. Entorno virtual con Python 3.11 + dependencias del backend
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
 pip install -e .
 
-# 3. Modelos de Ollama
+# 3. Modelos de Ollama (una sola vez, ~5 GB en total)
 ollama pull nomic-embed-text
 ollama pull llama3:8b
 
-# 4. Configuración
-cp config/config.example.yaml config/config.yaml
-# edita config/config.yaml: agrega el/los repo(s) que quieras indexar
+# 4. Configuración base
+Copy-Item config\config.example.yaml config\config.yaml
+# (Opcional) tokens para repos privados clonados por URL
+Copy-Item config\credentials.example.yaml config\credentials.yaml
 
-# 4b. (Opcional) Tokens para repos privados clonados por URL
-cp config/credentials.example.yaml config/credentials.yaml
+# 5. Comprobar que todo está bien
+beacon doctor
 
-# 5. (Opcional) Compilar la UI web
+# 6. Registrar e indexar un repositorio
+beacon add mi-proyecto --repo-path C:\ruta\al\repo    # o: --url https://github.com/usuario/repo.git
+beacon sync mi-proyecto
+beacon ask mi-proyecto "¿Qué hace este proyecto?"
+
+# 7. (Opcional) Compilar y levantar la UI web
 cd frontend
 npm install
 npm run build
 cd ..
+beacon serve        # http://127.0.0.1:8000 — dejar esta consola abierta
 ```
+
+Notas para Windows:
+
+- Si `Activate.ps1` da un error de *"la ejecución de scripts está
+  deshabilitada"*, usa `cmd.exe` y activa con `.venv\Scripts\activate.bat`, o
+  no actives el entorno y llama directamente a `.venv\Scripts\beacon.exe`.
+- En `cmd.exe` se copia con `copy` en vez de `Copy-Item`.
+- Ejecuta la CLI desde PowerShell, cmd o Windows Terminal, no desde Git Bash
+  (ver la nota sobre terminales más abajo).
+
+### Pasos (Linux / macOS)
+
+```bash
+git clone <url-del-repositorio> beacon && cd beacon
+python3.11 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+pip install -e .
+ollama pull nomic-embed-text && ollama pull llama3:8b
+cp config/config.example.yaml config/config.yaml
+beacon doctor
+beacon add mi-proyecto --repo-path ../mi-proyecto
+beacon sync mi-proyecto
+cd frontend && npm install && npm run build && cd ..   # opcional: UI web
+beacon serve
+```
+
+Si levantas `beacon serve` sin haber compilado la UI, la API funciona igual y
+la raíz (`http://127.0.0.1:8000`) muestra cómo compilarla.
 
 ## Uso — CLI
 
@@ -146,6 +191,46 @@ Con `beacon serve` corriendo (y la UI ya compilada, paso 5 de instalación), abr
 - **Configuración**: proveedor/modelo de IA (auto-detectados desde Ollama), registro de nuevos proyectos (ruta local o clonado por URL desde GitHub/GitLab/Bitbucket), watcher automático opcional por proyecto.
 
 Soporta español e inglés (selector en la barra lateral).
+
+## Watcher automático: cuándo corre
+
+El watcher no es un proceso aparte ni un cron job: es un **hilo en segundo
+plano dentro del proceso de `beacon serve`** (`_auto_watch_loop` en
+`src/core/api.py`). Cada 5 minutos revisa los proyectos con `auto_watch`
+activado; si el proyecto es remoto hace `git pull`, y luego sincroniza solo si
+hay commits nuevos. Funciona igual con o sin Docker: lo único que necesita es
+que el servidor esté levantado.
+
+Casos límite a tener en cuenta:
+
+- **Sin `beacon serve` no hay watcher.** Los comandos de la CLI (`beacon sync`,
+  `beacon ask`, etc.) no levantan el hilo; si solo usas la CLI, sincroniza a
+  mano con `beacon sync <id>`.
+- **Se apaga con el servidor.** El hilo es *daemon*: al cerrar `beacon serve`
+  (o detener el contenedor `beacon`) el watcher se detiene con él y retoma al
+  volver a levantarlo.
+- **La primera revisión ocurre 5 minutos después de arrancar**, no al inicio
+  (el ciclo duerme antes de revisar). Si necesitas el índice al día de
+  inmediato, usa `beacon sync <id>` o el botón "Sincronizar" de la UI.
+- **Los cambios en `auto_watch` no requieren reiniciar.** Cada ciclo relee
+  `config.yaml`, así que `beacon edit <id> --auto-watch` / `--no-auto-watch`
+  (o el toggle de la UI) se aplica en el siguiente ciclo.
+- **No se pisa con otros syncs, ni siquiera desde otra consola.** Cada
+  proyecto tiene un bloqueo a nivel de sistema operativo
+  (`data/<id>/.sync.lock`). Si el watcher, la UI o un `beacon sync`/`beacon
+  docs` en otra consola ya está trabajando sobre un proyecto, el segundo no
+  empieza: la CLI termina con un aviso, la UI muestra el mensaje en el estado
+  del sync y el watcher reintenta en el siguiente ciclo. Si un proceso se cae
+  a mitad (Ctrl+C, se cierra la consola), el sistema operativo libera el
+  bloqueo solo; no hay que borrar nada a mano.
+- **Un error no detiene el watcher.** Si falla un proyecto (por ejemplo, un
+  `git pull` sin red), se registra en el log, el proyecto queda con estado
+  `error` en la UI y el ciclo sigue con los demás.
+- **Un solo proceso de servidor.** `beacon serve` levanta Uvicorn con un único
+  proceso, así que hay un único watcher. Con varios *workers* (`uvicorn
+  --workers N`) habría un watcher por worker; el bloqueo por proyecto evita que
+  escriban a la vez, pero se harían revisiones redundantes, así que esa
+  configuración no se recomienda.
 
 ## Desarrollo del frontend
 
