@@ -10,6 +10,7 @@ import git  # noqa: E402
 from typer.testing import CliRunner  # noqa: E402
 
 import core.cli as cli_module  # noqa: E402
+import core.services as services  # noqa: E402
 from core.config import ProjectAlreadyExistsError, ProjectEntry  # noqa: E402
 
 runner = CliRunner()
@@ -55,8 +56,8 @@ def test_add_rejects_dangerous_url_scheme():
 def test_add_local_repo_success(monkeypatch, tmp_path):
     repo_path = _git_repo(tmp_path)
     added = {}
-    monkeypatch.setattr(cli_module, "add_project", lambda entry: added.setdefault("entry", entry) or entry)
-    monkeypatch.setattr(cli_module, "ensure_project_dirs", lambda project_id: None)
+    monkeypatch.setattr(services, "add_project", lambda entry: added.setdefault("entry", entry) or entry)
+    monkeypatch.setattr(services, "ensure_project_dirs", lambda project_id: None)
 
     result = runner.invoke(cli_module.app, ["add", "demo", "--repo-path", repo_path, "--name", "Demo"])
     assert result.exit_code == 0, result.output
@@ -69,8 +70,8 @@ def test_add_local_repo_success(monkeypatch, tmp_path):
 def test_add_defaults_name_to_id(monkeypatch, tmp_path):
     repo_path = _git_repo(tmp_path)
     added = {}
-    monkeypatch.setattr(cli_module, "add_project", lambda entry: added.setdefault("entry", entry) or entry)
-    monkeypatch.setattr(cli_module, "ensure_project_dirs", lambda project_id: None)
+    monkeypatch.setattr(services, "add_project", lambda entry: added.setdefault("entry", entry) or entry)
+    monkeypatch.setattr(services, "ensure_project_dirs", lambda project_id: None)
 
     result = runner.invoke(cli_module.app, ["add", "demo", "--repo-path", repo_path])
     assert result.exit_code == 0, result.output
@@ -83,7 +84,7 @@ def test_add_duplicate_id_fails(monkeypatch, tmp_path):
     def fake_add_project(entry):
         raise ProjectAlreadyExistsError(f"El proyecto '{entry.id}' ya está registrado.")
 
-    monkeypatch.setattr(cli_module, "add_project", fake_add_project)
+    monkeypatch.setattr(services, "add_project", fake_add_project)
     result = runner.invoke(cli_module.app, ["add", "demo", "--repo-path", repo_path])
     assert result.exit_code == 1
 
@@ -134,7 +135,7 @@ def test_edit_toggles_auto_watch(monkeypatch):
 # ------------------------------------------------------------- remove ----
 
 def test_remove_unknown_project_fails(monkeypatch):
-    monkeypatch.setattr(cli_module, "remove_project", lambda pid: False)
+    monkeypatch.setattr(services, "remove_project", lambda pid: False)
     result = runner.invoke(cli_module.app, ["remove", "no-existe"])
     assert result.exit_code == 1
 
@@ -145,9 +146,9 @@ def test_remove_without_purge_keeps_data_dir(monkeypatch, tmp_path):
     project_dir.mkdir(parents=True)
     (project_dir / "marker.txt").write_text("no me deberian borrar")
 
-    monkeypatch.setattr(cli_module, "remove_project", lambda pid: True)
-    monkeypatch.setattr(cli_module, "delete_project_token", lambda pid: None)
-    monkeypatch.setattr(cli_module, "DATA_ROOT", data_root)
+    monkeypatch.setattr(services, "remove_project", lambda pid: True)
+    monkeypatch.setattr(services, "delete_project_token", lambda pid: None)
+    monkeypatch.setattr(services, "DATA_ROOT", data_root)
 
     result = runner.invoke(cli_module.app, ["remove", "demo"])
     assert result.exit_code == 0, result.output
@@ -160,9 +161,9 @@ def test_remove_with_purge_deletes_data_dir(monkeypatch, tmp_path):
     project_dir.mkdir(parents=True)
     (project_dir / "marker.txt").write_text("esto si se deberia borrar")
 
-    monkeypatch.setattr(cli_module, "remove_project", lambda pid: True)
-    monkeypatch.setattr(cli_module, "delete_project_token", lambda pid: None)
-    monkeypatch.setattr(cli_module, "DATA_ROOT", data_root)
+    monkeypatch.setattr(services, "remove_project", lambda pid: True)
+    monkeypatch.setattr(services, "delete_project_token", lambda pid: None)
+    monkeypatch.setattr(services, "DATA_ROOT", data_root)
 
     result = runner.invoke(cli_module.app, ["remove", "demo", "--purge-data"])
     assert result.exit_code == 0, result.output

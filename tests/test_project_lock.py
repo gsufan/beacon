@@ -14,6 +14,7 @@ from typer.testing import CliRunner  # noqa: E402
 
 import core.api as api  # noqa: E402
 import core.cli as cli_module  # noqa: E402
+import core.services as services  # noqa: E402
 from core.config import AIProviderConfig, AppConfig, ProjectEntry  # noqa: E402
 from core.project_lock import LOCK_FILENAME, ProjectBusyError, ensure_not_busy, project_lock  # noqa: E402
 
@@ -81,21 +82,29 @@ def test_ensure_not_busy_on_missing_dir_does_not_create_it(tmp_path):
     assert not (tmp_path / "no-existe").exists()
 
 
-def test_cli_sync_refuses_while_another_process_syncs(monkeypatch, tmp_path):
-    project_dir = tmp_path / "demo"
-
+def _fake_project(monkeypatch, project_dir, source_type="local"):
+    """Proyecto falso para los servicios: sin config real ni Ollama."""
     class FakeProject:
         name = "Demo"
-        repo_path = str(tmp_path)
+        repo_path = str(project_dir)
         chroma_dir = str(project_dir / "chroma_db")
 
+    entry = ProjectEntry(id="demo", name="Demo", repo_path=str(project_dir), source_type=source_type, auto_watch=True)
+    monkeypatch.setattr(services, "get_project", lambda pid: FakeProject())
+    monkeypatch.setattr(services, "_project_entry", lambda pid: entry)
+    monkeypatch.setattr(services, "load_config", lambda: AppConfig(ai_provider=AI, projects=[entry]))
+    return FakeProject, entry
+
+
+def test_cli_sync_refuses_while_another_process_syncs(monkeypatch, tmp_path):
+    project_dir = tmp_path / "demo"
+    FakeProject, _ = _fake_project(monkeypatch, project_dir)
     monkeypatch.setattr(cli_module, "_resolve_or_exit", lambda pid: FakeProject())
-    monkeypatch.setattr(cli_module, "load_config", lambda: AppConfig(ai_provider=AI, projects=[]))
 
     def must_not_run(*a, **k):
         raise AssertionError("no debe indexar mientras otro proceso tiene el lock")
 
-    monkeypatch.setattr(cli_module, "CodebaseIndexer", must_not_run)
+    monkeypatch.setattr(services, "CodebaseIndexer", must_not_run)
     holder = _Holder(project_dir)
     try:
         result = CliRunner().invoke(cli_module.app, ["sync", "demo"])
@@ -107,13 +116,8 @@ def test_cli_sync_refuses_while_another_process_syncs(monkeypatch, tmp_path):
 
 def test_api_sync_reports_error_while_cli_holds_lock(monkeypatch, tmp_path):
     project_dir = tmp_path / "demo"
-
-    class FakeProject:
-        chroma_dir = str(project_dir / "chroma_db")
-
-    monkeypatch.setattr(api, "get_project", lambda pid: FakeProject())
-    monkeypatch.setattr(api, "load_config", lambda: AppConfig(ai_provider=AI, projects=[]))
-    monkeypatch.setattr(api, "CodebaseIndexer", lambda *a, **k: pytest.fail("no debe indexar"))
+    _fake_project(monkeypatch, project_dir)
+    monkeypatch.setattr(services, "CodebaseIndexer", lambda *a, **k: pytest.fail("no debe indexar"))
     holder = _Holder(project_dir)
     try:
         api._run_sync("demo-lock")
@@ -126,19 +130,43 @@ def test_api_sync_reports_error_while_cli_holds_lock(monkeypatch, tmp_path):
 
 
 def test_auto_watch_skips_project_locked_by_cli_without_pulling(monkeypatch, tmp_path):
-    entry = ProjectEntry(id="demo", name="d", repo_path=".", source_type="git", auto_watch=True)
+    project_dir = tmp_path / "demo"
+    _, entry = _fake_project(monkeypatch, project_dir, source_type="git")
     monkeypatch.setattr(api, "load_config", lambda: AppConfig(ai_provider=AI, projects=[entry]))
-    monkeypatch.setattr(api, "DATA_ROOT", tmp_path)
     calls = []
-    monkeypatch.setattr(api, "_pull_git_project", lambda e: calls.append("pull"))
-    monkeypatch.setattr(api, "_run_sync", lambda pid: calls.append("sync"))
-    holder = _Holder(tmp_path / "demo")
+    monkeypatch.setattr(services, "pull_from_remote", lambda e: calls.append("pull"))
+    monkeypatch.setattr(services, "CodebaseIndexer", lambda *a, **k: calls.append("sync"))
+    holder = _Holder(project_dir)
     try:
         api._auto_watch_tick()
     finally:
         holder.release()
-    assert calls == []
+    assert calls == []  # ni git pull ni indexado: el pull va dentro del lock
     assert "demo" not in api._sync_status  # claim liberado, sin marcar error
+
+
+def test_git_project_sync_pulls_inside_the_lock(monkeypatch, tmp_path):
+    project_dir = tmp_path / "demo"
+    _fake_project(monkeypatch, project_dir, source_type="git")
+    seen = {}
+
+    def pull(entry):
+        with pytest.raises(ProjectBusyError):  # otro proceso no puede entrar mientras se hace el pull
+            with project_lock(project_dir):
+                pass
+        seen["pull"] = True
+
+    class FakeIndexer:
+        def __init__(self, *a, **k):
+            self.project = type("P", (), {"chroma_dir": str(project_dir / "chroma_db")})()
+
+        def sync(self, **kwargs):
+            return {"status": "sin_cambios"}
+
+    monkeypatch.setattr(services, "pull_from_remote", pull)
+    monkeypatch.setattr(services, "CodebaseIndexer", FakeIndexer)
+    result = services.sync_project("demo", docs=False)
+    assert seen == {"pull": True} and result.pulled
 
 
 def test_export_skips_lock_file(monkeypatch, tmp_path):

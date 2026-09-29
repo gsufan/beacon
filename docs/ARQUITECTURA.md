@@ -39,6 +39,7 @@ src/core/
   cli.py                       # comando `beacon`
   api.py                        # API REST + sirve la UI compilada
   project_lock.py               # bloqueo por proyecto entre procesos (CLI, servidor, watcher)
+  services.py                   # casos de uso compartidos por CLI, API y watcher
   engine/
     chunker.py                  # AST políglota (tree-sitter)
     git_watcher.py                # diff incremental + exclusión de código generado
@@ -232,23 +233,38 @@ Cómo vive el hilo:
     proceso del servidor y permite responder 409 de inmediato en la API.
   - `core/project_lock.py` coordina **entre procesos**: un bloqueo del sistema
     operativo sobre `data/<id>/.sync.lock` (`msvcrt.locking` en Windows,
-    `fcntl.flock` en Linux/macOS), no bloqueante. Lo toman `_run_sync` (API y
-    watcher), `beacon sync` (incluida la purga de código generado),
-    `beacon docs` y el borrado con `--purge-data`. El sistema operativo lo
+    `fcntl.flock` en Linux/macOS), no bloqueante. Lo toman los servicios
+    `sync_project` (API, watcher y `beacon sync`), `generate_docs` y el
+    borrado con `--purge-data`. El sistema operativo lo
     libera si el proceso muere, así que no quedan locks huérfanos. `beacon
     export` excluye el archivo de lock del `.zip`.
-  - El watcher comprueba el lock **antes** del `git pull`, para no cambiar
-    archivos a mitad del indexado de otra consola. Entre esa comprobación y
-    el `_run_sync` queda una ventana muy corta sin lock: si justo ahí arranca
-    un `beacon sync` en otra consola, el `git pull` del watcher podría
-    coincidir con el comienzo de ese sync (el `_run_sync` del watcher sí se
-    detiene con el aviso y no escribe el índice). Es un caso poco probable;
-    si llegara a ocurrir, `beacon sync <id> --full` reconstruye el índice.
+  - El `git pull` de los proyectos clonados por URL ocurre **dentro** del
+    lock (`services.sync_project`), así que nunca cambia archivos a mitad
+    del indexado de otra consola.
 - `beacon serve` usa un solo proceso (`reload=False`, sin `workers`). Con
   varios workers habría un watcher por worker: el lock evita escrituras
   simultáneas, pero las revisiones serían redundantes.
 - Una excepción en un proyecto se registra con `logger.exception`, libera el
   claim marcando el estado `error`, y el ciclo continúa con los demás.
+
+### Capa de servicios (`services.py`)
+
+Los flujos del negocio viven una sola vez en `core/services.py`:
+`register_project`, `unregister_project`, `sync_project` (pull del remoto +
+índice + documentación opcional, todo bajo el lock del proyecto),
+`generate_docs` y `pull_from_remote`. La CLI y la API solo traducen
+entradas y errores (mensajes de consola o códigos HTTP), y el watcher usa
+el mismo `sync_project` que el botón "Sincronizar".
+
+Antes cada punto de entrada tenía su propia versión y se habían separado:
+la API aceptaba token para repos privados y la CLI no (ahora `beacon add
+--private`); la API ignoraba `auto_watch` al registrar; la CLI purgaba
+código generado y la API no; y solo el watcher hacía `git pull`, así que
+`beacon sync` y el botón de la UI nunca traían los cambios de un repo
+clonado por URL. Además, el `git pull` ahora ocurre dentro del lock del
+proyecto (antes el watcher lo hacía fuera, con una ventana en la que podía
+coincidir con un sync de otra consola), y un id ya registrado se rechaza
+antes de clonar.
 
 ## 8. Decisiones descartadas (y por qué)
 
