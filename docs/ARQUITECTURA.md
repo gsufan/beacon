@@ -38,6 +38,7 @@ src/core/
   projects.py                 # ProjectContext, aislamiento por proyecto
   cli.py                       # comando `beacon`
   api.py                        # API REST + sirve la UI compilada
+  project_lock.py               # bloqueo por proyecto entre procesos (CLI, servidor, watcher)
   engine/
     chunker.py                  # AST políglota (tree-sitter)
     git_watcher.py                # diff incremental + exclusión de código generado
@@ -46,7 +47,8 @@ src/core/
     rag_engine.py                    # retrieval + grafo de llamadas + LLM
     scope_resolution.py               # desambiguación de nombres por scope
     text_sanitize.py                   # limpieza de respuestas del LLM
-    chroma_utils.py                     # cliente ChromaDB centralizado
+    chroma_utils.py                     # cliente ChromaDB + coherencia entre procesos (.index_version)
+    llm.py                              # llamadas al LLM con num_ctx fijo y presupuesto de tokens
 frontend/                    # UI (React + Vite + Tailwind)
 tools/                       # scripts de diagnóstico (rank_check, diagnose_query, etc.)
 data/<project_id>/           # índice + docs de CADA proyecto indexado, aislados entre sí
@@ -106,6 +108,20 @@ la última pieza), aunque las piezas no sean contiguas.
 - Chunks gigantes (>16000 caracteres) se dividen recursivamente a la mitad
   (respetando saltos de línea) hasta que el modelo los acepta, en vez de
   usar un umbral fijo adivinado.
+- **El índice corresponde exactamente al commit registrado.** El sync fija el
+  commit objetivo al empezar (`target`), calcula el diff contra él y lee el
+  contenido de cada archivo **desde ese commit** (`GitWatcher.read_file_at`),
+  no desde la carpeta. Antes se leía el disco y se registraba HEAD al final:
+  un cambio sin commitear quedaba indexado como parte del commit, y un commit
+  que llegaba durante el sync se marcaba como procesado sin haberlo sido. El
+  modo `--uncommitted` sigue leyendo el disco a propósito y no registra commit.
+- **Coherencia entre procesos.** Cada escritura del índice actualiza
+  `data/<id>/.index_version`. ChromaDB embebido mantiene el índice vectorial en
+  memoria por proceso, así que un servidor ya levantado no veía lo que
+  indexaba otra consola (se reprodujo: el conteo cambiaba, la búsqueda no).
+  `chroma_utils.get_chroma_client` descarta la instancia en memoria de ese
+  proyecto cuando el marcador cambió en otro proceso, y la API recrea el
+  `RAGEngine` cuando cambia la versión (`_get_engine`).
 
 ## 5. Motor RAG (`rag_engine.py`)
 
@@ -121,7 +137,17 @@ la última pieza), aunque las piezas no sean contiguas.
 3. **Prompt anti-alucinación**: reglas explícitas — si el código citado
    llama a algo cuyo cuerpo no está en el contexto, el modelo debe decirlo
    en vez de inventar qué hace.
-4. **Idioma**: la instrucción de idioma va al **principio** del system
+4. **Ventana de contexto** (`engine/llm.py`): cada llamada fija
+   `num_ctx=8192` (el máximo de llama3:8b). Sin eso Ollama cargaba el modelo
+   con 4.096 tokens y, cuando el prompt no cabía, **descartaba el comienzo**
+   —las reglas del sistema— sin avisar: medido con psf/requests, una consulta
+   con `top_k=10` enviaba 6.525 tokens y el modelo procesaba 2.060. Además,
+   antes de enviar se estima el tamaño y se dejan solo los fragmentos que
+   caben (por prioridad), reservando 1.024 tokens para la respuesta; las
+   fuentes devueltas son exactamente las que vio el modelo. Después de cada
+   llamada se compara `prompt_eval_count` con lo enviado y se registra una
+   advertencia si no coincide.
+5. **Idioma**: la instrucción de idioma va al **principio** del system
    prompt (no al final) y se refuerza con `text_sanitize.strip_preamble`,
    que descarta cualquier meta-comentario que el modelo agregue antes del
    contenido real (modelos chicos como `llama3:8b` a veces "confirman" la
@@ -135,6 +161,19 @@ patrón incremental que el indexador (solo regenera archivos que cambiaron).
 El prompt exige evidencia concreta para cada riesgo citado (nombre de
 función/variable, qué hace exactamente) — nada de "falta manejo de
 errores en algunos métodos" genérico.
+
+- **Archivos grandes completos.** Antes el prompt se cortaba en 20.000
+  caracteres sin avisar (con `sessions.py` de requests se documentaba el
+  28% del archivo). Ahora, si el archivo no cabe en una llamada, se analiza
+  por partes (notas por parte, condensadas si hace falta) y se redacta el
+  documento final a partir de esas notas; el encabezado indica en cuántas
+  partes se analizó.
+- **Índice de componentes exacto.** Cada documento termina con un
+  «Índice de componentes» generado desde el análisis sintáctico (nombre,
+  tipo y líneas), no por el modelo, así que es completo aunque el modelo
+  describa solo los principales.
+- **Idioma.** Los prompts exigen español neutro; sin eso llama3 respondía
+  en inglés en archivos con código y comentarios en inglés.
 
 ## 7. API (`api.py`) y frontend
 

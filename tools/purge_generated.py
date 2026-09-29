@@ -7,7 +7,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from core.engine.chroma_utils import get_chroma_client
+from core.engine.chroma_utils import bump_index_version, get_chroma_client
 from core.projects import get_project
 from core.engine.indexer import COLLECTION_NAME
 from core.engine.git_watcher import _is_generated_or_vendor
@@ -29,6 +29,7 @@ def purge(project_id: str, dry_run: bool = True):
         print("[DRY RUN] Corre con --confirm para aplicar.")
         return
     collection.delete(ids=to_delete)
+    bump_index_version(Path(project.chroma_dir).parent)  # un servidor levantado recarga el índice
     print(f"Purgados {len(to_delete)} chunks.")
 
 

@@ -10,11 +10,14 @@ import ollama
 from core.config import AIProviderConfig
 from core.projects import ProjectContext
 from core.engine.indexer import COLLECTION_NAME
+from core.engine.llm import chat, estimate_tokens, prompt_budget_tokens
 from core.engine.scope_resolution import resolve_candidate
 from core.engine.text_sanitize import strip_preamble
 
 DEFAULT_TOP_K = 5
 DEFAULT_MAX_CALL_EXPANSIONS = 5
+# Tokens que se dejan libres para la respuesta dentro de la ventana del modelo.
+ANSWER_RESERVE_TOKENS = 1024
 
 CALL_CANDIDATE_PATTERN = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 KEYWORD_BLOCKLIST = {
@@ -169,18 +172,34 @@ class RAGEngine:
             "\n\n".join(c.as_context_block(i + 1) for i, c in enumerate(chunks))
         return f"CONTEXTO:\n\n{context}\n\n---\n\nPREGUNTA: {question}\n\nResponde siguiendo las reglas del sistema."
 
+    def _fit_to_budget(self, question: str, system_prompt: str,
+                       chunks: List[RetrievedChunk]) -> List[RetrievedChunk]:
+        """Deja solo los fragmentos que caben en la ventana del modelo, en orden
+        de prioridad (primero los recuperados por similitud, luego los del grafo
+        de llamadas). Mejor entregar menos contexto completo que un prompt que
+        Ollama trunque por el comienzo, perdiendo las reglas del sistema."""
+        budget = prompt_budget_tokens(ANSWER_RESERVE_TOKENS)
+        used = estimate_tokens(system_prompt) + estimate_tokens(self._build_prompt(question, []))
+        kept: List[RetrievedChunk] = []
+        for chunk in chunks:
+            cost = estimate_tokens(chunk.as_context_block(len(kept) + 1)) + 1
+            if used + cost > budget:
+                continue  # uno más chico que venga después todavía puede caber
+            kept.append(chunk)
+            used += cost
+        return kept
+
     def ask(
         self, question: str, top_k: int = DEFAULT_TOP_K, expand_call_graph: bool = True, language: str = "es"
     ) -> RAGResponse:
         chunks = self.retrieve(question, top_k=top_k)
         if expand_call_graph:
             chunks = chunks + self.expand_with_call_graph(chunks)
-        prompt = self._build_prompt(question, chunks)
         language_instruction = LANGUAGE_INSTRUCTIONS.get(language, LANGUAGE_INSTRUCTIONS["es"])
         system_prompt = language_instruction + "\n\n" + SYSTEM_PROMPT
-        response = self.client_ollama.chat(
-            model=self.ai_config.llm_model,
-            messages=[{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt}],
-        )
-        answer = strip_preamble(response["message"]["content"], heading_marker="\x00")
+        # Las fuentes que se devuelven son exactamente las que vio el modelo.
+        chunks = self._fit_to_budget(question, system_prompt, chunks)
+        prompt = self._build_prompt(question, chunks)
+        result = chat(self.client_ollama, self.ai_config.llm_model, system_prompt, prompt)
+        answer = strip_preamble(result.content, heading_marker="\x00")
         return RAGResponse(answer=answer, sources=chunks)

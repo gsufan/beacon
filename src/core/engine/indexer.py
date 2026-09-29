@@ -3,12 +3,12 @@
 import os
 from typing import Callable, List, Optional
 
-from core.engine.chroma_utils import get_chroma_client
+from core.engine.chroma_utils import bump_index_version, get_chroma_client
 import ollama
 
 from core.config import AIProviderConfig
 from core.projects import ProjectContext
-from core.engine.chunker import chunk_file, CodeChunk
+from core.engine.chunker import chunk_file, chunk_source, CodeChunk
 from core.engine.git_watcher import GitWatcher, ChangeSet
 
 COLLECTION_NAME = "codebase_index"
@@ -99,11 +99,20 @@ class CodebaseIndexer:
             self.collection.delete(ids=ids[i:i + 5000])
         return len(ids)
 
-    def _index_file(self, file_path: str) -> int:
-        full_path = os.path.join(self.project.repo_path, file_path)
-        if not os.path.exists(full_path):
-            return 0
-        chunks = chunk_file(full_path)
+    def _index_file(self, file_path: str, commit_hash: Optional[str] = None) -> int:
+        """Indexa un archivo. Con `commit_hash`, el contenido se lee desde ese
+        commit (el caso normal); sin él, desde el disco (solo el modo
+        --uncommitted, que por diseño no registra ningún commit)."""
+        if commit_hash:
+            source = self.watcher.read_file_at(commit_hash, file_path)
+            if source is None:
+                return 0
+            chunks = chunk_source(file_path, source)
+        else:
+            full_path = os.path.join(self.project.repo_path, file_path)
+            if not os.path.exists(full_path):
+                return 0
+            chunks = chunk_file(full_path)
         if not chunks:
             return 0
 
@@ -129,7 +138,11 @@ class CodebaseIndexer:
              full: bool = False) -> dict:
         # full=True: rehace el índice entero (ej. tras actualizar el chunker)
         last_commit = None if full else self._get_last_indexed_commit()
-        changes: ChangeSet = self.watcher.get_changes_since(last_commit)
+        # Se fija el commit al empezar: el diff, el contenido indexado y el hash
+        # registrado al final son del mismo commit aunque llegue otro durante
+        # el sync (antes se leía HEAD al final y el disco durante el proceso).
+        target = self.watcher.current_commit_hash()
+        changes: ChangeSet = self.watcher.get_changes_since(last_commit, target=target)
 
         if include_uncommitted:
             u = self.watcher.get_uncommitted_changes()
@@ -142,24 +155,29 @@ class CodebaseIndexer:
 
         files = changes.files_to_reindex()
         purged = 0
-        if changes.full_rescan:
-            purged += self._purge_all()
-        else:
-            # también los que se reindexan: un 'added' pudo quedar indexado por un --uncommitted previo
-            for fp in changes.files_to_purge() + files:
-                purged += self._purge_file(fp)
-        total = len(files)
         indexed, files_indexed = 0, 0
-        for i, fp in enumerate(files, 1):
-            n = self._index_file(fp)
-            if n > 0:
-                indexed += n
-                files_indexed += 1
-            if on_progress:
-                on_progress(i, total, fp)
+        try:
+            if changes.full_rescan:
+                purged += self._purge_all()
+            else:
+                # también los que se reindexan: un 'added' pudo quedar indexado por un --uncommitted previo
+                for fp in changes.files_to_purge() + files:
+                    purged += self._purge_file(fp)
+            total = len(files)
+            for i, fp in enumerate(files, 1):
+                n = self._index_file(fp, commit_hash=None if include_uncommitted else target)
+                if n > 0:
+                    indexed += n
+                    files_indexed += 1
+                if on_progress:
+                    on_progress(i, total, fp)
+        finally:
+            # Aunque el sync falle a mitad, el índice ya cambió: avisar a otros
+            # procesos (el servidor) para que no sigan buscando en su copia vieja.
+            bump_index_version(os.path.dirname(self.project.chroma_dir))
 
         if not include_uncommitted:
-            self._save_last_indexed_commit(self.watcher.current_commit_hash())
+            self._save_last_indexed_commit(target)
 
         return {
             "status": "ok", "detalle": changes.summary(),

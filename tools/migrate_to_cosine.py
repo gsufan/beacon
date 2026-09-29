@@ -6,7 +6,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from core.engine.chroma_utils import get_chroma_client
+from core.engine.chroma_utils import bump_index_version, get_chroma_client
 from core.projects import get_project
 from core.engine.indexer import COLLECTION_NAME
 
@@ -50,6 +50,7 @@ def migrate(project_id: str):
 
     client.delete_collection(COLLECTION_NAME)
     new.modify(name=COLLECTION_NAME)
+    bump_index_version(Path(project.chroma_dir).parent)  # un servidor levantado recarga el índice
     print(f"Listo. {total} chunks migrados.")
 
 

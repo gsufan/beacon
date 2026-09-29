@@ -369,9 +369,14 @@ def chunk_fallback(file_path: str, source_code: str) -> List[CodeChunk]:
 
 
 def chunk_file(file_path: str) -> List[CodeChunk]:
-    """Punto de entrada principal: detecta lenguaje y aplica la estrategia correcta."""
-    path = Path(file_path)
-    source_code = path.read_text(encoding="utf-8", errors="ignore")
+    """Punto de entrada desde el disco: lee el archivo y lo fragmenta."""
+    source_code = Path(file_path).read_text(encoding="utf-8", errors="ignore")
+    return chunk_source(file_path, source_code)
+
+
+def chunk_source(file_path: str, source_code: str) -> List[CodeChunk]:
+    """Fragmenta un contenido ya leído (ej. desde un commit de git). `file_path`
+    solo se usa para detectar el lenguaje y como identidad de los chunks."""
     language = detect_language(file_path)
 
     if language is None:

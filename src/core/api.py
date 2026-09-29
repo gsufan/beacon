@@ -4,7 +4,6 @@ import logging
 import os
 import threading
 import time
-from functools import lru_cache
 from pathlib import Path
 from typing import Optional
 
@@ -43,6 +42,7 @@ from core.projects import (
     ProjectNotFoundError,
 )
 from core.project_lock import ProjectBusyError, ensure_not_busy, project_lock
+from core.engine.chroma_utils import read_index_version
 from core.engine.doc_generator import DocGenerator
 from core.engine.indexer import CodebaseIndexer
 from core.engine.rag_engine import RAGEngine
@@ -88,12 +88,28 @@ _sync_lock = threading.Lock()
 AUTO_WATCH_INTERVAL_SECONDS = 300
 
 
-@lru_cache(maxsize=None)
+_engines: dict = {}  # project_id -> (versión del índice, RAGEngine)
+_engines_lock = threading.Lock()
+
+
 def _get_engine(project_id: str) -> RAGEngine:
-    """Una instancia de RAGEngine por proyecto, reutilizada entre requests."""
+    """Una instancia de RAGEngine por proyecto, reutilizada entre requests
+    mientras el índice no cambie. Si cambió (un sync de este proceso o de otro,
+    ej. 'beacon sync' en una consola), se crea una nueva, que ve el índice
+    actualizado (ver chroma_utils)."""
     project = get_project(project_id)
-    cfg = load_config()
-    return RAGEngine(project, cfg.ai_provider)
+    version = read_index_version(Path(project.chroma_dir).parent)
+    with _engines_lock:
+        cached = _engines.get(project_id)
+        if cached and cached[0] == version:
+            return cached[1]
+    engine = RAGEngine(project, load_config().ai_provider)
+    with _engines_lock:
+        _engines[project_id] = (version, engine)
+    return engine
+
+
+_get_engine.cache_clear = _engines.clear  # para config/proyecto modificados
 
 
 class QueryRequest(BaseModel):
