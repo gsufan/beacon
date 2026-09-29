@@ -37,8 +37,8 @@ class _RecordingOllama:
         self.chats = []
         self.content = content
 
-    def embeddings(self, **kwargs):
-        return {"embedding": [0.1, 0.2, 0.3]}
+    def embed(self, input, **kwargs):
+        return {"embeddings": [[0.1, 0.2, 0.3] for _ in input]}
 
     def chat(self, **kwargs):
         self.chats.append(kwargs)
@@ -90,7 +90,7 @@ def test_rag_prompt_fits_context_and_sources_match_what_model_saw(tmp_path):
     engine.client_ollama = fake = _RecordingOllama(content="respuesta")
     # 10 fragmentos de ~6.000 caracteres (~1.700 tokens c/u): no caben todos en 8.192
     chunks = [_chunk(f"f{i}", 6000) for i in range(10)]
-    engine.retrieve = lambda q, top_k: chunks
+    engine.select_context = lambda q, top_k: chunks
     engine.expand_with_call_graph = lambda c: []
 
     result = engine.ask("¿qué hace f0?", top_k=10)

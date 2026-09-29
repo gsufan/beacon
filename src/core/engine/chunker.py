@@ -12,7 +12,7 @@ Estos metadatos son los que luego se guardan junto al embedding en ChromaDB.
 
 import re
 import warnings
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
@@ -377,6 +377,8 @@ def chunk_file(file_path: str) -> List[CodeChunk]:
 def chunk_source(file_path: str, source_code: str) -> List[CodeChunk]:
     """Fragmenta un contenido ya leído (ej. desde un commit de git). `file_path`
     solo se usa para detectar el lenguaje y como identidad de los chunks."""
+    if not source_code.strip():
+        return []  # archivo vacío (ej. un __init__.py): nada que buscar ni documentar
     language = detect_language(file_path)
 
     if language is None:

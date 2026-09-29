@@ -7,7 +7,7 @@ Proyecto de título — INACAP, 2026.
 ## Qué hace
 
 1. Indexa un repositorio de código con un **chunker políglota basado en AST** (tree-sitter), que entiende la estructura real de funciones, clases y métodos en 8+ lenguajes.
-2. Genera embeddings locales (Ollama + `nomic-embed-text`) y los guarda en **ChromaDB**.
+2. Genera embeddings locales (Ollama + `qwen3-embedding:0.6b`, multilingüe) y los guarda en **ChromaDB**.
 3. Responde preguntas sobre el código vía un motor RAG con **expansión por grafo de llamadas** (si el código citado llama a otra función indexada, se agrega automáticamente al contexto) y reglas explícitas anti-alucinación.
 4. Genera documentación `.md` por archivo, incremental — solo regenera lo que cambió desde el último commit indexado.
 5. Todo esto disponible por **CLI** y por una **interfaz web** (chat, navegador de documentación, configuración) servida por el mismo backend.
@@ -47,7 +47,7 @@ Edita `config/config.yaml`: deja `ollama_host: http://ollama:11434` (el nombre `
 docker compose up -d --build
 
 # primera vez: descargar los modelos dentro del contenedor de Ollama
-docker compose exec ollama ollama pull nomic-embed-text
+docker compose exec ollama ollama pull qwen3-embedding:0.6b
 docker compose exec ollama ollama pull llama3:8b
 
 # indexar un proyecto
@@ -94,8 +94,8 @@ py -3.11 -m venv .venv
 pip install -r requirements.txt
 pip install -e .
 
-# 3. Modelos de Ollama (una sola vez, ~5 GB en total)
-ollama pull nomic-embed-text
+# 3. Modelos de Ollama (una sola vez, ~5,3 GB en total)
+ollama pull qwen3-embedding:0.6b
 ollama pull llama3:8b
 
 # 4. Configuración base
@@ -136,7 +136,7 @@ python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
-ollama pull nomic-embed-text && ollama pull llama3:8b
+ollama pull qwen3-embedding:0.6b && ollama pull llama3:8b
 cp config/config.example.yaml config/config.yaml
 beacon doctor
 beacon add mi-proyecto --repo-path ../mi-proyecto
@@ -246,6 +246,30 @@ beacon serve
 cd frontend
 npm run dev   # http://localhost:5173, con proxy hacia la API en :8000
 ```
+
+## Calidad de la búsqueda (medida)
+
+`tools/eval_retrieval.py` mide la recuperación contra un conjunto de
+preguntas de referencia (`eval/requests.yaml`: 30 preguntas en español sobre
+el código de psf/requests, cada una con la función que la responde):
+
+```bash
+python tools/eval_retrieval.py <project_id> eval/requests.yaml
+```
+
+| Configuración | Hit@1 | Hit@5 | Hit@10 | MRR@10 |
+|---|---|---|---|---|
+| nomic-embed-text (versión anterior) | 7% | 33% | 40% | 0,19 |
+| qwen3-embedding:0.6b + tests penalizados (actual) | 70% | 93% | 100% | 0,80 |
+
+Con el contexto adaptativo, el fragmento que responde la pregunta llega al
+modelo en el 97% de los casos (8 fragmentos en promedio). El conjunto es
+chico (30 preguntas sobre un solo repositorio): los números sirven para
+comparar configuraciones, no como garantía general.
+
+Si cambias `embedding_model` en `config.yaml`, el próximo `beacon sync`
+reconstruye el índice solo (los vectores de modelos distintos no son
+comparables), y mientras tanto las consultas responden con un aviso claro.
 
 ## Tests
 

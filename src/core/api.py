@@ -30,6 +30,7 @@ from core.projects import (
 )
 from core.project_lock import ProjectBusyError
 from core.engine.chroma_utils import read_index_version
+from core.engine.indexer import IndexModelMismatchError
 from core.engine.rag_engine import RAGEngine
 from core import services
 
@@ -164,6 +165,8 @@ def query(project_id: str, req: QueryRequest):
         raise HTTPException(status_code=409, detail=f"El índice de '{project_id}' está vacío. Corre 'beacon sync {project_id}' primero.")
     try:
         result = engine.ask(req.question, top_k=req.top_k, language=req.language)
+    except IndexModelMismatchError as e:
+        raise HTTPException(status_code=409, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el motor RAG: {e}")
     return result.to_dict()

@@ -52,7 +52,7 @@ from core.projects import (
 from core.project_lock import LOCK_FILENAME, ProjectBusyError
 from core.engine.chroma_utils import bump_index_version
 from core import services
-from core.engine.indexer import CodebaseIndexer
+from core.engine.indexer import CodebaseIndexer, IndexModelMismatchError
 from core.engine.doc_generator import DocGenerator, IndexOutOfDateError
 from core.engine.rag_engine import RAGEngine
 
@@ -452,7 +452,7 @@ def _run_safely(fn, *, repo_path: str = ""):
         console.print("[dim]Vuelve a intentarlo en unos momentos, o revisa el estado en la interfaz web.[/dim]")
         raise typer.Exit(code=1)
     except (InvalidProjectIdError, InvalidRepoUrlError, services.InvalidRequestError,
-            services.CloneError, ProjectAlreadyExistsError, ProjectNotFoundError) as e:
+            services.CloneError, ProjectAlreadyExistsError, ProjectNotFoundError, IndexModelMismatchError) as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1)
     except git.NoSuchPathError:
