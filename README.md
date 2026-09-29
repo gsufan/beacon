@@ -78,7 +78,7 @@ Todo se hace desde una consola; no hace falta Docker.
   dependencia `tree-sitter-languages` no publica paquetes para esas versiones y
   `pip install` falla con *"No matching distribution found"*. En Windows puedes
   tener varias versiones instaladas y elegir con `py -3.11`.
-- [Node.js](https://nodejs.org/) 18+ (solo para compilar la UI web)
+- [Node.js](https://nodejs.org/) 20+ (para compilar la UI web y correr sus tests)
 - [Ollama](https://ollama.com/) instalado y corriendo (la app de escritorio lo
   deja corriendo en segundo plano; si no, `ollama serve` en otra consola)
 - Git
@@ -276,6 +276,7 @@ comparables), y mientras tanto las consultas responden con un aviso claro.
 ## Tests
 
 ```bash
+pip install -r requirements-dev.txt   # una vez: agrega pytest
 pytest tests/              # backend
 
 cd frontend
