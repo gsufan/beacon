@@ -42,6 +42,7 @@ from core.projects import (
     validate_repo_url,
     ProjectNotFoundError,
 )
+from core.project_lock import ProjectBusyError, ensure_not_busy, project_lock
 from core.engine.doc_generator import DocGenerator
 from core.engine.indexer import CodebaseIndexer
 from core.engine.rag_engine import RAGEngine
@@ -340,6 +341,13 @@ def put_auto_watch(project_id: str, body: AutoWatchUpdate):
 
 @app.delete("/projects/{project_id}")
 def delete_project(project_id: str, purge_data: bool = False):
+    if purge_data:
+        try:  # no borrar data/<id>/ mientras otro proceso la está escribiendo
+            ensure_not_busy(safe_project_dir(project_id, DATA_ROOT))
+        except ProjectBusyError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        except ValueError:
+            pass  # id inválido: remove_project/safe_project_dir lo reportan abajo
     if not remove_project(project_id):
         raise HTTPException(status_code=404, detail=f"Proyecto '{project_id}' no encontrado.")
     _get_engine.cache_clear()
@@ -361,10 +369,13 @@ def _run_sync(project_id: str):
     try:
         project = get_project(project_id)
         cfg = load_config()
-        indexer = CodebaseIndexer(project, cfg.ai_provider)
-        index_result = indexer.sync()
-        doc_gen = DocGenerator(project, cfg.ai_provider)
-        doc_result = doc_gen.sync()
+        # _claim_sync solo coordina dentro de este proceso; el lock de archivo
+        # coordina además con la CLI ('beacon sync'/'docs' en otra consola).
+        with project_lock(Path(project.chroma_dir).parent):
+            indexer = CodebaseIndexer(project, cfg.ai_provider)
+            index_result = indexer.sync()
+            doc_gen = DocGenerator(project, cfg.ai_provider)
+            doc_result = doc_gen.sync()
         _get_engine.cache_clear()
         with _sync_lock:
             _sync_status[project_id] = {
@@ -417,6 +428,18 @@ def _auto_watch_tick():
             continue
         if not _claim_sync(entry.id):
             continue
+        try:
+            # Si otra consola está sincronizando este proyecto, ni siquiera
+            # hacer 'git pull' (cambiaría archivos a mitad de su indexado):
+            # se salta y se reintenta en el próximo ciclo.
+            ensure_not_busy(safe_project_dir(entry.id, DATA_ROOT))
+        except ProjectBusyError:
+            logger.info("auto-watch: '%s' se está sincronizando en otro proceso, se reintenta en el próximo ciclo", entry.id)
+            with _sync_lock:
+                _sync_status.pop(entry.id, None)  # liberar el claim sin marcar error
+            continue
+        except ValueError:
+            pass  # id inválido: que lo reporte _run_sync como cualquier otro error
         try:
             if entry.source_type == "git":
                 _pull_git_project(entry)
@@ -486,3 +509,18 @@ if _FRONTEND_DIST.exists():
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa_fallback(full_path: str):
         return FileResponse(_resolve_frontend_file(full_path) or (_FRONTEND_DIST / "index.html"))
+else:
+    # Instalación recién clonada sin compilar la UI: en vez de un 404 mudo en
+    # la raíz, explicar qué falta (la API sigue funcionando igual).
+    from fastapi.responses import HTMLResponse
+
+    @app.get("/", include_in_schema=False)
+    def ui_not_built():
+        return HTMLResponse(
+            "<h1>Beacon: la API está funcionando</h1>"
+            "<p>La interfaz web todavía no está compilada. Desde la raíz del proyecto:</p>"
+            "<pre>cd frontend\nnpm install\nnpm run build</pre>"
+            "<p>Luego reinicia <code>beacon serve</code>. Mientras tanto puedes usar la CLI "
+            "o explorar la API en <a href=\"/docs\">/docs</a>.</p>",
+            status_code=503,
+        )

@@ -21,6 +21,7 @@ Uso:
 import json
 import logging
 import zipfile
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -54,6 +55,7 @@ from core.projects import (
     validate_repo_url,
     ProjectNotFoundError,
 )
+from core.project_lock import LOCK_FILENAME, ProjectBusyError, ensure_not_busy, project_lock
 from core.engine.indexer import CodebaseIndexer
 from core.engine.doc_generator import DocGenerator, IndexOutOfDateError
 from core.engine.rag_engine import RAGEngine
@@ -173,6 +175,14 @@ def cmd_remove(
     purge_data: bool = typer.Option(False, "--purge-data", help="Además borra data/<id>/ (índice + docs) del disco."),
 ):
     """Desregistra un proyecto de config.yaml (y opcionalmente borra sus datos indexados)."""
+    if purge_data:
+        try:  # no borrar data/<id>/ mientras el servidor u otra consola la escribe
+            ensure_not_busy(safe_project_dir(project_id, DATA_ROOT))
+        except ProjectBusyError as e:
+            console.print(f"[yellow]{e}[/yellow]")
+            raise typer.Exit(code=1)
+        except ValueError:
+            pass  # id inválido: se reporta más abajo
     if not remove_project(project_id):
         console.print(f"[red]Proyecto '{project_id}' no encontrado en config.yaml.[/red]")
         raise typer.Exit(code=1)
@@ -214,16 +224,19 @@ def cmd_sync(
             result = indexer.sync(include_uncommitted=uncommitted, on_progress=on_progress, full=full)
         return indexer, result
 
-    indexer, result = _run_safely(_do_sync, repo_path=project.repo_path)
-    console.print(f"[green]OK[/green] {result}")
+    # El lock cubre el sync y la purga: el servidor (y su watcher) respetan
+    # el mismo lock, así que no pueden escribir el índice al mismo tiempo.
+    with _project_lock_or_exit(project):
+        indexer, result = _run_safely(_do_sync, repo_path=project.repo_path)
+        console.print(f"[green]OK[/green] {result}")
 
-    if purge_generated:
-        data = indexer.collection.get(include=["metadatas"])
-        to_delete = [cid for cid, m in zip(data["ids"], data["metadatas"])
-                     if _is_generated_or_vendor(m.get("file_path", ""))]
-        if to_delete:
-            indexer.collection.delete(ids=to_delete)
-            console.print(f"[green]Purgados {len(to_delete)} chunks de código generado/vendor.[/green]")
+        if purge_generated:
+            data = indexer.collection.get(include=["metadatas"])
+            to_delete = [cid for cid, m in zip(data["ids"], data["metadatas"])
+                         if _is_generated_or_vendor(m.get("file_path", ""))]
+            if to_delete:
+                indexer.collection.delete(ids=to_delete)
+                console.print(f"[green]Purgados {len(to_delete)} chunks de código generado/vendor.[/green]")
 
 
 @app.command("docs")
@@ -247,7 +260,8 @@ def cmd_docs(
                 progress.update(task, completed=i, current_file=fp)
             return generator.sync(on_progress=on_progress, full=full)
 
-    result = _run_safely(_do_docs, repo_path=project.repo_path)
+    with _project_lock_or_exit(project):
+        result = _run_safely(_do_docs, repo_path=project.repo_path)
     console.print(f"[green]OK[/green] {result}")
 
 
@@ -301,7 +315,7 @@ def cmd_export(project_id: str, output: str = typer.Option(None, "--output", "-o
         with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
             for file in project_dir.rglob("*"):
-                if file.is_file():
+                if file.is_file() and file.name != LOCK_FILENAME:
                     zf.write(file, arcname=str(Path("data") / file.relative_to(project_dir)))
 
     size_mb = output_path.stat().st_size / 1_048_576
@@ -466,6 +480,10 @@ def cmd_serve(host: str = "127.0.0.1", port: int = 8000):
     import uvicorn
     _configure_beacon_logging()
     console.print(f"[bold]Sirviendo en[/bold] http://{host}:{port}")
+    if not (Path(__file__).resolve().parents[2] / "frontend" / "dist").exists():
+        console.print("[yellow]La interfaz web no está compilada[/yellow] (solo responderá la API). "
+                      "Para compilarla: cd frontend, npm install, npm run build.")
+    console.print("[dim]El watcher automático corre mientras este proceso esté abierto (Ctrl+C para detener).[/dim]")
     uvicorn.run("core.api:app", host=host, port=port, reload=False)
 
 
@@ -482,6 +500,19 @@ def _resolve_or_exit(project_id: str):
         return get_project(project_id)
     except ProjectNotFoundError as e:
         console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=1)
+
+
+@contextmanager
+def _project_lock_or_exit(project):
+    """Toma el lock de data/<id>/ o termina con un mensaje claro si el
+    servidor (o su watcher) u otra consola ya está sincronizando ese proyecto."""
+    try:
+        with project_lock(Path(project.chroma_dir).parent):
+            yield
+    except ProjectBusyError as e:
+        console.print(f"[yellow]{e}[/yellow]")
+        console.print("[dim]Vuelve a intentarlo en unos momentos, o revisa el estado en la interfaz web.[/dim]")
         raise typer.Exit(code=1)
 
 

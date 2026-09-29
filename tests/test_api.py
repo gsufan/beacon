@@ -71,13 +71,17 @@ def test_create_project_non_git_repo_400():
 
 
 def test_create_project_duplicate_id_409():
-    cfg = api.load_config()
-    existing_id = cfg.projects[0].id
+    # No depende de los proyectos de la config real: registra uno y lo duplica.
     repo_root = str(Path(__file__).resolve().parents[1])  # el propio repo, es un git repo válido
-    resp = client.post("/projects", json={
-        "id": existing_id, "name": "Duplicado", "repo_path": repo_root,
-    })
-    assert resp.status_code == 409
+    first = client.post("/projects", json={"id": "dup-test", "name": "Original", "repo_path": repo_root})
+    assert first.status_code in (200, 201), first.text
+    try:
+        resp = client.post("/projects", json={
+            "id": "dup-test", "name": "Duplicado", "repo_path": repo_root,
+        })
+        assert resp.status_code == 409
+    finally:
+        client.delete("/projects/dup-test", params={"purge_data": True})
 
 
 def test_get_config_returns_ai_provider_and_projects():

@@ -13,7 +13,8 @@ _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.
 CONFIG_PATH = Path(os.getenv("DEUDA_TECNICA_CONFIG", _DEFAULT_CONFIG_PATH))
 
 # Tokens de repos privados: archivo separado, gitignoreado, NUNCA junto a config.yaml
-# (config.yaml está versionado en git; un token ahí sería un leak de secreto).
+# (config.yaml lo expone la API en GET /config y se copia/comparte con facilidad;
+# un token ahí se filtraría).
 _DEFAULT_CREDENTIALS_PATH = Path(__file__).resolve().parents[2] / "config" / "credentials.yaml"
 CREDENTIALS_PATH = Path(os.getenv("DEUDA_TECNICA_CREDENTIALS", _DEFAULT_CREDENTIALS_PATH))
 

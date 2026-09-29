@@ -165,8 +165,9 @@ equivocado si Beacon corre en un servidor remoto). Por eso hay dos modos:
   servidor central analizando un repo que vive en otro lado (GitHub,
   GitLab, Bitbucket — es protocolo git estándar, no hace falta SDK por
   proveedor). Los tokens de repos privados se guardan en
-  `config/credentials.yaml`, **separado** de `config.yaml` (que sí está
-  versionado en git) para no filtrar secretos.
+  `config/credentials.yaml`, **separado** de `config.yaml` (que la API
+  expone en `GET /config`) para no filtrar secretos. Ninguno de los dos se
+  versiona: en git solo están los `*.example.yaml`.
 
 ### Watcher automático
 
@@ -174,6 +175,41 @@ Toggle opcional por proyecto (`auto_watch`). Un thread en background
 (`_auto_watch_loop` en `api.py`) llama a `sync()` cada 5 minutos para los
 proyectos marcados — reutiliza la misma lógica idempotente del sync manual
 (no hace nada si no hay commits nuevos), así que no duplica código.
+
+Cómo vive el hilo:
+
+- Se crea y arranca **al importar `core.api`** (`threading.Thread(...,
+  daemon=True)` al final del módulo), es decir, cuando `beacon serve` (o el
+  contenedor `beacon`) carga la app. No hay cron ni servicio del sistema
+  operativo: vive mientras vive el proceso del backend y muere con él.
+- La CLI no importa `core.api`, así que `beacon sync`/`ask`/`docs` nunca
+  levantan el watcher.
+- El ciclo duerme **antes** de revisar: la primera revisión es 5 minutos
+  después del arranque.
+- Cada ciclo (`_auto_watch_tick`) relee `config.yaml`, de modo que activar o
+  desactivar `auto_watch` se aplica sin reiniciar.
+- Coordinación en dos niveles:
+  - `_claim_sync` (en memoria) evita dos syncs del mismo proyecto dentro del
+    proceso del servidor y permite responder 409 de inmediato en la API.
+  - `core/project_lock.py` coordina **entre procesos**: un bloqueo del sistema
+    operativo sobre `data/<id>/.sync.lock` (`msvcrt.locking` en Windows,
+    `fcntl.flock` en Linux/macOS), no bloqueante. Lo toman `_run_sync` (API y
+    watcher), `beacon sync` (incluida la purga de código generado),
+    `beacon docs` y el borrado con `--purge-data`. El sistema operativo lo
+    libera si el proceso muere, así que no quedan locks huérfanos. `beacon
+    export` excluye el archivo de lock del `.zip`.
+  - El watcher comprueba el lock **antes** del `git pull`, para no cambiar
+    archivos a mitad del indexado de otra consola. Entre esa comprobación y
+    el `_run_sync` queda una ventana muy corta sin lock: si justo ahí arranca
+    un `beacon sync` en otra consola, el `git pull` del watcher podría
+    coincidir con el comienzo de ese sync (el `_run_sync` del watcher sí se
+    detiene con el aviso y no escribe el índice). Es un caso poco probable;
+    si llegara a ocurrir, `beacon sync <id> --full` reconstruye el índice.
+- `beacon serve` usa un solo proceso (`reload=False`, sin `workers`). Con
+  varios workers habría un watcher por worker: el lock evita escrituras
+  simultáneas, pero las revisiones serían redundantes.
+- Una excepción en un proyecto se registra con `logger.exception`, libera el
+  claim marcando el estado `error`, y el ciclo continúa con los demás.
 
 ## 8. Decisiones descartadas (y por qué)
 

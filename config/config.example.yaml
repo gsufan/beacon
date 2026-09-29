@@ -4,9 +4,9 @@ ai_provider:
   embedding_model: nomic-embed-text
   llm_model: llama3:8b
 
-# cada dev/empresa agrega los repos que quiere analizar acá.
+# Repos a analizar. Lo más simple es registrarlos con la CLI o la UI, que
+# editan esta lista por ti:
+#   beacon add mi-proyecto --repo-path ../mi-proyecto
+#   beacon add mi-proyecto --url https://github.com/usuario/repo.git
 # repo_path es relativo a la raíz de este proyecto (o una ruta absoluta).
-projects:
-  - id: mi-proyecto
-    name: "Nombre visible del proyecto"
-    repo_path: "../mi-proyecto"
+projects: []
