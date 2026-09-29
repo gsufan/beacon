@@ -114,13 +114,28 @@ class GitWatcher:
     def current_commit_hash(self) -> str:
         return self.repo.head.commit.hexsha
 
-    def get_changes_since(self, last_indexed_commit: Optional[str]) -> ChangeSet:
+    def read_file_at(self, commit_hash: str, path: str) -> Optional[str]:
+        """Contenido de `path` tal como está en ese commit (no en el disco).
+        Indexar desde el commit garantiza que el índice corresponde exactamente
+        al hash que se registra, aunque haya cambios sin commitear en la
+        carpeta. None si no es un archivo regular (ej. un symlink)."""
+        try:
+            blob = self.repo.commit(commit_hash).tree / path
+        except KeyError:
+            return None
+        if blob.type != "blob" or blob.mode == 0o120000:  # 0o120000 = symlink
+            return None
+        return blob.data_stream.read().decode("utf-8", errors="ignore")
+
+    def get_changes_since(self, last_indexed_commit: Optional[str], target: Optional[str] = None) -> ChangeSet:
         """
-        Compara el commit ya indexado contra HEAD.
+        Compara el commit ya indexado contra `target` (por defecto, HEAD).
         Si last_indexed_commit es None (primera vez), se considera que
         TODO el repositorio está "añadido" (indexación inicial completa).
+        Quien sincroniza pasa el `target` que capturó al empezar, para que el
+        diff, el contenido leído y el hash registrado sean del mismo commit.
         """
-        head = self.repo.head.commit
+        head = self.repo.commit(target) if target else self.repo.head.commit
         changes = ChangeSet()
 
         if last_indexed_commit is None:
@@ -136,7 +151,7 @@ class GitWatcher:
         except (git.BadName, git.BadObject, ValueError):
             # El commit guardado ya no existe (ej: rebase, historia reescrita).
             # Forzamos re-indexación completa en vez de fallar silenciosamente.
-            return self.get_changes_since(None)
+            return self.get_changes_since(None, target=head.hexsha)
 
         for diff_item in old_commit.diff(head):
             _classify(changes, diff_item)

@@ -56,6 +56,7 @@ from core.projects import (
     ProjectNotFoundError,
 )
 from core.project_lock import LOCK_FILENAME, ProjectBusyError, ensure_not_busy, project_lock
+from core.engine.chroma_utils import bump_index_version
 from core.engine.indexer import CodebaseIndexer
 from core.engine.doc_generator import DocGenerator, IndexOutOfDateError
 from core.engine.rag_engine import RAGEngine
@@ -236,6 +237,7 @@ def cmd_sync(
                          if _is_generated_or_vendor(m.get("file_path", ""))]
             if to_delete:
                 indexer.collection.delete(ids=to_delete)
+                bump_index_version(Path(project.chroma_dir).parent)
                 console.print(f"[green]Purgados {len(to_delete)} chunks de código generado/vendor.[/green]")
 
 
@@ -361,6 +363,7 @@ def cmd_import(
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(member) as src, open(dest, "wb") as out:
                     out.write(src.read())
+        bump_index_version(target_dir)  # un servidor ya levantado no debe usar datos previos de este id
 
     final_repo_path = repo_path or manifest["repo_path"]
     try:
