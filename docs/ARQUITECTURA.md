@@ -219,9 +219,9 @@ el LLM.
 
 ### Registro de proyectos: local vs. clonado por URL
 
-Un punto de diseño importante: el indexador siempre lee archivos del disco
-donde corre el **proceso backend** (`beacon serve`), nunca del navegador
-del usuario. Esto significa que el selector de "ruta al repo" en la UI no
+Un punto de diseño importante: el indexador lee el repositorio (su
+historial git) en la máquina donde corre el **proceso backend**
+(`beacon serve`), no en la del navegador del usuario. Esto significa que el selector de "ruta al repo" en la UI no
 puede ser un `<input type="file">` del navegador (vería el filesystem
 equivocado si Beacon corre en un servidor remoto). Por eso hay dos modos:
 
