@@ -21,7 +21,7 @@ Uso:
 import json
 import logging
 import zipfile
-from contextlib import contextmanager
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Optional
 
@@ -37,8 +37,6 @@ from core.config import (
     ProjectAlreadyExistsError,
     ProjectEntry,
     add_project,
-    delete_project_token,
-    remove_project,
     set_auto_watch,
     update_project,
     load_config,
@@ -47,20 +45,16 @@ from core.config import (
 from core.projects import (
     DATA_ROOT,
     InvalidRepoUrlError,
-    build_clone_url,
-    ensure_project_dirs,
     list_projects,
     get_project,
-    safe_project_dir,
-    validate_repo_url,
     ProjectNotFoundError,
 )
-from core.project_lock import LOCK_FILENAME, ProjectBusyError, ensure_not_busy, project_lock
+from core.project_lock import LOCK_FILENAME, ProjectBusyError
 from core.engine.chroma_utils import bump_index_version
+from core import services
 from core.engine.indexer import CodebaseIndexer
 from core.engine.doc_generator import DocGenerator, IndexOutOfDateError
 from core.engine.rag_engine import RAGEngine
-from core.engine.git_watcher import _is_generated_or_vendor
 
 app = typer.Typer(help="Beacon — plataforma de mitigación de deuda técnica")
 console = Console()
@@ -71,6 +65,14 @@ def _progress_bar(description: str):
         TextColumn(description), BarColumn(), TextColumn("{task.completed}/{task.total}"),
         TextColumn("· {task.fields[current_file]}"), TimeElapsedColumn(), console=console,
     )
+
+
+def _progress_callback(progress, task):
+    def on_progress(i, total, fp):
+        if progress.tasks[task].total != total:
+            progress.update(task, total=total)
+        progress.update(task, completed=i, current_file=fp)
+    return on_progress
 
 
 @app.command("projects")
@@ -94,52 +96,20 @@ def cmd_add(
     url: str = typer.Option(None, "--url", help="URL de un repo remoto a clonar (alternativa a --repo-path)."),
     name: str = typer.Option(None, "--name", help="Nombre visible (por defecto, el id)."),
     auto_watch: bool = typer.Option(False, "--auto-watch/--no-auto-watch"),
+    private: bool = typer.Option(False, "--private", help="Repo privado: pide un token de acceso (no se muestra al escribirlo)."),
 ):
     """Registra un proyecto nuevo: un repo local ya clonado (--repo-path),
     o clona uno remoto y lo registra (--url)."""
-    _validate_id_or_exit(project_id)
-    if not repo_path and not url:
-        console.print("[red]Hace falta --repo-path (repo local ya clonado) o --url (repo remoto a clonar).[/red]")
-        raise typer.Exit(code=1)
-    if repo_path and url:
-        console.print("[red]Usa --repo-path o --url, no ambos.[/red]")
-        raise typer.Exit(code=1)
-
-    if repo_path:
-        if not Path(repo_path).exists():
-            console.print(f"[red]'{repo_path}' no existe.[/red]")
+    token = None
+    if private:
+        if not url:
+            console.print("[red]--private solo aplica a repos remotos (--url).[/red]")
             raise typer.Exit(code=1)
-        try:
-            git.Repo(repo_path)
-        except git.InvalidGitRepositoryError:
-            console.print(f"[red]'{repo_path}' no es un repositorio git.[/red]")
-            raise typer.Exit(code=1)
-        resolved_path, source_type = repo_path, "local"
-    else:
-        try:
-            validate_repo_url(url)
-        except InvalidRepoUrlError as e:
-            console.print(f"[red]{e}[/red]")
-            raise typer.Exit(code=1)
-        resolved_path = str(DATA_ROOT / project_id / "repo")
-        with console.status(f"Clonando {url}..."):
-            try:
-                git.Repo.clone_from(build_clone_url(url, None), resolved_path)
-            except git.GitCommandError as e:
-                console.print(f"[red]No se pudo clonar '{url}':[/red] {e}")
-                raise typer.Exit(code=1)
-        source_type = "git"
-
-    try:
-        entry = add_project(ProjectEntry(
-            id=project_id, name=name or project_id, repo_path=resolved_path,
-            source_type=source_type, repo_url=url, auto_watch=auto_watch,
-        ))
-    except ProjectAlreadyExistsError as e:
-        console.print(f"[red]{e}[/red]")
-        raise typer.Exit(code=1)
-
-    ensure_project_dirs(entry.id)
+        token = typer.prompt("Token de acceso", hide_input=True)
+    with console.status(f"Clonando {url}...") if url else nullcontext():
+        entry = _run_safely(lambda: services.register_project(
+            project_id, name=name, repo_path=repo_path, repo_url=url, auth_token=token, auto_watch=auto_watch,
+        ), repo_path=repo_path or "")
     console.print(f"[green]OK[/green] Proyecto '{entry.id}' registrado. Corre: beacon sync {entry.id}")
 
 
@@ -176,27 +146,7 @@ def cmd_remove(
     purge_data: bool = typer.Option(False, "--purge-data", help="Además borra data/<id>/ (índice + docs) del disco."),
 ):
     """Desregistra un proyecto de config.yaml (y opcionalmente borra sus datos indexados)."""
-    if purge_data:
-        try:  # no borrar data/<id>/ mientras el servidor u otra consola la escribe
-            ensure_not_busy(safe_project_dir(project_id, DATA_ROOT))
-        except ProjectBusyError as e:
-            console.print(f"[yellow]{e}[/yellow]")
-            raise typer.Exit(code=1)
-        except ValueError:
-            pass  # id inválido: se reporta más abajo
-    if not remove_project(project_id):
-        console.print(f"[red]Proyecto '{project_id}' no encontrado en config.yaml.[/red]")
-        raise typer.Exit(code=1)
-    delete_project_token(project_id)
-    if purge_data:
-        import shutil
-        try:
-            project_dir = safe_project_dir(project_id, DATA_ROOT)
-        except ValueError as e:
-            console.print(f"[red]Desregistrado, pero no se purgaron datos:[/red] {e}")
-            raise typer.Exit(code=1)
-        if project_dir.exists():
-            shutil.rmtree(project_dir)
+    _run_safely(lambda: services.unregister_project(project_id, purge_data=purge_data))
     console.print(f"[green]OK[/green] '{project_id}' eliminado de config.yaml."
                   + (" Datos en data/ también borrados." if purge_data else " (los datos en data/ quedaron intactos — usa --purge-data para borrarlos)."))
 
@@ -204,41 +154,34 @@ def cmd_remove(
 @app.command("sync")
 def cmd_sync(
     project_id: str,
-    purge_generated: bool = True,
-    uncommitted: bool = False,
+    uncommitted: bool = typer.Option(False, "--uncommitted", help="Incluye cambios sin commitear (no registra commit)."),
     full: bool = typer.Option(False, "--full", help="Rehace el índice completo en vez de solo lo que cambió."),
+    docs: bool = typer.Option(False, "--docs", help="Además actualiza la documentación (como el botón de la UI)."),
+    pull: bool = typer.Option(True, "--pull/--no-pull", help="Traer cambios del remoto antes (solo proyectos clonados por URL)."),
 ):
-    """Indexa un proyecto (incremental) y purga código generado/vendor."""
+    """Pone al día el índice de un proyecto (incremental). En proyectos
+    clonados por URL, primero trae los cambios del remoto."""
     project = _resolve_or_exit(project_id)
-    cfg = load_config()
-
     console.print(f"[bold]Sincronizando[/bold] {project.name}...")
 
     def _do_sync():
-        indexer = CodebaseIndexer(project, cfg.ai_provider)
-        with _progress_bar("Indexando") as progress:
-            task = progress.add_task("indexando", total=1, current_file="")
-            def on_progress(i, total, fp):
-                if progress.tasks[task].total != total:
-                    progress.update(task, total=total)
-                progress.update(task, completed=i, current_file=fp)
-            result = indexer.sync(include_uncommitted=uncommitted, on_progress=on_progress, full=full)
-        return indexer, result
+        with _progress_bar("Procesando") as progress:
+            idx_task = progress.add_task("indexando", total=1, current_file="")
+            doc_task = progress.add_task("documentando", total=1, current_file="", visible=docs)
+            return services.sync_project(
+                project_id, docs=docs, full=full, include_uncommitted=uncommitted, pull=pull,
+                on_index_progress=_progress_callback(progress, idx_task),
+                on_docs_progress=_progress_callback(progress, doc_task),
+            )
 
-    # El lock cubre el sync y la purga: el servidor (y su watcher) respetan
-    # el mismo lock, así que no pueden escribir el índice al mismo tiempo.
-    with _project_lock_or_exit(project):
-        indexer, result = _run_safely(_do_sync, repo_path=project.repo_path)
-        console.print(f"[green]OK[/green] {result}")
-
-        if purge_generated:
-            data = indexer.collection.get(include=["metadatas"])
-            to_delete = [cid for cid, m in zip(data["ids"], data["metadatas"])
-                         if _is_generated_or_vendor(m.get("file_path", ""))]
-            if to_delete:
-                indexer.collection.delete(ids=to_delete)
-                bump_index_version(Path(project.chroma_dir).parent)
-                console.print(f"[green]Purgados {len(to_delete)} chunks de código generado/vendor.[/green]")
+    result = _run_safely(_do_sync, repo_path=project.repo_path)
+    if result.pulled:
+        console.print("[dim]Cambios del remoto traídos con git pull.[/dim]")
+    console.print(f"[green]OK[/green] {result.index}")
+    if result.generated_purged:
+        console.print(f"[green]Purgados {result.generated_purged} chunks de código generado/vendor.[/green]")
+    if result.docs is not None:
+        console.print(f"[green]Documentación:[/green] {result.docs}")
 
 
 @app.command("docs")
@@ -248,22 +191,14 @@ def cmd_docs(
 ):
     """Genera/actualiza documentación .md incremental para un proyecto (requiere 'sync' al día)."""
     project = _resolve_or_exit(project_id)
-    cfg = load_config()
-
     console.print(f"[bold]Generando documentación[/bold] para {project.name}...")
 
     def _do_docs():
-        generator = DocGenerator(project, cfg.ai_provider)
         with _progress_bar("Documentando") as progress:
             task = progress.add_task("documentando", total=1, current_file="")
-            def on_progress(i, total, fp):
-                if progress.tasks[task].total != total:
-                    progress.update(task, total=total)
-                progress.update(task, completed=i, current_file=fp)
-            return generator.sync(on_progress=on_progress, full=full)
+            return services.generate_docs(project_id, full=full, on_progress=_progress_callback(progress, task))
 
-    with _project_lock_or_exit(project):
-        result = _run_safely(_do_docs, repo_path=project.repo_path)
+    result = _run_safely(_do_docs, repo_path=project.repo_path)
     console.print(f"[green]OK[/green] {result}")
 
 
@@ -506,25 +441,20 @@ def _resolve_or_exit(project_id: str):
         raise typer.Exit(code=1)
 
 
-@contextmanager
-def _project_lock_or_exit(project):
-    """Toma el lock de data/<id>/ o termina con un mensaje claro si el
-    servidor (o su watcher) u otra consola ya está sincronizando ese proyecto."""
-    try:
-        with project_lock(Path(project.chroma_dir).parent):
-            yield
-    except ProjectBusyError as e:
-        console.print(f"[yellow]{e}[/yellow]")
-        console.print("[dim]Vuelve a intentarlo en unos momentos, o revisa el estado en la interfaz web.[/dim]")
-        raise typer.Exit(code=1)
-
-
 def _run_safely(fn, *, repo_path: str = ""):
     """Ejecuta fn() traduciendo los fallos más comunes a mensajes claros,
     en vez de un traceback crudo de Python. El error original siempre se
     muestra igual (en gris, debajo), por si hace falta para debug."""
     try:
         return fn()
+    except ProjectBusyError as e:
+        console.print(f"[yellow]{e}[/yellow]")
+        console.print("[dim]Vuelve a intentarlo en unos momentos, o revisa el estado en la interfaz web.[/dim]")
+        raise typer.Exit(code=1)
+    except (InvalidProjectIdError, InvalidRepoUrlError, services.InvalidRequestError,
+            services.CloneError, ProjectAlreadyExistsError, ProjectNotFoundError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=1)
     except git.NoSuchPathError:
         console.print(f"[red]La ruta del repo no existe:[/red] {repo_path}")
         console.print("[dim]Revisa 'repo_path' en config/config.yaml — probablemente esté mal escrita o el repo no esté clonado ahí.[/dim]")

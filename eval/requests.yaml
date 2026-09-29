@@ -1,0 +1,73 @@
+# Conjunto de evaluación de la recuperación sobre psf/requests.
+#
+# Cada pregunta está escrita como la haría un desarrollador (en español,
+# sobre código en inglés) y lista los fragmentos que la responden, como
+# "ruta::nombre". Una pregunta se considera acertada en k si al menos uno de
+# sus fragmentos esperados aparece entre los k primeros resultados.
+# Uso: python tools/eval_retrieval.py <project_id> eval/requests.yaml
+#
+# Criterio para elegir el fragmento esperado: la función o clase que un
+# desarrollador senior señalaría como "aquí está la respuesta" al leer el
+# código de requests. Varias preguntas aceptan más de un fragmento.
+
+questions:
+  - q: "¿Cómo se combinan los ajustes de la sesión con los de una petición puntual?"
+    expected: ["src/requests/sessions.py::merge_setting"]
+  - q: "¿Dónde se decide si se elimina el header Authorization al seguir una redirección?"
+    expected: ["src/requests/sessions.py::should_strip_auth", "src/requests/sessions.py::rebuild_auth"]
+  - q: "¿Cómo se obtiene la URL de destino de una redirección?"
+    expected: ["src/requests/sessions.py::get_redirect_target"]
+  - q: "¿Cómo se sigue una cadena de redirecciones y se limita su cantidad?"
+    expected: ["src/requests/sessions.py::resolve_redirects"]
+  - q: "¿Por qué una petición POST se convierte en GET después de una redirección 303?"
+    expected: ["src/requests/sessions.py::rebuild_method"]
+  - q: "¿Cómo se codifican los parámetros de la query string?"
+    expected: ["src/requests/models.py::_encode_params"]
+  - q: "¿Cómo se arma un cuerpo multipart cuando se suben archivos?"
+    expected: ["src/requests/models.py::_encode_files"]
+  - q: "¿Cómo se adivina la codificación de caracteres de una respuesta?"
+    expected: ["src/requests/models.py::apparent_encoding", "src/requests/utils.py::get_encoding_from_headers"]
+  - q: "¿Cómo se construye el header de autenticación Basic?"
+    expected: ["src/requests/auth.py::_basic_auth_str", "src/requests/auth.py::HTTPBasicAuth"]
+  - q: "¿Cómo se calcula la respuesta del desafío en la autenticación Digest?"
+    expected: ["src/requests/auth.py::build_digest_header", "src/requests/auth.py::HTTPDigestAuth"]
+  - q: "¿Cómo se configura el número máximo de reintentos de conexión?"
+    expected: ["src/requests/adapters.py::HTTPAdapter"]
+  - q: "¿Cómo se envía finalmente la petición a urllib3 y se manejan sus errores?"
+    expected: ["src/requests/adapters.py::send"]
+  - q: "¿Cómo se leen los proxies desde las variables de entorno?"
+    expected: ["src/requests/utils.py::get_environ_proxies", "src/requests/utils.py::should_bypass_proxies"]
+  - q: "¿Qué proxy se usa para una URL cuando hay varios configurados?"
+    expected: ["src/requests/utils.py::select_proxy"]
+  - q: "¿Cómo se lanza una excepción cuando la respuesta tiene un código de error?"
+    expected: ["src/requests/models.py::raise_for_status"]
+  - q: "¿Cómo se descarga el contenido de la respuesta por partes (streaming)?"
+    expected: ["src/requests/models.py::iter_content"]
+  - q: "¿Cómo se lee una respuesta línea por línea?"
+    expected: ["src/requests/models.py::iter_lines"]
+  - q: "¿Cómo se convierte el cuerpo de la respuesta a JSON?"
+    expected: ["src/requests/models.py::json"]
+  - q: "¿Cómo se ejecutan los hooks registrados sobre la respuesta?"
+    expected: ["src/requests/hooks.py::dispatch_hook"]
+  - q: "¿Cómo se crea un contenedor de cookies a partir de un diccionario?"
+    expected: ["src/requests/cookies.py::cookiejar_from_dict"]
+  - q: "¿Cómo se agregan las cookies de una petición a las de la sesión?"
+    expected: ["src/requests/cookies.py::merge_cookies", "src/requests/sessions.py::prepare_request"]
+  - q: "¿Cómo se verifica el certificado SSL del servidor?"
+    expected: ["src/requests/adapters.py::cert_verify"]
+  - q: "¿De dónde se sacan usuario y contraseña si no se pasan explícitamente?"
+    expected: ["src/requests/utils.py::get_netrc_auth"]
+  - q: "¿Cómo se valida y normaliza la URL antes de enviar la petición?"
+    expected: ["src/requests/models.py::prepare_url"]
+  - q: "¿Cómo se elige qué adaptador de transporte usar según la URL?"
+    expected: ["src/requests/sessions.py::get_adapter", "src/requests/sessions.py::mount"]
+  - q: "¿Cómo se implementa un diccionario de headers que no distingue mayúsculas?"
+    expected: ["src/requests/structures.py::CaseInsensitiveDict"]
+  - q: "¿Cómo se prepara el cuerpo de la petición según sea JSON, formulario o archivos?"
+    expected: ["src/requests/models.py::prepare_body"]
+  - q: "¿Cómo se calcula el tamaño de un cuerpo que es un archivo o un stream?"
+    expected: ["src/requests/utils.py::super_len"]
+  - q: "¿Cómo se crea el pool de conexiones del adaptador?"
+    expected: ["src/requests/adapters.py::init_poolmanager"]
+  - q: "¿Cómo se transforma la respuesta de urllib3 en un objeto Response de requests?"
+    expected: ["src/requests/adapters.py::build_response"]

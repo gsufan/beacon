@@ -157,6 +157,7 @@ beacon projects                      # lista proyectos registrados
 # --- gestión de proyectos (CRUD) ---
 beacon add <id> --repo-path <ruta>   # registra un repo local ya clonado
 beacon add <id> --url <repo_url>     # o clona uno remoto y lo registra
+beacon add <id> --url <repo_url> --private   # repo privado: pide un token (no se muestra al escribirlo)
 beacon edit <id> --name "..."        # edita nombre y/o repo_path de un proyecto ya registrado
 beacon edit <id> --repo-path <ruta>
 beacon edit <id> --auto-watch        # activa el watcher automático (--no-auto-watch lo desactiva)
@@ -164,7 +165,8 @@ beacon remove <id>                   # desregistra un proyecto (config.yaml)
 beacon remove <id> --purge-data      # además borra data/<id>/ (índice + docs) del disco
 
 # --- indexado y consultas ---
-beacon sync <project_id>             # indexa/reindexa incrementalmente
+beacon sync <project_id>             # indexa/reindexa incrementalmente (en repos clonados por URL, antes hace git pull)
+beacon sync <project_id> --docs      # además actualiza la documentación (igual que el botón "Sincronizar" de la UI)
 beacon sync <project_id> --full      # rehace el índice completo (ej. tras actualizar Beacon)
 beacon docs <project_id>             # genera documentación .md (requiere 'sync' al día)
 beacon docs <project_id> --full      # regenera toda la documentación
