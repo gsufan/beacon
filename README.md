@@ -1,6 +1,8 @@
 # Beacon
 
-Plataforma **100% local (on-premise)** para detectar y mitigar deuda técnica en repositorios de código, usando RAG (retrieval-augmented generation) sobre modelos de lenguaje corriendo en tu propia máquina o servidor. Sin costo de API, sin que tu código salga de tu red.
+[![Tests](https://github.com/gsufan/beacon/actions/workflows/tests.yml/badge.svg)](https://github.com/gsufan/beacon/actions/workflows/tests.yml)
+
+Plataforma **local (on-premise)** de apoyo para comprender y documentar la deuda técnica de un repositorio de código, usando RAG (retrieval-augmented generation) sobre modelos de lenguaje que se ejecutan en la propia máquina o servidor de la organización: sin costo por consulta y sin enviar el código a servicios externos. Las respuestas citan el archivo y las líneas de donde salen, para que puedan verificarse.
 
 Proyecto de título — INACAP, 2026.
 
@@ -36,7 +38,7 @@ Cada proyecto indexado vive aislado en `data/<project_id>/` (su propio índice C
 Levanta Beacon **y** Ollama en contenedores, sin instalar Python ni Node en tu máquina.
 
 ```bash
-git clone https://github.com/<tu-usuario>/beacon.git
+git clone https://github.com/gsufan/beacon.git
 cd beacon
 cp config/config.example.yaml config/config.yaml
 ```
@@ -85,7 +87,7 @@ Todo se hace desde una consola; no hace falta Docker.
 
 ```powershell
 # 1. Clonar y entrar al proyecto
-git clone <url-del-repositorio> beacon
+git clone https://github.com/gsufan/beacon.git
 cd beacon
 
 # 2. Entorno virtual con Python 3.11 + dependencias del backend
@@ -131,7 +133,7 @@ Notas para Windows:
 ### Pasos (Linux / macOS)
 
 ```bash
-git clone <url-del-repositorio> beacon && cd beacon
+git clone https://github.com/gsufan/beacon.git && cd beacon
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
