@@ -24,6 +24,14 @@ logger = logging.getLogger("beacon.llm")
 # (ej. llama3.1), se puede subir; con uno de menos, bajar.
 LLM_NUM_CTX = 8192
 
+# Respuestas sobre código: se prefieren precisas y repetibles antes que
+# variadas. Con la temperatura por defecto de Ollama (0,8) la misma pregunta
+# daba respuestas distintas entre corridas (medido con tools/eval_answers.py:
+# el contenido correcto variaba entre 67% y 92%). Temperatura baja y semilla
+# fija hacen que la misma pregunta con el mismo contexto dé la misma respuesta.
+LLM_TEMPERATURE = 0.2
+LLM_SEED = 42
+
 # Estimación conservadora de caracteres por token para código y español.
 # Medido con llama3 sobre prompts reales de Beacon: ~4,3 caracteres/token;
 # se usa 3,5 para dejar margen y no quedarse corto nunca.
@@ -53,7 +61,7 @@ def chat(client, model: str, system: str, user: str) -> ChatResult:
     response = client.chat(
         model=model,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        options={"num_ctx": LLM_NUM_CTX},
+        options={"num_ctx": LLM_NUM_CTX, "temperature": LLM_TEMPERATURE, "seed": LLM_SEED},
     )
     prompt_tokens = response.get("prompt_eval_count") or 0
     answer_tokens = response.get("eval_count") or 0

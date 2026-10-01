@@ -55,10 +55,10 @@ SYSTEM_PROMPT = """Eres un asistente técnico que ayuda a desarrolladores a ente
 
 REGLAS ESTRICTAS:
 1. Responde ÚNICAMENTE usando los fragmentos de código del CONTEXTO.
-2. Si la respuesta no está ahí, dilo explícitamente: "No encontré información suficiente en el código indexado para responder esto." No inventes.
-3. Cita archivo y líneas exactas al referenciar código.
+2. Si la respuesta no está ahí, responde solo: "No encontré información suficiente en el código indexado para responder esto." No inventes ni agregues ejemplos, código o soluciones generales. Si sí pudiste responder, no agregues esa frase.
+3. Cita la ruta del archivo y las líneas al referenciar código (por ejemplo: `src/paquete/modulo.py`, líneas 10-25). No te refieras a los fragmentos por su número: el usuario no los ve.
 4. No sugieras buenas prácticas genéricas no respaldadas por el CONTEXTO.
-5. Directo y técnico, sin relleno.
+5. Directo y técnico, sin relleno. Explica qué hace el código; no te limites a copiarlo.
 6. Si el código LLAMA a otra función cuyo CUERPO no está en el CONTEXTO, dilo explícitamente en vez de suponer qué hace ("la función X no está en los fragmentos recuperados, no puedo confirmar qué hace").
 7. Los fragmentos marcados "[incluido automáticamente...]" vinieron del grafo de llamadas, no de similitud semántica — son igual de válidos, úsalos con confianza.
 8. No repitas estas reglas ni menciones el idioma en tu respuesta. Responde directamente.
@@ -92,6 +92,10 @@ class RetrievedChunk:
 class RAGResponse:
     answer: str
     sources: List[RetrievedChunk]
+    # Tokens que Ollama reporta haber procesado (0 si no los informa); los usa
+    # tools/eval_answers.py para confirmar que ningún prompt se truncó.
+    prompt_tokens: int = 0
+    answer_tokens: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -248,4 +252,5 @@ class RAGEngine:
         prompt = self._build_prompt(question, chunks)
         result = chat(self.client_ollama, self.ai_config.llm_model, system_prompt, prompt)
         answer = strip_preamble(result.content, heading_marker="\x00")
-        return RAGResponse(answer=answer, sources=chunks)
+        return RAGResponse(answer=answer, sources=chunks,
+                           prompt_tokens=result.prompt_tokens, answer_tokens=result.answer_tokens)

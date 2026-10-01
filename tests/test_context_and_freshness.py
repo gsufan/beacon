@@ -74,6 +74,16 @@ def test_chat_always_sends_explicit_num_ctx():
     assert fake.chats[0]["options"]["num_ctx"] == llm.LLM_NUM_CTX
 
 
+def test_chat_uses_low_temperature_and_fixed_seed():
+    # Respuestas repetibles: la misma pregunta con el mismo contexto no debe
+    # cambiar de una corrida a otra (y la evaluación debe poder compararse).
+    fake = _RecordingOllama()
+    llm.chat(fake, "llama3:8b", "sistema", "usuario")
+    options = fake.chats[0]["options"]
+    assert options["temperature"] == llm.LLM_TEMPERATURE <= 0.3
+    assert options["seed"] == llm.LLM_SEED
+
+
 def test_chat_warns_when_model_processed_far_less_than_sent(caplog):
     class Truncating(_RecordingOllama):
         def chat(self, **kwargs):
