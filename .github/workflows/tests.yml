@@ -24,7 +24,14 @@ jobs:
           pip install -e .
 
       - name: Run tests
-        run: pytest tests/ -v
+        # Los tests que fallan se publican además como anotaciones, visibles en el
+        # resumen de la ejecución sin abrir el registro completo.
+        run: |
+          set -o pipefail
+          pytest tests/ -v -rfE 2>&1 | tee pytest.log || {
+            grep -E '^(FAILED|ERROR) ' pytest.log | sed 's/^/::error title=pytest::/'
+            exit 1
+          }
 
   frontend:
     runs-on: ubuntu-latest

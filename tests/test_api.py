@@ -128,7 +128,11 @@ def test_system_available_models_bad_host():
 
 
 def test_system_browse_dirs_outside_allowed_root_403():
-    resp = client.get("/system/browse-dirs", params={"path": "C:/no/existe/de/verdad"})
+    # El padre del directorio permitido está fuera en cualquier sistema operativo
+    # ("C:/..." en Linux sería una ruta relativa y quedaría dentro del home).
+    import core.api as api_module
+    outside = str(Path(api_module.BROWSE_ROOT).resolve().parent)
+    resp = client.get("/system/browse-dirs", params={"path": outside})
     assert resp.status_code == 403
 
 
