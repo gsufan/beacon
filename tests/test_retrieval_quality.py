@@ -15,7 +15,8 @@ import pytest  # noqa: E402
 from core.config import AIProviderConfig  # noqa: E402
 from core.engine.chunker import chunk_source  # noqa: E402
 from core.engine.embeddings import embed_query, profile_for  # noqa: E402
-from core.engine.indexer import CodebaseIndexer, IndexModelMismatchError  # noqa: E402
+from core.engine import indexer as indexer_module  # noqa: E402
+from core.engine.indexer import CodebaseIndexer, IndexModelMismatchError, embedding_text  # noqa: E402
 from core.engine.rag_engine import RAGEngine, TEST_DISTANCE_PENALTY  # noqa: E402
 from core.projects import ProjectContext  # noqa: E402
 
@@ -114,6 +115,53 @@ def test_querying_an_index_built_with_another_model_gives_a_clear_error(tmp_path
     engine = RAGEngine(ctx, _ai("qwen3-embedding:0.6b"))
     with pytest.raises(IndexModelMismatchError, match="beacon sync"):
         engine.retrieve("¿qué hace f?")
+
+
+# ------------------------------------------- formato del índice ----
+
+def test_embedded_text_carries_the_file_path_but_the_document_is_only_code(tmp_path):
+    ctx = _repo(tmp_path, {"src/shipping/quote.go": "package main\n\nfunc GetQuote() int {\n\treturn 1\n}\n"})
+    idx = CodebaseIndexer(ctx, _ai("qwen3-embedding:0.6b"))
+    fake = _FakeEmbed()
+    idx.client_ollama = fake
+    idx.sync()
+    embedded = [text for _, batch in fake.calls for text in batch]
+    assert any("src/shipping/quote.go" in t and "func GetQuote" in t for t in embedded)
+    documents = idx.collection.get(include=["documents"])["documents"]
+    assert documents and not any("src/shipping/quote.go" in d for d in documents)
+
+
+def test_embedding_text_puts_the_path_first():
+    assert embedding_text({"file_path": "a/b.py"}, "def f(): ...").startswith("a/b.py\n")
+
+
+def test_python_overload_stubs_are_not_indexed():
+    source = (
+        "from typing import overload\n\n"
+        "class A:\n"
+        "    @overload\n    def __init__(self, x: int) -> None: ...\n"
+        "    @typing.overload\n    def __init__(self, x: str) -> None: ...\n"
+        "    def __init__(self, x):\n        self.x = x\n"
+    )
+    chunks = chunk_source("a.py", source)
+    inits = [c for c in chunks if c.name == "__init__"]
+    assert len(inits) == 1 and "self.x = x" in inits[0].code
+    assert not any("@overload" in c.code for c in chunks if c.chunk_type == "raw")
+
+
+def test_index_built_with_an_older_format_is_rebuilt(tmp_path, monkeypatch):
+    ctx = _repo(tmp_path, {"a.py": "def f():\n    return 1\n"})
+    monkeypatch.setattr(indexer_module, "INDEX_FORMAT", 1)
+    old = CodebaseIndexer(ctx, _ai("qwen3-embedding:0.6b"))
+    old.client_ollama = _FakeEmbed()
+    old.sync()
+
+    monkeypatch.setattr(indexer_module, "INDEX_FORMAT", 2)
+    new = CodebaseIndexer(ctx, _ai("qwen3-embedding:0.6b"))
+    new.client_ollama = _FakeEmbed()
+    result = new.sync()  # sin commits nuevos: igual debe reconstruir
+    assert result["formato_indice"] == "1 → 2 (índice reconstruido)"
+    assert new.sync()["status"] == "sin_cambios"
 
 
 # ------------------------------------ penalización de tests y contexto ----

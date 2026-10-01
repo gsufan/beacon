@@ -142,6 +142,18 @@ la última pieza), aunque las piezas no sean contiguas.
   `chroma_utils.get_chroma_client` descarta la instancia en memoria de ese
   proyecto cuando el marcador cambió en otro proceso, y la API recrea el
   `RAGEngine` cuando cambia la versión (`_get_engine`).
+- **Reconstrucción limpia del índice.** hnswlib (el índice vectorial de
+  ChromaDB) no elimina los vectores borrados, solo los marca. Antes, un
+  `sync --full` borraba fragmento por fragmento: tras cinco reconstrucciones
+  de microservices-demo el índice ocupaba 13 MB para 363 fragmentos (4 MB
+  recién creado) y una consulta falló con "Cannot return the results in a
+  contigious 2D array". Ahora una reconstrucción completa recrea la
+  colección. Además, la consulta reintenta con menos candidatos si hnswlib
+  no logra reunirlos (`RAGEngine._query`), y cada sync borra las carpetas de
+  índices que ya no pertenecen a ninguna colección
+  (`chroma_utils.remove_orphan_segments`): en Windows, ChromaDB no puede
+  borrarlas al eliminar la colección porque el proceso aún las tiene
+  abiertas.
 
 ## 5. Motor RAG (`rag_engine.py`)
 
@@ -150,9 +162,18 @@ la última pieza), aunque las piezas no sean contiguas.
    salvo que la pregunta sea sobre pruebas: sus nombres repiten las palabras
    de la pregunta (`test_http_303_changes_post_to_get`) y le ganaban a la
    función que la responde. Medido: Hit@5 de 80% a 93% en psf/requests.
-   En microservices-demo (Go, C#, JavaScript, Python y Java; conjunto
-   `eval/microservices-demo.yaml`) el Hit@5 es de 77%: allí el generador de
-   carga repite los nombres de las operaciones y compite con los servicios.
+   **Texto embebido con la ruta** (`indexer.embedding_text`): cada
+   fragmento se embebe precedido de la ruta de su archivo; lo que se guarda
+   y se entrega al modelo sigue siendo solo el código. En microservices-demo
+   (Go, C#, JavaScript, Python y Java; conjunto `eval/microservices-demo.yaml`)
+   el Hit@5 subió de 77% a 95% y el MRR de 0,57 a 0,63: el código solo no
+   dice a qué servicio pertenece, y el generador de carga, que repite los
+   nombres de las operaciones, le ganaba a los servicios. En psf/requests,
+   Hit@1 de 70% a 73% y MRR de 0,80 a 0,83. Las firmas `@overload` de Python
+   (solo tipos, sin cuerpo) ya no se indexan: ocupaban lugares del contexto
+   con el mismo nombre que la implementación. Ambos cambios son el formato 2
+   del índice (`INDEX_FORMAT`); un índice de formato anterior se reconstruye
+   solo en el próximo sync.
    **Contexto adaptativo** (`select_context`): además de los `top_k`, se
    suman hasta 5 fragmentos casi empatados con el último (margen 0,03), para
    preguntas que tocan varios archivos. Medido: el fragmento correcto llega
@@ -170,11 +191,16 @@ la última pieza), aunque las piezas no sean contiguas.
    llama a algo cuyo cuerpo no está en el contexto, el modelo debe decirlo
    en vez de inventar qué hace. Las reglas se ajustaron con mediciones
    (`tools/eval_answers.py`, `eval/answers-requests.yaml`): el modelo citaba
-   "el fragmento 3" en vez de la ruta del archivo y a veces cerraba una
-   respuesta correcta con la frase de "no encontré información". Con las
-   reglas actuales, las respuestas que citan el archivo pasaron de 33% a 92%
-   y los rechazos indebidos de 8% a 0%; ante preguntas sobre algo que no
-   está en el repositorio, el modelo rechaza sin agregar código genérico.
+   "el fragmento 3" en vez de la ruta del archivo, a veces cerraba una
+   respuesta correcta con la frase de "no encontré información" y aceptaba
+   preguntas con premisas falsas. Ahora cada fragmento llega rotulado con su
+   ruta y líneas, sin número (`as_context_block`), y hay una regla para las
+   premisas falsas. Resultado en psf/requests: contenido de 75% a 100%,
+   respuestas que citan el archivo de 33% a 83-92%, rechazos indebidos de 8%
+   a 0% y 100% de rechazos correctos, sin código genérico agregado. En el
+   conjunto de control (`eval/answers-microservices-demo.yaml`, escrito
+   después y no usado para ajustar) los valores son menores: contenido 70%,
+   cita 60%.
    La generación usa temperatura 0,2 y semilla fija (`LLM_TEMPERATURE`,
    `LLM_SEED`): con la temperatura por defecto (0,8) el resultado de la
    misma evaluación variaba entre corridas y no se podían comparar cambios.

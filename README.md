@@ -271,7 +271,8 @@ la búsqueda.
 | Configuración | Hit@1 | Hit@5 | Hit@10 | MRR@10 |
 |---|---|---|---|---|
 | nomic-embed-text (versión anterior) | 7% | 33% | 40% | 0,19 |
-| qwen3-embedding:0.6b + tests penalizados (actual) | 70% | 93% | 100% | 0,80 |
+| qwen3-embedding:0.6b + tests penalizados | 70% | 93% | 100% | 0,80 |
+| + ruta del archivo en el texto embebido, sin firmas `@overload` (actual) | 73% | 93% | 100% | 0,83 |
 
 Con el contexto adaptativo, el fragmento que responde la pregunta llega al
 modelo en el 97% de los casos (8 fragmentos en promedio).
@@ -280,13 +281,15 @@ Resultados por repositorio con la configuración actual:
 
 | Repositorio | Preguntas | Hit@1 | Hit@5 | Hit@10 | MRR@10 | En contexto |
 |---|---|---|---|---|---|---|
-| psf/requests (Python) | 30 | 70% | 93% | 100% | 0,80 | 97% |
-| microservices-demo (5 lenguajes) | 22 | 41% | 77% | 91% | 0,57 | 91% |
+| psf/requests (Python) | 30 | 73% | 93% | 100% | 0,83 | 97% |
+| microservices-demo (5 lenguajes) | 22 | 41% | 95% | 95% | 0,63 | 95% |
 
-El repositorio políglota es más difícil: el generador de carga
-(`locustfile.py`) repite los nombres de las operaciones de la tienda
-(`checkout`, `addToCart`) y compite con el servicio que las implementa. Los
-conjuntos son chicos, así que los números sirven para comparar
+En el repositorio políglota, el mayor avance vino de embeber cada fragmento
+junto con la ruta de su archivo (Hit@5 de 77% a 95%): el código solo no dice
+a qué servicio pertenece, y el generador de carga (`locustfile.py`), que
+repite los nombres de las operaciones de la tienda, le ganaba al servicio
+que las implementa. Lo que se entrega al modelo sigue siendo solo el código.
+Los conjuntos son chicos, así que los números sirven para comparar
 configuraciones, no como garantía general.
 
 Si cambias `embedding_model` en `config.yaml`, el próximo `beacon sync`
@@ -312,16 +315,34 @@ llama3:8b:
 | Configuración | Contenido | Cita el archivo | Ambos | Falso rechazo | Rechazo correcto |
 |---|---|---|---|---|---|
 | Prompt anterior | 75% | 33% | 33% | 8% | 100% |
-| Prompt actual | 75% | 92% | 67% | 0% | 100% |
+| Reglas de cita y de rechazo ajustadas | 75% | 92% | 67% | 0% | 100% |
+| + fragmentos rotulados por ruta y regla de premisas falsas (actual) | 100% | 83-92% | 83-92% | 0% | 100% |
 
-La medición mostró que el modelo citaba "el fragmento 3" en vez del archivo
-(el usuario no ve esa numeración) y que a veces agregaba la frase de "no
-encontré información" al final de una respuesta correcta; ajustar esas dos
-reglas del prompt corrigió ambos casos. Las respuestas se generan con
-temperatura 0,2 y semilla fija: con la temperatura por defecto, la misma
-pregunta daba resultados distintos entre corridas (el contenido correcto
-variaba entre 67% y 92%), lo que impedía comparar cambios. Una respuesta
-de 5 segundos en promedio, con GPU de 8 GB.
+Qué mostró cada medición:
+
+- El modelo citaba "el fragmento 3" en vez del archivo (el usuario no ve esa
+  numeración) y a veces cerraba una respuesta correcta con la frase de "no
+  encontré información". Pedirle otra cosa en el prompt ayudó, pero lo
+  resolvió quitar el número: cada fragmento llega rotulado con su ruta y
+  sus líneas, que es lo que el modelo copia al citar.
+- Ante una pregunta con una premisa falsa ("¿qué modelo de aprendizaje
+  automático usa requests para predecir la codificación?") el modelo la
+  aceptaba y completaba con lo que sabía de una biblioteca externa. Una
+  regla explícita para ese caso lo corrigió.
+- Con la temperatura por defecto, la misma pregunta daba resultados
+  distintos entre corridas (el contenido correcto variaba entre 67% y 92%),
+  lo que impedía comparar cambios. Las respuestas se generan con
+  temperatura 0,2 y semilla fija; aun así, entre dos corridas iguales una
+  respuesta puede cambiar, de ahí el rango en la tabla.
+
+Como control, el conjunto `eval/answers-microservices-demo.yaml` se
+escribió después de estos ajustes y no se usó para ninguno. Ahí los
+resultados son más bajos: contenido 70%, cita 60%, ambos 50%, sin rechazos
+indebidos y con 100% de rechazos correctos. Las respuestas aciertan en lo
+principal pero son breves y a menudo no citan el archivo; es un límite del
+modelo de 8B parámetros que conviene conocer (la interfaz muestra igual las
+fuentes de cada respuesta). Una respuesta tarda unos 5 segundos con GPU de
+8 GB.
 
 ## Tests
 

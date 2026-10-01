@@ -14,8 +14,12 @@ proceso registran su versión, así que no provocan recargas innecesarias.
 """
 
 import os
+import re
+import shutil
+import sqlite3
 import threading
 import time
+from contextlib import closing
 from pathlib import Path
 
 import chromadb
@@ -23,6 +27,7 @@ from chromadb.api.shared_system_client import SharedSystemClient
 from chromadb.config import Settings
 
 INDEX_VERSION_FILENAME = ".index_version"
+_SEGMENT_DIR = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
 _seen_versions: dict = {}  # chroma_dir -> versión que este proceso ya tiene en memoria
 _versions_lock = threading.Lock()
@@ -51,6 +56,31 @@ def bump_index_version(project_dir) -> str:
     with _versions_lock:
         _seen_versions[str(project_dir / "chroma_db")] = version
     return version
+
+
+def remove_orphan_segments(path: str) -> int:
+    """Borra las carpetas de índices vectoriales que ya no pertenecen a
+    ninguna colección. Al borrar una colección (reconstrucción del índice),
+    ChromaDB en Windows no puede eliminar su carpeta porque el proceso aún la
+    tiene abierta, y queda huérfana ocupando disco. Se consulta el catálogo
+    de ChromaDB (tabla `segments` de chroma.sqlite3, esquema de 0.5.23) y solo
+    se tocan carpetas con nombre de segmento que no figuran en él. Una que
+    siga bloqueada se deja para el próximo sync. Devuelve cuántas borró."""
+    try:
+        with closing(sqlite3.connect(os.path.join(path, "chroma.sqlite3"))) as conn:
+            live = {row[0] for row in conn.execute("SELECT id FROM segments")}
+    except sqlite3.Error:
+        return 0  # sin catálogo legible no se borra nada
+    removed = 0
+    for entry in os.listdir(path):
+        full = os.path.join(path, entry)
+        if os.path.isdir(full) and _SEGMENT_DIR.fullmatch(entry) and entry not in live:
+            try:
+                shutil.rmtree(full)
+                removed += 1
+            except OSError:
+                pass
+    return removed
 
 
 def get_chroma_client(path: str) -> chromadb.PersistentClient:

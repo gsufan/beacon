@@ -42,9 +42,23 @@ from core.config import load_config  # noqa: E402
 from core.engine.rag_engine import RAGEngine  # noqa: E402
 from core.projects import get_project  # noqa: E402
 
+# Rechazo = la frase que exige la regla 2 del prompt (en cualquier parte: si
+# cierra una respuesta correcta, es un rechazo indebido) o un rechazo con
+# otras palabras al comienzo de la respuesta. Una mención parcial en medio
+# ("no hay información en el contexto sobre getproxies", que permite la regla
+# 6) no es un rechazo.
+CANONICAL_REFUSAL = re.compile(r"no encontr[ée] informaci[óo]n suficiente", re.IGNORECASE)
 REFUSAL = re.compile(
     r"no (encontr[ée]|hay|tengo|se encontr[óo]|dispongo de) (suficiente )?(informaci[óo]n|fragmentos|c[óo]digo)",
     re.IGNORECASE)
+REFUSAL_OPENING_CHARS = 120
+
+
+def is_refusal(answer: str) -> bool:
+    if CANONICAL_REFUSAL.search(answer):
+        return True
+    match = REFUSAL.search(answer)
+    return bool(match) and match.start() < REFUSAL_OPENING_CHARS
 BACKTICKED = re.compile(r"`([^`\n]{2,80})`")
 IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]{2,}")
 SPANISH_WORDS = {"el", "la", "los", "las", "de", "que", "se", "en", "una", "un", "es", "para", "con", "por", "del"}
@@ -69,7 +83,7 @@ def is_spanish(answer: str) -> bool:
 
 def grade(item: dict, answer: str, sources) -> dict:
     lowered = answer.lower()
-    refused = bool(REFUSAL.search(answer))
+    refused = is_refusal(answer)
     row = {"q": item["q"], "answerable": item.get("answerable", True), "refused": refused,
            "spanish": is_spanish(answer), "ungrounded": ungrounded_identifiers(answer, sources)}
     if not row["answerable"]:

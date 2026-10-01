@@ -3,7 +3,7 @@
 import os
 from typing import Callable, List, Optional
 
-from core.engine.chroma_utils import bump_index_version, get_chroma_client
+from core.engine.chroma_utils import bump_index_version, get_chroma_client, remove_orphan_segments
 import ollama
 
 from core.config import AIProviderConfig
@@ -17,11 +17,27 @@ CONTROL_COLLECTION_NAME = "sys_index_control"
 CONTROL_KEY_ID = "last_indexed_commit"
 # Índices creados antes de registrar el modelo usaban siempre nomic-embed-text.
 LEGACY_EMBEDDING_MODEL = "nomic-embed-text"
+# Versión de lo que se guarda en el índice (qué se embebe y cómo se dividen
+# los archivos). Si cambia, el próximo sync reconstruye el índice completo
+# para no mezclar fragmentos de las dos versiones.
+#   1: solo el código.
+#   2: ruta del archivo antes del código y sin firmas @overload (medido con
+#      tools/eval_retrieval.py: Hit@5 en microservices-demo de 77% a 95%).
+INDEX_FORMAT = 2
 
 
 class IndexModelMismatchError(RuntimeError):
     """El índice se construyó con otro modelo de embeddings: sus vectores no
     son comparables con los de las consultas y hay que reindexar."""
+
+def embedding_text(meta: dict, code: str) -> str:
+    """Texto que se embebe para un fragmento: el código precedido de su ruta y
+    su nombre. El código solo no dice a qué módulo o servicio pertenece (en un
+    repositorio de microservicios, `GetQuote` de shipping y `getQuote` del
+    frontend son casi iguales); la ruta sí. Lo que se guarda y se entrega al
+    modelo sigue siendo solo el código."""
+    return f"{meta.get('file_path', '')}\n\n{code}"
+
 
 # Progreso: callback(current, total, file_path) — la CLI/UI lo usan para
 # mostrar avance real en vez de una consola muda.
@@ -50,10 +66,15 @@ class CodebaseIndexer:
         """Modelo con que se construyó el índice (None si todavía no hay índice)."""
         return indexed_embedding_model(self.control, self.collection)
 
+    def _indexed_format(self) -> int:
+        result = self.control.get(ids=[CONTROL_KEY_ID])
+        return result["metadatas"][0].get("index_format", 1) if result["ids"] else 1
+
     def _save_last_indexed_commit(self, commit_hash: str):
         self.control.upsert(
             ids=[CONTROL_KEY_ID], documents=[commit_hash], embeddings=[[0.0]],
-            metadatas=[{"commit_hash": commit_hash, "embedding_model": self.ai_config.embedding_model}],
+            metadatas=[{"commit_hash": commit_hash, "embedding_model": self.ai_config.embedding_model,
+                        "index_format": INDEX_FORMAT}],
         )
 
     def _reset_collection(self):
@@ -77,7 +98,7 @@ class CodebaseIndexer:
             self._split_and_recurse(chunk_id, code, base_meta, out, depth)
             return
         try:
-            out.append((chunk_id, code, base_meta, self._embed(code)))
+            out.append((chunk_id, code, base_meta, self._embed(embedding_text(base_meta, code))))
             return
         except ollama.ResponseError as e:
             # Solo "texto demasiado largo" amerita dividir; modelo faltante u Ollama caído
@@ -105,7 +126,8 @@ class CodebaseIndexer:
         results = []
         if all(len(c.code) <= self.DIRECT_TRY_MAX_CHARS for c in chunks):
             try:
-                vectors = embed_documents(self.client_ollama, self.ai_config.embedding_model, [c.code for c in chunks])
+                texts = [embedding_text(c.to_metadata(), c.code) for c in chunks]
+                vectors = embed_documents(self.client_ollama, self.ai_config.embedding_model, texts)
                 return [(c.chunk_id(), c.code, c.to_metadata(), v) for c, v in zip(chunks, vectors)]
             except ollama.ResponseError as e:
                 if e.status_code == 404:  # modelo no descargado: no es un problema de tamaño
@@ -121,12 +143,6 @@ class CodebaseIndexer:
         if existing["ids"]:
             self.collection.delete(ids=existing["ids"])
         return len(existing["ids"])
-
-    def _purge_all(self) -> int:
-        ids = self.collection.get(include=[])["ids"]
-        for i in range(0, len(ids), 5000):  # por tandas: SQLite limita las variables por consulta
-            self.collection.delete(ids=ids[i:i + 5000])
-        return len(ids)
 
     def _index_file(self, file_path: str, commit_hash: Optional[str] = None) -> int:
         """Indexa un archivo. Con `commit_hash`, el contenido se lee desde ese
@@ -163,12 +179,17 @@ class CodebaseIndexer:
     def sync(self, include_uncommitted: bool = False, on_progress: ProgressCallback = None,
              full: bool = False) -> dict:
         # full=True: rehace el índice entero (ej. tras actualizar el chunker)
+        remove_orphan_segments(self.project.chroma_dir)
         previous_model = self.indexed_embedding_model()
         model_changed = previous_model is not None and previous_model != self.ai_config.embedding_model
         if model_changed:
             # Vectores de otro modelo no son comparables: se reconstruye todo.
             self._reset_collection()
             full = True
+        previous_format = self._indexed_format()
+        format_changed = previous_model is not None and not model_changed and previous_format != INDEX_FORMAT
+        if format_changed:
+            full = True  # mismo modelo y dimensión: basta con rehacerlo todo
         last_commit = None if full else self._get_last_indexed_commit()
         # Se fija el commit al empezar: el diff, el contenido indexado y el hash
         # registrado al final son del mismo commit aunque llegue otro durante
@@ -192,7 +213,14 @@ class CodebaseIndexer:
         indexed, files_indexed = 0, 0
         try:
             if changes.full_rescan:
-                purged += self._purge_all()
+                # Se recrea la colección en vez de borrar fragmento por
+                # fragmento: hnswlib solo marca los borrados, así que cada
+                # reconstrucción inflaba el índice (13 MB para 363 fragmentos
+                # tras cinco reconstrucciones) y con muchos borrados la
+                # búsqueda puede fallar ("Cannot return the results in a
+                # contigious 2D array").
+                purged += self.collection.count()
+                self._reset_collection()
             else:
                 # también los que se reindexan: un 'added' pudo quedar indexado por un --uncommitted previo
                 for fp in changes.files_to_purge() + files:
@@ -218,6 +246,8 @@ class CodebaseIndexer:
             "archivos_indexados": files_indexed, "chunks_insertados": indexed, "chunks_purgados": purged,
             **({"modelo_embeddings": f"{previous_model} → {self.ai_config.embedding_model} (índice reconstruido)"}
                if model_changed else {}),
+            **({"formato_indice": f"{previous_format} → {INDEX_FORMAT} (índice reconstruido)"}
+               if format_changed else {}),
         }
 
     def stats(self) -> dict:

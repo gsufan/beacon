@@ -186,6 +186,18 @@ def _byte_to_line(source_bytes: bytes, offset: int) -> int:
     return source_bytes.count(b"\n", 0, offset) + 1
 
 
+def _is_overload_stub(decorated, source_bytes: bytes) -> bool:
+    """Firma `@overload` de Python (`def f(x: int) -> str: ...`): solo declara
+    tipos y no tiene cuerpo; la implementación real viene después."""
+    for child in decorated.children:
+        if child.type == "decorator":
+            text = source_bytes[child.start_byte:child.end_byte].decode("utf-8", errors="ignore")
+            target = text.lstrip("@").strip()
+            if target == "overload" or target.endswith(".overload"):
+                return True
+    return False
+
+
 def _with_export(node):
     """`export function f` / `export class C`: el chunk incluye el `export` y el
     JSDoc que va antes, que en el AST cuelgan del export_statement, no de la función."""
@@ -231,6 +243,14 @@ def chunk_with_treesitter(file_path: str, source_code: str, language: str) -> Li
         # nombre y tipo salen de la definición interna.
         if wrapper_type and node.type == wrapper_type:
             inner = next((c for c in node.children if c.type in chunkable_types), None)
+            if inner is not None and _is_overload_stub(node, source_bytes):
+                # No se indexa: con el mismo nombre que la implementación y sin
+                # cuerpo, ocupaba lugares del contexto sin aportar (medido en
+                # psf/requests: tres firmas de __init__ desplazaban a
+                # get_netrc_auth fuera del contexto). Se marca como cubierta
+                # para que tampoco vaya al fragmento de nivel de módulo.
+                covered_ranges.append((node.start_byte, node.end_byte))
+                return
             if inner is not None:
                 chunk_type = _node_type_to_chunk_type(inner.type)
                 emit(node, _extract_name(inner, source_bytes), chunk_type)
