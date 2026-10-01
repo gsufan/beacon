@@ -33,11 +33,11 @@ from core.config import (
     set_project_token,
     validate_project_id,
 )
-from core.engine.chroma_utils import bump_index_version
+from core.engine.chroma_utils import bump_index_version, release_chroma_client
 from core.engine.doc_generator import DocGenerator
 from core.engine.git_watcher import _is_generated_or_vendor
 from core.engine.indexer import CodebaseIndexer
-from core.project_lock import ensure_not_busy, project_lock
+from core.project_lock import ProjectBusyError, ensure_not_busy, project_lock
 from core.projects import (
     DATA_ROOT,
     ProjectNotFoundError,
@@ -106,21 +106,35 @@ def register_project(project_id: str, *, name: Optional[str] = None, repo_path: 
 def unregister_project(project_id: str, *, purge_data: bool = False) -> None:
     """Quita el proyecto de config.yaml y su token; con `purge_data`, borra
     además data/<id>/ (índice, documentación y clon)."""
-    if purge_data:
-        try:  # no borrar data/<id>/ mientras otro proceso la escribe
-            ensure_not_busy(safe_project_dir(project_id, DATA_ROOT))
-        except ValueError:
-            pass  # id inválido: se reporta abajo
-    if not remove_project(project_id):
-        raise ProjectNotFoundError(f"Proyecto '{project_id}' no encontrado en config.yaml.")
-    delete_project_token(project_id)
+    trash = None
     if purge_data:
         try:
             project_dir = safe_project_dir(project_id, DATA_ROOT)
         except ValueError as e:
-            raise InvalidRequestError(f"Proyecto desregistrado, pero no se purgaron datos: {e}")
+            raise InvalidRequestError(f"No se purgaron datos: {e}")
         if project_dir.exists():
-            shutil.rmtree(project_dir)
+            ensure_not_busy(project_dir)  # no borrar data/<id>/ mientras otro proceso la escribe
+            release_chroma_client(str(project_dir / "chroma_db"))
+            # Primero se renombra: en Windows falla si otro proceso (el
+            # servidor u otra consola) tiene abierto el índice, y entonces no
+            # se toca nada. Antes se desregistraba primero y el borrado fallaba
+            # después, dejando el proyecto fuera de config.yaml con sus datos.
+            trash = project_dir.with_name(f".{project_dir.name}.borrando")
+            if trash.exists():
+                shutil.rmtree(trash, ignore_errors=True)
+            try:
+                project_dir.rename(trash)
+            except OSError:
+                raise ProjectBusyError(
+                    f"Los datos de '{project_id}' están en uso por otro proceso (el servidor u otra "
+                    "consola). Ciérralo e inténtalo de nuevo; no se borró nada.")
+    if not remove_project(project_id):
+        if trash is not None:
+            trash.rename(project_dir)  # no estaba registrado: se deja todo como estaba
+        raise ProjectNotFoundError(f"Proyecto '{project_id}' no encontrado en config.yaml.")
+    delete_project_token(project_id)
+    if trash is not None:
+        shutil.rmtree(trash, ignore_errors=True)
 
 
 # ------------------------------------------------------ sincronización ----

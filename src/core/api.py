@@ -310,6 +310,8 @@ def put_auto_watch(project_id: str, body: AutoWatchUpdate):
 
 @app.delete("/projects/{project_id}")
 def delete_project(project_id: str, purge_data: bool = False):
+    # Antes de borrar: las instancias en caché tienen abierto el índice.
+    _get_engine.cache_clear()
     try:
         services.unregister_project(project_id, purge_data=purge_data)
     except ProjectBusyError as e:

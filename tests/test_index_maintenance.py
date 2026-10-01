@@ -123,3 +123,88 @@ def test_other_chroma_errors_are_not_hidden(tmp_path):
     engine.collection = Broken(0)
     with pytest.raises(RuntimeError, match="disk I/O"):
         engine.retrieve("¿qué hace a?")
+
+
+# ------------------------------------------ reconstrucción sin interrupción ----
+
+def test_queries_keep_working_while_the_index_is_rebuilt(tmp_path):
+    # Medido con tools/stress_test.py: antes, una consulta durante un
+    # `sync --full` de otra consola respondía error 500.
+    ctx = _project(tmp_path)
+    _indexer(ctx).sync()
+    engine = RAGEngine(ctx, AI)  # como el servidor: abierta antes de reconstruir
+    engine.client_ollama = _FakeEmbed()
+    seen_during = []
+
+    def query_midway(current, total, path):
+        seen_during.append(len(engine.retrieve("¿qué hace a?", top_k=5)))
+
+    _indexer(ctx).sync(full=True, on_progress=query_midway)
+    assert seen_during and all(n > 0 for n in seen_during)  # el índice anterior seguía disponible
+    assert len(engine.retrieve("¿qué hace a?", top_k=5)) > 0  # y después ve el nuevo
+
+
+def test_a_failed_rebuild_leaves_the_previous_index_intact(tmp_path):
+    ctx = _project(tmp_path)
+    idx = _indexer(ctx)
+    idx.sync()
+    before = idx.collection.count()
+
+    def explode(*args):
+        raise RuntimeError("Ollama se cayó a mitad de la reconstrucción")
+
+    with pytest.raises(RuntimeError):
+        _indexer(ctx).sync(full=True, on_progress=explode)
+    fresh = _indexer(ctx)
+    assert fresh.collection.count() == before
+    assert "codebase_index__rebuild" not in [c.name for c in fresh.client.list_collections()]
+
+
+# ------------------------------------------------- borrado de un proyecto ----
+
+def _registered(monkeypatch, tmp_path):
+    import core.services as services
+    from core.config import AppConfig, ProjectEntry
+
+    data_root = tmp_path / "data"
+    project_dir = data_root / "demo"
+    ctx = _project(tmp_path)
+    ctx = ProjectContext(id="demo", name="demo", repo_path=ctx.repo_path,
+                         chroma_dir=str(project_dir / "chroma_db"), docs_dir=str(project_dir / "docs"))
+    removed = []
+    monkeypatch.setattr(services, "DATA_ROOT", data_root)
+    monkeypatch.setattr(services, "remove_project", lambda pid: removed.append(pid) or True)
+    monkeypatch.setattr(services, "delete_project_token", lambda pid: None)
+    return services, ctx, project_dir, removed
+
+
+def test_purge_works_after_the_index_was_queried_in_this_process(monkeypatch, tmp_path):
+    # En Windows, el índice abierto impedía borrar la carpeta (WinError 32).
+    services, ctx, project_dir, removed = _registered(monkeypatch, tmp_path)
+    _indexer(ctx).sync()
+    engine = RAGEngine(ctx, AI)
+    engine.client_ollama = _FakeEmbed()
+    engine.retrieve("¿qué hace a?")
+    del engine
+
+    services.unregister_project("demo", purge_data=True)
+    assert removed == ["demo"] and not project_dir.exists()
+
+
+def test_purge_of_data_in_use_changes_nothing(monkeypatch, tmp_path):
+    from core.project_lock import ProjectBusyError
+
+    services, ctx, project_dir, removed = _registered(monkeypatch, tmp_path)
+    _indexer(ctx).sync()
+    original_rename = Path.rename
+
+    def locked(self, target):
+        if self == project_dir:
+            raise PermissionError("[WinError 32] archivo en uso")
+        return original_rename(self, target)
+
+    monkeypatch.setattr(Path, "rename", locked)
+    with pytest.raises(ProjectBusyError, match="no se borró nada"):
+        services.unregister_project("demo", purge_data=True)
+    assert removed == []  # sigue registrado
+    assert (project_dir / "chroma_db").exists()  # y con sus datos
