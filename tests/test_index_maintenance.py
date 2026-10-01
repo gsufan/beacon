@@ -94,7 +94,7 @@ class _FlakyCollection:
         if n_results > self.max_ok:
             raise RuntimeError("Cannot return the results in a contigious 2D array. Probably ef or M is too small")
         rows = range(n_results)
-        return {"documents": [[f"code {i}" for i in rows]],
+        return {"ids": [[f"id{i}" for i in rows]], "documents": [[f"code {i}" for i in rows]],
                 "metadatas": [[{"file_path": f"f{i}.py", "name": f"f{i}"} for i in rows]],
                 "distances": [[0.1 + i / 100 for i in rows]]}
 

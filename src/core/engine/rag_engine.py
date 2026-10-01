@@ -3,6 +3,8 @@
 import logging
 import re
 from dataclasses import dataclass
+
+import numpy as np
 from typing import List, Optional
 
 from core.engine.chroma_utils import get_chroma_client
@@ -41,6 +43,27 @@ ASKS_ABOUT_TESTS = re.compile(r"\b(tests?|testing|prueba|pruebas|testear|spec)\b
 ADAPTIVE_MARGIN = 0.03
 ADAPTIVE_MAX_EXTRA = 5
 
+# Búsqueda híbrida: si la pregunta nombra un identificador del código
+# (`super_len`, `TooManyRedirects`, `DEFAULT_CA_BUNDLE_PATH`), se suman como
+# candidatos los fragmentos que se llaman así o que lo usan, aunque la
+# búsqueda semántica no los haya traído, y se les resta distancia. Sin esto,
+# los tests con el identificador en su nombre le ganaban a la función, y en
+# preguntas de uso ("¿dónde se usa max_redirects?") aparecía la definición
+# pero no quien la usa.
+NAME_MATCH_BONUS = 0.10
+CODE_MATCH_BONUS = 0.04
+# Un identificador presente en más fragmentos que esto es demasiado común
+# para orientar la búsqueda (ej. `self`, `request`): se ignora su aparición
+# en el código.
+IDENTIFIER_MAX_CODE_MATCHES = 15
+QUESTION_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{3,}")
+# "¿Dónde se usa X?", "¿quién llama a X?", "¿cuándo se lanza X?": se pregunta
+# por quien usa el identificador, no por su definición, así que el descuento
+# fuerte va a los fragmentos que lo usan.
+ASKS_ABOUT_USAGE = re.compile(
+    r"\b(d[oó]nde|qui[eé]n|qu[eé]|cu[aá]ndo)\b.{0,25}\b(usa|usan|utiliza|llama|llaman|invoca|lanza|lanzan|"
+    r"levanta|produce|lee|leen|modifica|asigna)\b", re.IGNORECASE)
+
 CALL_CANDIDATE_PATTERN = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 KEYWORD_BLOCKLIST = {
     "if", "for", "while", "switch", "catch", "return", "func", "def", "class",
@@ -72,6 +95,12 @@ LANGUAGE_INSTRUCTIONS = {
     "es": "IMPORTANTE: escribe tu respuesta completa en español neutro (sin modismos regionales, sin voseo).",
     "en": "IMPORTANT: write your entire response in English.",
 }
+
+
+def _cosine_distance(a, b) -> float:
+    a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
+    norm = np.linalg.norm(a) * np.linalg.norm(b)
+    return float(1 - a.dot(b) / norm) if norm else 1.0
 
 
 @dataclass
@@ -135,16 +164,22 @@ class RAGEngine:
             )
 
     def _ranked_candidates(self, question: str, n: int) -> List[RetrievedChunk]:
-        """Candidatos ordenados por distancia, con la penalización a tests."""
+        """Candidatos ordenados por distancia: búsqueda semántica más los
+        fragmentos que coinciden con identificadores de la pregunta, con la
+        penalización a tests."""
         self._check_index_model()
         count = self.collection.count()
         if count == 0:
             return []
-        results = self._query(embed_query(self.client_ollama, self.ai_config.embedding_model, question),
-                              min(n, count))
+        embedding = embed_query(self.client_ollama, self.ai_config.embedding_model, question)
+        results = self._query(embedding, min(n, count))
+        rows = {chunk_id: [doc, meta, dist] for chunk_id, doc, meta, dist in zip(
+            results["ids"][0], results["documents"][0], results["metadatas"][0], results["distances"][0])}
+        for chunk_id, (doc, meta, dist, bonus) in self._identifier_matches(question, embedding).items():
+            rows.setdefault(chunk_id, [doc, meta, dist])[2] = dist - bonus
         penalize_tests = not ASKS_ABOUT_TESTS.search(question)
         chunks = []
-        for doc, meta, dist in zip(results["documents"][0], results["metadatas"][0], results["distances"][0]):
+        for doc, meta, dist in rows.values():
             path = meta.get("file_path", "?")
             if penalize_tests and TEST_PATH_PATTERN.search(path):
                 dist += TEST_DISTANCE_PENALTY
@@ -155,6 +190,47 @@ class RAGEngine:
             ))
         chunks.sort(key=lambda c: c.distance)
         return chunks
+
+    @staticmethod
+    def question_identifiers(question: str) -> List[str]:
+        """Palabras de la pregunta con forma de identificador de código:
+        snake_case, camelCase/PascalCase o CONSTANTE_CON_GUION. Las palabras
+        comunes (en español o en inglés) no tienen esa forma."""
+        found = []
+        for token in QUESTION_TOKEN.findall(question):
+            if ("_" in token.strip("_") or re.search(r"[a-z][A-Z]", token)) and token not in found:
+                found.append(token)
+        return found
+
+    def _identifier_matches(self, question: str, embedding: List[float]) -> dict:
+        """Fragmentos que se llaman como un identificador de la pregunta o lo
+        usan en su código, con su distancia real a la pregunta y el descuento
+        que les corresponde. Se usan `get` con filtros y la distancia se
+        calcula aquí: las consultas filtradas de hnswlib fallan cuando hay
+        menos coincidencias que resultados pedidos."""
+        identifiers = self.question_identifiers(question)
+        if not identifiers:
+            return {}
+        include = ["documents", "metadatas", "embeddings"]
+        found = {}
+        name_bonus, code_bonus = NAME_MATCH_BONUS, CODE_MATCH_BONUS
+        if ASKS_ABOUT_USAGE.search(question):
+            name_bonus, code_bonus = CODE_MATCH_BONUS, NAME_MATCH_BONUS
+
+        def add(result, bonus):
+            for chunk_id, doc, meta, vector in zip(result["ids"], result["documents"],
+                                                   result["metadatas"], result["embeddings"]):
+                if chunk_id not in found or found[chunk_id][3] < bonus:
+                    found[chunk_id] = (doc, meta, _cosine_distance(embedding, vector), bonus)
+
+        name_filter = {"name": identifiers[0]} if len(identifiers) == 1 else {"name": {"$in": identifiers}}
+        add(self.collection.get(where=name_filter, include=include), name_bonus)
+        for identifier in identifiers:
+            in_code = self.collection.get(where_document={"$contains": identifier}, include=include,
+                                          limit=IDENTIFIER_MAX_CODE_MATCHES + 1)
+            if len(in_code["ids"]) <= IDENTIFIER_MAX_CODE_MATCHES:
+                add(in_code, code_bonus)
+        return found
 
     def _query(self, embedding: List[float], n: int) -> dict:
         """Consulta a ChromaDB. Con muchos elementos borrados en el grafo HNSW,

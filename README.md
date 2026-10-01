@@ -259,6 +259,11 @@ la responde:
 - `eval/microservices-demo.yaml`: 22 preguntas sobre
   GoogleCloudPlatform/microservices-demo, 11 servicios en Go, C#,
   JavaScript, Python y Java.
+- `eval/requests-identificadores.yaml` y
+  `eval/microservices-demo-identificadores.yaml`: 15 y 10 preguntas que
+  nombran un identificador ("¿para qué sirve `super_len`?", "¿dónde se usa
+  `max_redirects`?"), como las hace quien ya vio el nombre en un error o un
+  log.
 
 ```bash
 python tools/eval_retrieval.py <project_id> eval/requests.yaml
@@ -283,12 +288,22 @@ Resultados por repositorio con la configuración actual:
 |---|---|---|---|---|---|---|
 | psf/requests (Python) | 30 | 73% | 93% | 100% | 0,83 | 97% |
 | microservices-demo (5 lenguajes) | 22 | 41% | 95% | 95% | 0,63 | 95% |
+| psf/requests, con identificadores | 15 | 67% | 93% | 100% | 0,79 | 100% |
+| microservices-demo, con identificadores | 10 | 100% | 100% | 100% | 1,00 | 100% |
 
 En el repositorio políglota, el mayor avance vino de embeber cada fragmento
 junto con la ruta de su archivo (Hit@5 de 77% a 95%): el código solo no dice
 a qué servicio pertenece, y el generador de carga (`locustfile.py`), que
 repite los nombres de las operaciones de la tienda, le ganaba al servicio
 que las implementa. Lo que se entrega al modelo sigue siendo solo el código.
+
+Cuando la pregunta nombra un identificador, la búsqueda es híbrida: además
+de la similitud semántica, suben los fragmentos que se llaman así o que lo
+usan (si la pregunta es "¿dónde se usa…?", pesa más quien lo usa que la
+definición). En las preguntas con identificadores de psf/requests, Hit@5
+pasó de 80% a 93% y el fragmento correcto llega al modelo en el 100% de los
+casos (antes 87%); los demás conjuntos no cambiaron.
+
 Los conjuntos son chicos, así que los números sirven para comparar
 configuraciones, no como garantía general.
 
