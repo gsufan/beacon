@@ -168,7 +168,16 @@ la última pieza), aunque las piezas no sean contiguas.
    entre el llamador y los candidatos; si sigue ambiguo, no se resuelve.
 3. **Prompt anti-alucinación**: reglas explícitas — si el código citado
    llama a algo cuyo cuerpo no está en el contexto, el modelo debe decirlo
-   en vez de inventar qué hace.
+   en vez de inventar qué hace. Las reglas se ajustaron con mediciones
+   (`tools/eval_answers.py`, `eval/answers-requests.yaml`): el modelo citaba
+   "el fragmento 3" en vez de la ruta del archivo y a veces cerraba una
+   respuesta correcta con la frase de "no encontré información". Con las
+   reglas actuales, las respuestas que citan el archivo pasaron de 33% a 92%
+   y los rechazos indebidos de 8% a 0%; ante preguntas sobre algo que no
+   está en el repositorio, el modelo rechaza sin agregar código genérico.
+   La generación usa temperatura 0,2 y semilla fija (`LLM_TEMPERATURE`,
+   `LLM_SEED`): con la temperatura por defecto (0,8) el resultado de la
+   misma evaluación variaba entre corridas y no se podían comparar cambios.
 4. **Ventana de contexto** (`engine/llm.py`): cada llamada fija
    `num_ctx=8192` (el máximo de llama3:8b). Sin eso Ollama cargaba el modelo
    con 4.096 tokens y, cuando el prompt no cabía, **descartaba el comienzo**

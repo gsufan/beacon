@@ -1,0 +1,61 @@
+# Conjunto de evaluación de las RESPUESTAS (no solo de la recuperación) sobre
+# psf/requests. Lo usa tools/eval_answers.py, que llama al modelo real.
+#
+# Preguntas respondibles:
+#   must:  grupos de términos que la respuesta debe mencionar; cada grupo es
+#          una lista de alternativas y basta con una (sin distinguir
+#          mayúsculas). Son los datos que un desarrollador necesita para
+#          considerar útil la respuesta, no una redacción esperada.
+#   cites: archivo que la respuesta debe citar (regla 3 del prompt).
+# Preguntas no respondibles (answerable: false): tratan de algo que no está
+# en el repositorio; la respuesta correcta es decir que no hay información
+# suficiente en vez de inventar.
+#
+# Uso: python tools/eval_answers.py <project_id> eval/answers-requests.yaml
+
+questions:
+  - q: "¿Cómo se combinan los ajustes de la sesión con los de una petición puntual?"
+    must: [["merge_setting"], ["None"]]
+    cites: "sessions.py"
+  - q: "¿Por qué una petición POST se convierte en GET después de una redirección 303?"
+    must: [["rebuild_method"], ["303", "see_other"], ["GET"]]
+    cites: "sessions.py"
+  - q: "¿Cómo se sigue una cadena de redirecciones y se limita su cantidad?"
+    must: [["resolve_redirects"], ["max_redirects", "TooManyRedirects"]]
+    cites: "sessions.py"
+  - q: "¿Cómo se construye el header de autenticación Basic?"
+    must: [["_basic_auth_str"], ["base64", "b64encode"]]
+    cites: "auth.py"
+  - q: "¿Cómo se lanza una excepción cuando la respuesta tiene un código de error?"
+    must: [["raise_for_status"], ["HTTPError"]]
+    cites: "models.py"
+  - q: "¿Cómo se leen los proxies desde las variables de entorno?"
+    must: [["get_environ_proxies", "should_bypass_proxies", "getproxies"], ["no_proxy"]]
+    cites: "utils.py"
+  - q: "¿Cómo se verifica el certificado SSL del servidor?"
+    must: [["cert_verify"], ["verify"], ["CERT_REQUIRED", "ca_certs", "DEFAULT_CA_BUNDLE_PATH", "ca_cert_dir"]]
+    cites: "adapters.py"
+  - q: "¿Cómo se implementa un diccionario de headers que no distingue mayúsculas?"
+    must: [["CaseInsensitiveDict"], ["lower"]]
+    cites: "structures.py"
+  - q: "¿Cómo se calcula el tamaño de un cuerpo que es un archivo o un stream?"
+    must: [["super_len"], ["fileno", "tell", "seek", "__len__"]]
+    cites: "utils.py"
+  - q: "¿Cómo se ejecutan los hooks registrados sobre la respuesta?"
+    must: [["dispatch_hook"], ["hooks"]]
+    cites: "hooks.py"
+  - q: "¿De dónde se sacan usuario y contraseña si no se pasan explícitamente?"
+    must: [["get_netrc_auth", "netrc"]]
+    cites: "utils.py"
+  - q: "¿Cómo se descarga el contenido de la respuesta por partes (streaming)?"
+    must: [["iter_content"], ["chunk_size"]]
+    cites: "models.py"
+
+  - q: "¿Cómo se conecta requests a una base de datos PostgreSQL?"
+    answerable: false
+  - q: "¿Qué plantilla HTML se usa para renderizar la página de inicio de sesión?"
+    answerable: false
+  - q: "¿Cómo se configuran las colas de tareas de Celery en este proyecto?"
+    answerable: false
+  - q: "¿Qué modelo de aprendizaje automático usa requests para predecir la codificación?"
+    answerable: false

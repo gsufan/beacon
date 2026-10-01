@@ -293,6 +293,36 @@ Si cambias `embedding_model` en `config.yaml`, el próximo `beacon sync`
 reconstruye el índice solo (los vectores de modelos distintos no son
 comparables), y mientras tanto las consultas responden con un aviso claro.
 
+## Calidad de las respuestas (medida)
+
+`tools/eval_answers.py` llama al modelo real y revisa cada respuesta con
+criterios verificables, sin juicio humano: si menciona los datos clave de la
+pregunta, si cita el archivo donde está la respuesta, si ante una pregunta
+sobre algo que no existe en el repositorio dice que no hay información (sin
+agregar código de relleno), si escribe identificadores que no aparecen en
+el contexto entregado (posible invención) y si responde en español.
+
+```bash
+python tools/eval_answers.py <project_id> eval/answers-requests.yaml
+```
+
+Sobre psf/requests (12 preguntas respondibles y 4 que no lo son), con
+llama3:8b:
+
+| Configuración | Contenido | Cita el archivo | Ambos | Falso rechazo | Rechazo correcto |
+|---|---|---|---|---|---|
+| Prompt anterior | 75% | 33% | 33% | 8% | 100% |
+| Prompt actual | 75% | 92% | 67% | 0% | 100% |
+
+La medición mostró que el modelo citaba "el fragmento 3" en vez del archivo
+(el usuario no ve esa numeración) y que a veces agregaba la frase de "no
+encontré información" al final de una respuesta correcta; ajustar esas dos
+reglas del prompt corrigió ambos casos. Las respuestas se generan con
+temperatura 0,2 y semilla fija: con la temperatura por defecto, la misma
+pregunta daba resultados distintos entre corridas (el contenido correcto
+variaba entre 67% y 92%), lo que impedía comparar cambios. Una respuesta
+de 5 segundos en promedio, con GPU de 8 GB.
+
 ## Tests
 
 ```bash
