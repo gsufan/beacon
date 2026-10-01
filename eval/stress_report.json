@@ -1,0 +1,67 @@
+{
+  "equipo": {
+    "so": "Windows-10-10.0.26200-SP0",
+    "cpu": "Intel64 Family 6 Model 183 Stepping 1, GenuineIntel",
+    "nucleos": 32,
+    "python": "3.11.9"
+  },
+  "modelos": {
+    "embeddings": "qwen3-embedding:0.6b",
+    "llm": "llama3:8b"
+  },
+  "indexacion": {
+    "archivos": 2000,
+    "fragmentos": 18012,
+    "segundos": 357.1,
+    "fragmentos_por_segundo": 50.4,
+    "memoria_maxima_mb": 260,
+    "disco_mb": 121.7
+  },
+  "incremental": {
+    "archivos_modificados": 20,
+    "segundos": 5.6,
+    "fragmentos_reindexados": 194
+  },
+  "busqueda": {
+    "descriptivas": {
+      "consultas": 25,
+      "p50_ms": 19,
+      "p95_ms": 35
+    },
+    "con_identificador": {
+      "consultas": 25,
+      "p50_ms": 22,
+      "p95_ms": 31
+    }
+  },
+  "concurrencia": {
+    "1": {
+      "consultas": 2,
+      "errores": 0,
+      "detalle_errores": [],
+      "p50_s": 3.2,
+      "max_s": 4.5
+    },
+    "4": {
+      "consultas": 8,
+      "errores": 0,
+      "detalle_errores": [],
+      "p50_s": 6.4,
+      "max_s": 10.2
+    },
+    "8": {
+      "consultas": 16,
+      "errores": 0,
+      "detalle_errores": [],
+      "p50_s": 12.1,
+      "max_s": 24.9
+    }
+  },
+  "durante_reconstruccion": {
+    "codigo_salida_sync": 0,
+    "consultas": 128,
+    "ok": 128,
+    "sin_fuentes": 0,
+    "errores": []
+  }
+}

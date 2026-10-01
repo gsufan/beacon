@@ -154,6 +154,22 @@ la última pieza), aunque las piezas no sean contiguas.
   (`chroma_utils.remove_orphan_segments`): en Windows, ChromaDB no puede
   borrarlas al eliminar la colección porque el proceso aún las tiene
   abiertas.
+- **Reconstrucción sin interrumpir consultas.** La reconstrucción completa
+  se arma en la colección `codebase_index__rebuild` y reemplaza a la vigente
+  al terminar (`_start_rebuild` / `_finish_rebuild`); si falla a mitad, se
+  descarta y el índice anterior queda intacto. Si una consulta llega justo en
+  el reemplazo, `RAGEngine` vuelve a buscar la colección por nombre y
+  reintenta. Lo encontró `tools/stress_test.py`: antes la colección se
+  borraba al empezar y, mientras otra consola corría `sync --full`, el
+  servidor respondía error 500. Con 2.000 archivos, las 128 consultas hechas
+  durante la reconstrucción respondieron.
+- **Borrado seguro de un proyecto.** En Windows no se puede borrar una
+  carpeta con archivos abiertos, y el índice queda abierto mientras exista
+  la instancia de ChromaDB. Antes se quitaba el proyecto de `config.yaml` y
+  luego fallaba el borrado, dejándolo a medio borrar. Ahora se libera la
+  instancia (`release_chroma_client`), se renombra la carpeta (falla si otro
+  proceso la usa, y entonces no se toca nada: error 409) y solo después se
+  desregistra y se borra.
 
 ## 5. Motor RAG (`rag_engine.py`)
 
