@@ -186,6 +186,14 @@ la última pieza), aunque las piezas no sean contiguas.
    `eval/requests-identificadores.yaml`: Hit@5 de 80% a 93%, MRR de 0,70 a
    0,79 y fragmento correcto en el contexto de 87% a 100%; los conjuntos sin
    identificadores no cambiaron.
+   **Reordenamiento con el LLM** (probado y descartado,
+   `tools/experimento_reordenamiento.py`): pedir a llama3 que ordene los 20
+   candidatos antes de armar el contexto no mejora de forma consistente. En
+   psf/requests bajó Hit@1 de 73% a 57% y MRR de 0,83 a 0,73; en
+   microservices-demo subió MRR de 0,63 a 0,70 pero bajó Hit@5 de 95% a
+   91%; con identificadores, MRR quedó igual (0,79 y 0,78). Además suma unos
+   2 segundos por consulta. Ollama no ofrece modelos de reordenamiento
+   propiamente tales, así que no hay otra alternativa local directa.
    **Contexto adaptativo** (`select_context`): además de los `top_k`, se
    suman hasta 5 fragmentos casi empatados con el último (margen 0,03), para
    preguntas que tocan varios archivos. Medido: el fragmento correcto llega
@@ -199,6 +207,18 @@ la última pieza), aunque las piezas no sean contiguas.
    exactamente. Si hay varios candidatos con el mismo nombre, desambigua
    comparando el prefijo de 2 niveles de carpeta (`scope_resolution.py`)
    entre el llamador y los candidatos; si sigue ambiguo, no se resuelve.
+   **Regex frente a AST** (medido en 2026-10): se compararon los candidatos
+   de la regex con las llamadas extraídas del AST de tree-sitter en todas
+   las funciones de los dos repositorios de evaluación, contando solo las
+   que se resuelven a un fragmento. En psf/requests coinciden 785
+   expansiones y la regex agrega 15 (98% de acuerdo); en microservices-demo
+   coinciden 234, la regex agrega 3 y el AST encuentra 16 (92%). Casi todas
+   las diferencias están en tests: funciones definidas dentro de un test,
+   que la regex tomaba por llamadas (corregido: ya no cuenta `def`, `func`,
+   `function` ni `class`; eran 33 en requests), y un ayudante de dos letras
+   que la regex descarta por largo. Fuera de los tests el AST evitaría 3
+   expansiones de más, lo que no justifica mantener reglas de extracción de
+   llamadas para cada lenguaje.
 3. **Prompt anti-alucinación**: reglas explícitas — si el código citado
    llama a algo cuyo cuerpo no está en el contexto, el modelo debe decirlo
    en vez de inventar qué hace. Las reglas se ajustaron con mediciones
@@ -207,11 +227,11 @@ la última pieza), aunque las piezas no sean contiguas.
    respuesta correcta con la frase de "no encontré información" y aceptaba
    preguntas con premisas falsas. Ahora cada fragmento llega rotulado con su
    ruta y líneas, sin número (`as_context_block`), y hay una regla para las
-   premisas falsas. Resultado en psf/requests: contenido de 75% a 100%,
+   premisas falsas. Resultado en psf/requests: contenido de 75% a 92-100%,
    respuestas que citan el archivo de 33% a 83-92%, rechazos indebidos de 8%
    a 0% y 100% de rechazos correctos, sin código genérico agregado. En el
    conjunto de control (`eval/answers-microservices-demo.yaml`, escrito
-   después y no usado para ajustar) los valores son menores: contenido 70%,
+   después y no usado para ajustar) los valores son menores: contenido 80%,
    cita 60%.
    La generación usa temperatura 0,2 y semilla fija (`LLM_TEMPERATURE`,
    `LLM_SEED`): con la temperatura por defecto (0,8) el resultado de la

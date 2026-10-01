@@ -85,3 +85,10 @@ def test_usage_question_prefers_the_code_that_uses_the_identifier(tmp_path):
 def test_question_without_identifiers_is_unchanged(tmp_path):
     engine = _engine(tmp_path)
     assert engine._identifier_matches("¿Cómo se calcula el largo?", [0.3, 0.4, 0.5]) == {}
+
+
+def test_call_candidates_skip_definitions():
+    code = "def outer():\n    def hook(r):\n        return r\n    return send(hook)\n"
+    assert RAGEngine._extract_call_candidates(code, "outer") == ["send"]
+    js = "function main() {\n  function local(x) { return x }\n  return convert(local)\n}"
+    assert RAGEngine._extract_call_candidates(js, "main") == ["convert"]

@@ -64,7 +64,15 @@ ASKS_ABOUT_USAGE = re.compile(
     r"\b(d[oó]nde|qui[eé]n|qu[eé]|cu[aá]ndo)\b.{0,25}\b(usa|usan|utiliza|llama|llaman|invoca|lanza|lanzan|"
     r"levanta|produce|lee|leen|modifica|asigna)\b", re.IGNORECASE)
 
-CALL_CANDIDATE_PATTERN = re.compile(r"\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
+# Candidatos a llamada: `nombre(`, salvo cuando es una definición
+# (`def hook(` dentro de un test no es una llamada a otro `hook`). Se comparó
+# con extraer las llamadas del AST en todo el índice de los dos repositorios
+# de evaluación: coinciden en el 98% (requests) y 92% (microservices-demo) de
+# las expansiones, y casi todas las diferencias están en tests; fuera de
+# ellos, el AST evitaría 3 expansiones de más. No justifica mantener reglas
+# de extracción para cada lenguaje (detalle en docs/ARQUITECTURA.md).
+CALL_CANDIDATE_PATTERN = re.compile(
+    r"(?<!\bdef )(?<!\bfunc )(?<!\bfunction )(?<!\bclass )\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 KEYWORD_BLOCKLIST = {
     "if", "for", "while", "switch", "catch", "return", "func", "def", "class",
     "new", "delete", "print", "println", "printf", "fmt", "string", "int",
