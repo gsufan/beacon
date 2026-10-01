@@ -362,6 +362,34 @@ modelo de 8B parámetros que conviene conocer (la interfaz muestra igual las
 fuentes de cada respuesta). Una respuesta tarda unos 5 segundos con GPU de
 8 GB.
 
+## Pruebas de estrés (medidas)
+
+`tools/stress_test.py` genera un repositorio sintético de miles de archivos
+y mide indexado, búsqueda, consultas simultáneas contra el servidor real y
+consultas mientras otra consola reconstruye el índice:
+
+```bash
+python tools/stress_test.py generar ../stress-repo --archivos 2000
+python tools/stress_test.py medir ../stress-repo --concurrencia 1 4 8
+```
+
+Con 2.000 archivos en Python, Go y JavaScript, GPU de 8 GB:
+
+| Medición | Resultado |
+|---|---|
+| Indexado completo (18.012 fragmentos) | 6 min (50 fragmentos/s), 260 MB de memoria, 122 MB en disco |
+| Sincronizar tras cambiar 20 archivos | 5,6 s |
+| Búsqueda sin LLM (p95) | 35 ms |
+| Consultas completas simultáneas: 1 / 4 / 8 | mediana 3,2 / 6,4 / 12,1 s; máximo 24,9 s; sin errores |
+| Consultas durante una reconstrucción completa | 128 de 128 respondidas |
+
+Con varias consultas a la vez la espera crece casi en proporción: Ollama
+genera las respuestas de a una en la GPU. La primera versión de esta prueba
+encontró dos fallas, ya corregidas: consultas con error 500 mientras otra
+consola corría `sync --full`, y proyectos a medio borrar en Windows cuando
+el servidor tenía el índice abierto (ver `docs/ARQUITECTURA.md`). El
+informe completo de la última corrida queda en `eval/stress_report.json`.
+
 ## Tests
 
 ```bash
