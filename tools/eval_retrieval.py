@@ -38,6 +38,12 @@ KS = (1, 3, 5, 10)
 
 def evaluate(project_id: str, questions: list) -> dict:
     engine = RAGEngine(get_project(project_id), load_config().ai_provider)
+    # Una clave esperada mal escrita contaría como fallo de la búsqueda sin
+    # serlo: se aborta antes de medir.
+    indexed = {f"{m['file_path']}::{m['name']}" for m in engine.collection.get(include=["metadatas"])["metadatas"]}
+    unknown = sorted({k for item in questions for k in item["expected"]} - indexed)
+    if unknown:
+        raise SystemExit("Fragmentos esperados que no existen en el índice:\n  " + "\n  ".join(unknown))
     rows = []
     for item in questions:
         expected = set(item["expected"])

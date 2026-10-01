@@ -149,7 +149,10 @@ la última pieza), aunque las piezas no sean contiguas.
    cercanos en ChromaDB. **Los tests se penalizan** (+0,08 de distancia)
    salvo que la pregunta sea sobre pruebas: sus nombres repiten las palabras
    de la pregunta (`test_http_303_changes_post_to_get`) y le ganaban a la
-   función que la responde. Medido: Hit@5 de 80% a 93%.
+   función que la responde. Medido: Hit@5 de 80% a 93% en psf/requests.
+   En microservices-demo (Go, C#, JavaScript, Python y Java; conjunto
+   `eval/microservices-demo.yaml`) el Hit@5 es de 77%: allí el generador de
+   carga repite los nombres de las operaciones y compite con los servicios.
    **Contexto adaptativo** (`select_context`): además de los `top_k`, se
    suman hasta 5 fragmentos casi empatados con el último (margen 0,03), para
    preguntas que tocan varios archivos. Medido: el fragmento correcto llega
