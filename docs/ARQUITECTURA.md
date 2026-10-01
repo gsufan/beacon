@@ -448,14 +448,19 @@ cambiar comportamiento de la API y merece su propia ronda de testing
 completa — no se hizo apurado al final del proyecto. Anotado como
 trabajo futuro concreto (no un "no se sabía").
 
-Mismo criterio del lado del frontend (`npm audit`): `react-router-dom`
-tiene 2 CVEs moderados (open redirect, inyección en `deserializeErrors()`
-SSR) cuyo fix solo existe en la serie mayor 7.x — la instalada es 6.30.4.
-React Router v7 cambia parte de la API de ruteo; no se subió sin poder
-retestear toda la navegación de la SPA. Trabajo futuro documentado, no
-crítico dado que Beacon no usa SSR y el riesgo de open-redirect es bajo
-en una app de un solo origen sin links a URLs externas generadas por
-usuario.
+Del lado del frontend (`npm audit`), `react-router-dom` 6.30.4 tenía 2 CVEs
+moderados (open redirect, inyección en `deserializeErrors()` SSR) cuyo fix
+solo existe desde la serie 7. En octubre de 2026 se migró a
+`react-router` 7.18.4 (en la serie 7, `react-router-dom` quedó integrado en
+`react-router`; la 8 exige React 19 y Node 22.22, por eso no se usó).
+Antes de migrar se agregaron pruebas de integración de la interfaz
+(`frontend/tests/App.integration.test.tsx`): la aplicación completa con un
+servidor simulado, navegando entre vistas, preguntando y viendo fuentes,
+leyendo documentación y mostrando el error 409 de cambio de modelo. Las
+mismas pruebas pasan antes y después, y se revisó la interfaz construida en
+el navegador (navegación, consulta real y entrada directa por URL). Junto
+con `vitest` 4.1.11 y `undici` (dependencias de desarrollo), `npm audit`
+reporta 0 vulnerabilidades.
 
 ## 10. Portabilidad y confiabilidad de despliegue
 
