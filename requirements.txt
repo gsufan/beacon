@@ -1,13 +1,20 @@
 chromadb==0.5.23
 posthog==4.8.0
 ollama==0.4.4
-fastapi==0.115.14
+fastapi==0.142.2
+starlette==1.7.0  # 0.46.x tenía CVEs conocidos; ver docs/ARQUITECTURA.md
 uvicorn==0.32.1
-gitpython==3.1.53  # 3.1.43 tenía ~19 CVEs conocidos; ver docs/ARQUITECTURA.md
+gitpython==3.1.62  # versiones anteriores tenían CVEs conocidos; ver docs/ARQUITECTURA.md
 pydantic==2.10.3
 pyyaml==6.0.2
-typer==0.15.4  # 0.15.1 crashea con click>=8.2 al pedir --help (Parameter.make_metavar)
+typer==0.27.2  # 0.15.1 fallaba con click>=8.2 al pedir --help (Parameter.make_metavar)
+click==8.5.0  # 8.1.x tenía un CVE conocido
 rich==13.9.4
+
+# Dependencias indirectas (de chromadb, vía kubernetes) fijadas en versiones
+# sin vulnerabilidades conocidas según pip-audit.
+urllib3==2.8.0
+oauthlib==4.0.0
 
 # Requeridos por chunker.py. OJO: el orden/versión importa — tree-sitter
 # 0.23.x rompe la API que usa tree-sitter-languages 1.10.2.

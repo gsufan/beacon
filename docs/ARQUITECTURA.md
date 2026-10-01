@@ -439,14 +439,25 @@ conocidos entre `gitpython`, `starlette`, `setuptools`, `click` y
 `3.1.53` (de ~19 CVEs a 0 — era la dependencia más expuesta dado que
 maneja clonado/pull de URLs potencialmente no confiables), `fastapi`
 subido a `0.115.14`, y `python-dotenv` eliminado por completo (no se
-usaba en ningún lado — resabio de la v1 pre-`config.yaml`). **Pendiente,
-deliberado**: `starlette` (dependencia de `fastapi`) sigue en `0.41.3`
-con CVEs conocidos — todos los fixes disponibles requieren
-`starlette>=0.47`, pero `fastapi==0.115.x` exige `<0.47`. Arreglarlo de
-fondo implica subir `fastapi` a una serie mayor (0.116+), lo que puede
-cambiar comportamiento de la API y merece su propia ronda de testing
-completa — no se hizo apurado al final del proyecto. Anotado como
-trabajo futuro concreto (no un "no se sabía").
+usaba en ningún lado — resabio de la v1 pre-`config.yaml`). Quedaba
+`starlette`, cuyos fixes exigían salir de la serie 0.4x, incompatible con
+`fastapi` 0.115. En octubre de 2026 se hizo la actualización completa:
+`fastapi` 0.142.2 con `starlette` 1.7.0, `gitpython` 3.1.62 (nuevos CVEs
+publicados en 2026), `click` 8.5.0 con `typer` 0.27.2, y las dependencias
+indirectas `urllib3` 2.8.0 y `oauthlib` 4.0.0 (llegan por chromadb). Se
+verificó con las 166 pruebas del backend, `pip check` sin conflictos, la
+CLI (`beacon --help`, `beacon sync --help`) y el servidor real: consulta,
+sincronización en segundo plano hasta `done`, documentación, modelos de
+Ollama y entrada directa a una ruta de la interfaz. `pip-audit` solo
+reporta tres CVE de `chromadb` 0.5.23 publicados en 2026
+(CVE-2026-45830, CVE-2026-45831 y CVE-2026-45833), sin versión corregida
+por ahora. Los tres afectan el modo servidor de ChromaDB: su API HTTP, los
+permisos por tenant y la actualización remota de colecciones. Beacon usa
+la base embebida en el propio proceso (`PersistentClient`) y no levanta ni
+expone ese servidor, tampoco en Docker Compose;
+`tests/test_security_regressions.py` falla si se introduce un cliente o
+servidor HTTP de ChromaDB. Se revisará en cada auditoría por si aparece
+una versión corregida compatible.
 
 Del lado del frontend (`npm audit`), `react-router-dom` 6.30.4 tenía 2 CVEs
 moderados (open redirect, inyección en `deserializeErrors()` SSR) cuyo fix
