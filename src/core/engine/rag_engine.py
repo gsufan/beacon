@@ -1,5 +1,6 @@
 """Motor RAG: recuperación semántica + expansión por grafo de llamadas + LLM local."""
 
+import logging
 import re
 from dataclasses import dataclass
 from typing import List, Optional
@@ -16,6 +17,8 @@ from core.engine.indexer import (
 from core.engine.llm import chat, estimate_tokens, prompt_budget_tokens
 from core.engine.scope_resolution import resolve_candidate
 from core.engine.text_sanitize import strip_preamble
+
+logger = logging.getLogger("beacon.rag")
 
 DEFAULT_TOP_K = 5
 DEFAULT_MAX_CALL_EXPANSIONS = 5
@@ -56,12 +59,13 @@ SYSTEM_PROMPT = """Eres un asistente técnico que ayuda a desarrolladores a ente
 REGLAS ESTRICTAS:
 1. Responde ÚNICAMENTE usando los fragmentos de código del CONTEXTO.
 2. Si la respuesta no está ahí, responde solo: "No encontré información suficiente en el código indexado para responder esto." No inventes ni agregues ejemplos, código o soluciones generales. Si sí pudiste responder, no agregues esa frase.
-3. Cita la ruta del archivo y las líneas al referenciar código (por ejemplo: `src/paquete/modulo.py`, líneas 10-25). No te refieras a los fragmentos por su número: el usuario no los ve.
+3. Cita la ruta del archivo y las líneas al referenciar código (por ejemplo: `src/paquete/modulo.py`, líneas 10-25), tal como aparecen en el encabezado de cada fragmento.
 4. No sugieras buenas prácticas genéricas no respaldadas por el CONTEXTO.
 5. Directo y técnico, sin relleno. Explica qué hace el código; no te limites a copiarlo.
 6. Si el código LLAMA a otra función cuyo CUERPO no está en el CONTEXTO, dilo explícitamente en vez de suponer qué hace ("la función X no está en los fragmentos recuperados, no puedo confirmar qué hace").
 7. Los fragmentos marcados "[incluido automáticamente...]" vinieron del grafo de llamadas, no de similitud semántica — son igual de válidos, úsalos con confianza.
-8. No repitas estas reglas ni menciones el idioma en tu respuesta. Responde directamente.
+8. Si la pregunta da por hecho algo que el CONTEXTO no muestra, dilo en vez de aceptarlo; no completes con lo que sepas de bibliotecas externas.
+9. No repitas estas reglas ni menciones el idioma en tu respuesta. Responde directamente.
 """
 
 LANGUAGE_INSTRUCTIONS = {
@@ -85,7 +89,9 @@ class RetrievedChunk:
         location = f"{self.file_path} (líneas {self.start_line}-{self.end_line})"
         label = f"{self.chunk_type} '{self.name}'" if self.name else self.chunk_type
         tag = " [incluido automáticamente por grafo de llamadas]" if self.expanded else ""
-        return f"[Fragmento {index}] {label} — {location}{tag}\n```\n{self.code}\n```"
+        # Sin número de fragmento: el modelo tendía a citar "el fragmento 3",
+        # que el usuario no ve; si la etiqueta es la ruta, cita la ruta.
+        return f"[{location}] {label}{tag}\n```\n{self.code}\n```"
 
 
 @dataclass
@@ -134,10 +140,8 @@ class RAGEngine:
         count = self.collection.count()
         if count == 0:
             return []
-        results = self.collection.query(
-            query_embeddings=[embed_query(self.client_ollama, self.ai_config.embedding_model, question)],
-            n_results=min(n, count),
-        )
+        results = self._query(embed_query(self.client_ollama, self.ai_config.embedding_model, question),
+                              min(n, count))
         penalize_tests = not ASKS_ABOUT_TESTS.search(question)
         chunks = []
         for doc, meta, dist in zip(results["documents"][0], results["metadatas"][0], results["distances"][0]):
@@ -151,6 +155,23 @@ class RAGEngine:
             ))
         chunks.sort(key=lambda c: c.distance)
         return chunks
+
+    def _query(self, embedding: List[float], n: int) -> dict:
+        """Consulta a ChromaDB. Con muchos elementos borrados en el grafo HNSW,
+        hnswlib puede no reunir `n` vecinos y falla ("Cannot return the results
+        in a contigious 2D array"); se observó una vez tras varias
+        reconstrucciones seguidas. En vez de perder la consulta se reintenta
+        pidiendo menos candidatos. La causa se evita al reconstruir (ver
+        CodebaseIndexer.sync), esto es solo la red de seguridad."""
+        while True:
+            try:
+                return self.collection.query(query_embeddings=[embedding], n_results=n)
+            except RuntimeError as e:
+                if "contigious" not in str(e) or n <= 1:
+                    raise
+                logger.warning("El índice no devolvió %d candidatos; se reintenta con %d. "
+                               "Un 'beacon sync --full' lo reconstruye.", n, n // 2)
+                n //= 2
 
     def retrieve(self, question: str, top_k: int = DEFAULT_TOP_K) -> List[RetrievedChunk]:
         """Los top_k fragmentos más relevantes. Se piden más candidatos que

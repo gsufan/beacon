@@ -1,0 +1,47 @@
+# Conjunto de evaluación de las RESPUESTAS sobre microservices-demo
+# (Go, C#, JavaScript, Python y Java). Mismo formato que answers-requests.yaml.
+#
+# Se escribió DESPUÉS de ajustar el prompt con answers-requests.yaml y no se
+# usó para ajustar nada: sirve para comprobar que las mejoras no dependen de
+# las preguntas con que se midieron.
+#
+# Uso: python tools/eval_answers.py <project_id> eval/answers-microservices-demo.yaml
+
+questions:
+  - q: "¿Cómo se procesa un pedido completo, desde el carrito hasta el pago y el envío?"
+    must: [["PlaceOrder"], ["chargeCard", "Charge"], ["ShipOrder", "shipOrder"]]
+    cites: "checkoutservice/main.go"
+  - q: "¿Qué error se produce cuando la tarjeta de crédito está vencida?"
+    must: [["ExpiredCreditCard"], ["year", "month", "año", "mes"]]
+    cites: "charge.js"
+  - q: "¿Cómo se calcula el costo de envío según la cantidad de productos?"
+    must: [["CreateQuoteFromCount", "quoteByCountFloat"], ["8.99", "8,99"]]
+    cites: "quote.go"
+  - q: "¿Cómo se genera el número de seguimiento de un envío?"
+    must: [["CreateTrackingId"], ["salt", "aleatori", "random"]]
+    cites: "tracker.go"
+  - q: "¿Cómo se convierte un monto de una moneda a otra?"
+    must: [["convert"], ["EUR", "euro"]]
+    cites: "currencyservice/server.js"
+  - q: "¿Cómo se guarda el carrito de compras en Redis?"
+    must: [["RedisCartStore"], ["AddItemAsync", "SetAsync", "_cache"]]
+    cites: "RedisCartStore.cs"
+  - q: "¿Cómo se buscan productos en el catálogo a partir de un texto?"
+    must: [["SearchProducts"], ["Contains", "ToLower", "strings."]]
+    cites: "product_catalog.go"
+  - q: "¿Cómo se eligen los productos recomendados para un usuario?"
+    must: [["ListRecommendations"], ["random.sample", "sample", "aleatori"]]
+    cites: "recommendation_server.py"
+  - q: "¿Cómo se eligen los anuncios según la categoría del producto?"
+    must: [["getAdsByCategory", "getAds"], ["categor"]]
+    cites: "AdService.java"
+  - q: "¿Cómo se identifica la sesión de un usuario en el frontend?"
+    must: [["ensureSessionID"], ["cookie", "uuid"]]
+    cites: "middleware.go"
+
+  - q: "¿Cómo se autentican los usuarios con usuario y contraseña en la tienda?"
+    answerable: false
+  - q: "¿Qué base de datos MongoDB usa el servicio de pagos para guardar las transacciones?"
+    answerable: false
+  - q: "¿Cómo se generan las facturas en PDF de cada pedido?"
+    answerable: false

@@ -81,10 +81,13 @@ class DocGenerator:
         self.watcher = GitWatcher(project.repo_path)
         self.client_ollama = ollama.Client(host=ai_config.ollama_host)
         self.client = get_chroma_client(project.chroma_dir)
-        self.collection = self.client.get_or_create_collection(
-            name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"}
-        )
         self.control = self.client.get_or_create_collection(name=CONTROL_COLLECTION_NAME)
+
+    @property
+    def collection(self):
+        # Se busca por nombre en cada uso: una reconstrucción del índice recrea
+        # la colección y una referencia guardada apuntaría a la ya borrada.
+        return self.client.get_or_create_collection(name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
 
     def _get_control_commit(self, key: str):
         result = self.control.get(ids=[key])
