@@ -14,6 +14,7 @@ export default function Settings() {
   const [aiConfig, setAiConfig] = useState<AIProviderConfig | null>(null);
   const [providers, setProviders] = useState<SystemProvider[]>([]);
   const [models, setModels] = useState<string[]>([]);
+  const [modelsLoaded, setModelsLoaded] = useState(false);
   const [savingAi, setSavingAi] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,10 +43,14 @@ export default function Settings() {
 
   useEffect(() => {
     if (!aiConfig?.ollama_host) return;
+    // El aviso de "no hay modelos" se muestra solo cuando la consulta terminó:
+    // antes aparecía un instante en cada carga, mientras llegaba la respuesta.
+    setModelsLoaded(false);
     api
       .availableModels(aiConfig.ollama_host)
       .then((res) => setModels(res.models))
-      .catch(() => setModels([]));
+      .catch(() => setModels([]))
+      .finally(() => setModelsLoaded(true));
   }, [aiConfig?.ollama_host]);
 
   useEffect(() => {
@@ -229,7 +234,7 @@ export default function Settings() {
                 ))}
               </select>
             </label>
-            {models.length === 0 && (
+            {modelsLoaded && models.length === 0 && (
               <p className="text-xs text-stone-400">
                 {t("settings_no_models")} '{aiConfig.ollama_host}'. {t("settings_no_models_hint")}
               </p>
