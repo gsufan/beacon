@@ -1,5 +1,5 @@
 import { FileText, MessageSquare, Radar, Settings as SettingsIcon } from "lucide-react";
-import { NavLink, Route, Routes } from "react-router-dom";
+import { NavLink, Route, Routes } from "react-router";
 import { LanguageProvider, LanguageSelector, useLanguage } from "./components/LanguageSelector";
 import { ProjectProvider, ProjectSelector } from "./components/ProjectSelector";
 import ThemeToggle from "./components/ThemeToggle";

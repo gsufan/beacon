@@ -41,6 +41,19 @@ Object.defineProperty(globalThis, "localStorage", {
   configurable: true,
 });
 
+// jsdom no implementa matchMedia (lo usa ThemeToggle para el tema del
+// sistema): se simula un sistema en modo claro.
+if (!window.matchMedia) {
+  Object.defineProperty(window, "matchMedia", {
+    configurable: true,
+    value: (query: string) => ({
+      matches: false, media: query, onchange: null,
+      addEventListener: () => {}, removeEventListener: () => {},
+      addListener: () => {}, removeListener: () => {}, dispatchEvent: () => false,
+    }),
+  });
+}
+
 // No usamos `test.globals: true`, así que @testing-library/react no detecta
 // automáticamente un framework de test para desmontar entre pruebas —
 // sin esto, cada render() se acumula y los queries por rol/texto empiezan
