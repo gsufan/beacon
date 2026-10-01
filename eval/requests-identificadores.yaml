@@ -1,0 +1,39 @@
+# Preguntas que nombran un identificador del código (función, clase,
+# excepción o constante), como las hace un desarrollador que ya vio el nombre
+# en un error, un log o una revisión. Complementa a requests.yaml, cuyas
+# preguntas describen el comportamiento sin nombrarlo. Mide la búsqueda
+# híbrida (semántica + coincidencia exacta de identificadores).
+# Uso: python tools/eval_retrieval.py <project_id> eval/requests-identificadores.yaml
+
+questions:
+  - q: "¿Qué hace should_strip_auth?"
+    expected: ["src/requests/sessions.py::should_strip_auth"]
+  - q: "¿Para qué sirve super_len?"
+    expected: ["src/requests/utils.py::super_len"]
+  - q: "¿Qué devuelve get_netrc_auth si no existe el archivo netrc?"
+    expected: ["src/requests/utils.py::get_netrc_auth"]
+  - q: "¿Dónde se lanza TooManyRedirects?"
+    expected: ["src/requests/sessions.py::resolve_redirects"]
+  - q: "¿Dónde se usa max_redirects?"
+    expected: ["src/requests/sessions.py::resolve_redirects"]
+  - q: "¿Qué hace rebuild_proxies?"
+    expected: ["src/requests/sessions.py::rebuild_proxies"]
+  - q: "¿Cómo funciona lower_items en CaseInsensitiveDict?"
+    expected: ["src/requests/structures.py::lower_items"]
+  - q: "¿Qué hace requote_uri?"
+    expected: ["src/requests/utils.py::requote_uri"]
+  - q: "¿Cuándo se llama a extract_cookies_to_jar?"
+    expected: ["src/requests/adapters.py::build_response", "src/requests/sessions.py::resolve_redirects",
+               "src/requests/sessions.py::send", "src/requests/cookies.py::extract_cookies_to_jar"]
+  - q: "¿Qué hace default_user_agent?"
+    expected: ["src/requests/utils.py::default_user_agent"]
+  - q: "¿Cuándo se produce InvalidJSONError?"
+    expected: ["src/requests/models.py::prepare_body", "src/requests/exceptions.py::InvalidJSONError"]
+  - q: "¿Para qué sirve el parámetro pool_maxsize del adaptador?"
+    expected: ["src/requests/adapters.py::HTTPAdapter", "src/requests/adapters.py::init_poolmanager"]
+  - q: "¿Qué hace unquote_unreserved?"
+    expected: ["src/requests/utils.py::unquote_unreserved"]
+  - q: "¿Qué hace to_key_val_list?"
+    expected: ["src/requests/utils.py::to_key_val_list"]
+  - q: "¿Dónde se usa DEFAULT_CA_BUNDLE_PATH?"
+    expected: ["src/requests/adapters.py::cert_verify"]

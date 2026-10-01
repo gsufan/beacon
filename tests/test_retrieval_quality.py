@@ -176,7 +176,7 @@ class _Coll:
 
     def query(self, query_embeddings, n_results):
         rows = self.rows[:n_results]
-        return {"documents": [["code"] * len(rows)],
+        return {"ids": [[f"{p}::{n}" for p, n, _ in rows]], "documents": [["code"] * len(rows)],
                 "metadatas": [[{"file_path": p, "name": n, "chunk_type": "function"} for p, n, _ in rows]],
                 "distances": [[d for _, _, d in rows]]}
 

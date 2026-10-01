@@ -174,6 +174,18 @@ la última pieza), aunque las piezas no sean contiguas.
    con el mismo nombre que la implementación. Ambos cambios son el formato 2
    del índice (`INDEX_FORMAT`); un índice de formato anterior se reconstruye
    solo en el próximo sync.
+   **Búsqueda híbrida** (`_identifier_matches`): las palabras de la pregunta
+   con forma de identificador (snake_case, camelCase, CONSTANTE) se buscan
+   también por coincidencia exacta, en el nombre del fragmento (descuento de
+   0,10 en la distancia) y en su código (0,04; se ignora un identificador
+   presente en más de 15 fragmentos, por demasiado común). Si la pregunta es
+   de uso ("¿dónde se usa…?", "¿quién llama a…?") los descuentos se
+   invierten. La distancia de esos fragmentos se calcula aparte con sus
+   vectores, porque las consultas filtradas de hnswlib fallan cuando hay
+   menos coincidencias que resultados pedidos. Medido con
+   `eval/requests-identificadores.yaml`: Hit@5 de 80% a 93%, MRR de 0,70 a
+   0,79 y fragmento correcto en el contexto de 87% a 100%; los conjuntos sin
+   identificadores no cambiaron.
    **Contexto adaptativo** (`select_context`): además de los `top_k`, se
    suman hasta 5 fragmentos casi empatados con el último (margen 0,03), para
    preguntas que tocan varios archivos. Medido: el fragmento correcto llega

@@ -1,0 +1,26 @@
+# Preguntas que nombran un identificador del código sobre microservices-demo
+# (ver requests-identificadores.yaml). Mide la búsqueda híbrida en un
+# repositorio con cinco lenguajes.
+# Uso: python tools/eval_retrieval.py <project_id> eval/microservices-demo-identificadores.yaml
+
+questions:
+  - q: "¿Qué hace CreateQuoteFromFloat?"
+    expected: ["src/shippingservice/quote.go::CreateQuoteFromFloat"]
+  - q: "¿Qué hace CreateTrackingId?"
+    expected: ["src/shippingservice/tracker.go::CreateTrackingId"]
+  - q: "¿Dónde se usa _carry?"
+    expected: ["src/currencyservice/server.js::convert", "src/currencyservice/server.js::_carry"]
+  - q: "¿Qué hace prepOrderItems?"
+    expected: ["src/checkoutservice/main.go::prepOrderItems"]
+  - q: "¿Qué hace getRandomAds?"
+    expected: ["src/adservice/src/main/java/hipstershop/AdService.java::getRandomAds"]
+  - q: "¿Qué hace ensureSessionID?"
+    expected: ["src/frontend/middleware.go::ensureSessionID"]
+  - q: "¿Qué hace loadCatalogFromAlloyDB?"
+    expected: ["src/productcatalogservice/catalog_loader.go::loadCatalogFromAlloyDB"]
+  - q: "¿Cuándo se lanza UnacceptedCreditCard?"
+    expected: ["src/paymentservice/charge.js::module_level", "src/paymentservice/charge.js::UnacceptedCreditCard"]
+  - q: "¿Qué hace MultiplySlow?"
+    expected: ["src/checkoutservice/money/money.go::MultiplySlow", "src/frontend/money/money.go::MultiplySlow"]
+  - q: "¿Qué hace GetCartAsync en el almacén de Redis?"
+    expected: ["src/cartservice/src/cartstore/RedisCartStore.cs::GetCartAsync"]
