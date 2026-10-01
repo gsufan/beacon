@@ -331,7 +331,8 @@ llama3:8b:
 |---|---|---|---|---|---|
 | Prompt anterior | 75% | 33% | 33% | 8% | 100% |
 | Reglas de cita y de rechazo ajustadas | 75% | 92% | 67% | 0% | 100% |
-| + fragmentos rotulados por ruta y regla de premisas falsas (actual) | 100% | 83-92% | 83-92% | 0% | 100% |
+| + fragmentos rotulados por ruta y regla de premisas falsas | 100% | 83-92% | 83-92% | 0% | 100% |
+| + búsqueda híbrida (configuración actual) | 92% | 83% | 75% | 0% | 100% |
 
 Qué mostró cada medición:
 
@@ -348,12 +349,14 @@ Qué mostró cada medición:
   distintos entre corridas (el contenido correcto variaba entre 67% y 92%),
   lo que impedía comparar cambios. Las respuestas se generan con
   temperatura 0,2 y semilla fija; aun así, entre dos corridas iguales una
-  respuesta puede cambiar, de ahí el rango en la tabla.
+  respuesta puede cambiar, de ahí el rango en la tabla. Con 12 preguntas,
+  cada una vale 8 puntos: diferencias de una pregunta entre configuraciones
+  (como la última fila) están dentro de esa variación.
 
 Como control, el conjunto `eval/answers-microservices-demo.yaml` se
 escribió después de estos ajustes y no se usó para ninguno. Ahí los
-resultados son más bajos: contenido 70%, cita 60%, ambos 50%, sin rechazos
-indebidos y con 100% de rechazos correctos. Las respuestas aciertan en lo
+resultados son más bajos: contenido 80%, cita 60%, ambos 60%, sin rechazos
+indebidos y con 100% de rechazos correctos (con la configuración actual). Las respuestas aciertan en lo
 principal pero son breves y a menudo no citan el archivo; es un límite del
 modelo de 8B parámetros que conviene conocer (la interfaz muestra igual las
 fuentes de cada respuesta). Una respuesta tarda unos 5 segundos con GPU de
