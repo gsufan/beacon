@@ -251,13 +251,22 @@ npm run dev   # http://localhost:5173, con proxy hacia la API en :8000
 
 ## Calidad de la búsqueda (medida)
 
-`tools/eval_retrieval.py` mide la recuperación contra un conjunto de
-preguntas de referencia (`eval/requests.yaml`: 30 preguntas en español sobre
-el código de psf/requests, cada una con la función que la responde):
+`tools/eval_retrieval.py` mide la recuperación contra conjuntos de
+preguntas de referencia, escritas en español y cada una con la función que
+la responde:
+
+- `eval/requests.yaml`: 30 preguntas sobre psf/requests (Python).
+- `eval/microservices-demo.yaml`: 22 preguntas sobre
+  GoogleCloudPlatform/microservices-demo, 11 servicios en Go, C#,
+  JavaScript, Python y Java.
 
 ```bash
 python tools/eval_retrieval.py <project_id> eval/requests.yaml
 ```
+
+Si una función esperada no existe en el índice, la herramienta se detiene
+antes de medir, para que un error en el conjunto no se cuente como fallo de
+la búsqueda.
 
 | Configuración | Hit@1 | Hit@5 | Hit@10 | MRR@10 |
 |---|---|---|---|---|
@@ -265,9 +274,20 @@ python tools/eval_retrieval.py <project_id> eval/requests.yaml
 | qwen3-embedding:0.6b + tests penalizados (actual) | 70% | 93% | 100% | 0,80 |
 
 Con el contexto adaptativo, el fragmento que responde la pregunta llega al
-modelo en el 97% de los casos (8 fragmentos en promedio). El conjunto es
-chico (30 preguntas sobre un solo repositorio): los números sirven para
-comparar configuraciones, no como garantía general.
+modelo en el 97% de los casos (8 fragmentos en promedio).
+
+Resultados por repositorio con la configuración actual:
+
+| Repositorio | Preguntas | Hit@1 | Hit@5 | Hit@10 | MRR@10 | En contexto |
+|---|---|---|---|---|---|---|
+| psf/requests (Python) | 30 | 70% | 93% | 100% | 0,80 | 97% |
+| microservices-demo (5 lenguajes) | 22 | 41% | 77% | 91% | 0,57 | 91% |
+
+El repositorio políglota es más difícil: el generador de carga
+(`locustfile.py`) repite los nombres de las operaciones de la tienda
+(`checkout`, `addToCart`) y compite con el servicio que las implementa. Los
+conjuntos son chicos, así que los números sirven para comparar
+configuraciones, no como garantía general.
 
 Si cambias `embedding_model` en `config.yaml`, el próximo `beacon sync`
 reconstruye el índice solo (los vectores de modelos distintos no son

@@ -1,0 +1,58 @@
+# Conjunto de evaluación de la recuperación sobre Online Boutique
+# (GoogleCloudPlatform/microservices-demo): 11 microservicios en Go, C#,
+# JavaScript, Python y Java. Complementa a eval/requests.yaml (un solo
+# lenguaje) para medir la búsqueda en un repositorio políglota.
+#
+# Mismo formato y criterio que requests.yaml: cada pregunta, escrita en
+# español, lista los fragmentos que la responden como "ruta::nombre".
+# Uso: python tools/eval_retrieval.py <project_id> eval/microservices-demo.yaml
+
+questions:
+  - q: "¿Cómo se procesa un pedido completo, desde el carrito hasta el pago y el envío?"
+    expected: ["src/checkoutservice/main.go::PlaceOrder"]
+  - q: "¿Cómo se cobra la tarjeta de crédito del cliente?"
+    expected: ["src/paymentservice/server.js::ChargeServiceHandler", "src/checkoutservice/main.go::chargeCard",
+               "src/paymentservice/charge.js::module_level"]
+  - q: "¿Qué error se produce cuando la tarjeta de crédito está vencida?"
+    expected: ["src/paymentservice/charge.js::ExpiredCreditCard"]
+  - q: "¿Cómo se calcula el costo de envío según la cantidad de productos?"
+    expected: ["src/shippingservice/quote.go::CreateQuoteFromCount", "src/shippingservice/main.go::GetQuote"]
+  - q: "¿Cómo se genera el número de seguimiento de un envío?"
+    expected: ["src/shippingservice/tracker.go::CreateTrackingId"]
+  - q: "¿Cómo se convierte un monto de una moneda a otra?"
+    expected: ["src/currencyservice/server.js::convert"]
+  - q: "¿Qué monedas soporta la tienda?"
+    expected: ["src/currencyservice/server.js::getSupportedCurrencies"]
+  - q: "¿Cómo se suman dos montos de dinero sin perder precisión?"
+    expected: ["src/checkoutservice/money/money.go::Sum", "src/frontend/money/money.go::Sum"]
+  - q: "¿Cómo se guarda el carrito de compras en Redis?"
+    expected: ["src/cartservice/src/cartstore/RedisCartStore.cs::RedisCartStore"]
+  - q: "¿Cómo se agrega un producto al carrito?"
+    expected: ["src/cartservice/src/services/CartService.cs::AddItem", "src/frontend/handlers.go::addToCartHandler",
+               "src/frontend/rpc.go::insertCart"]
+  - q: "¿Cómo se buscan productos en el catálogo a partir de un texto?"
+    expected: ["src/productcatalogservice/product_catalog.go::SearchProducts"]
+  - q: "¿De dónde se carga el catálogo de productos?"
+    expected: ["src/productcatalogservice/catalog_loader.go::loadCatalog",
+               "src/productcatalogservice/catalog_loader.go::loadCatalogFromLocalFile"]
+  - q: "¿Cómo se eligen los productos recomendados para un usuario?"
+    expected: ["src/recommendationservice/recommendation_server.py::ListRecommendations"]
+  - q: "¿Cómo se envía el correo de confirmación de un pedido?"
+    expected: ["src/emailservice/email_server.py::SendOrderConfirmation", "src/emailservice/email_server.py::send_email"]
+  - q: "¿Cómo se eligen los anuncios según la categoría del producto?"
+    expected: ["src/adservice/src/main/java/hipstershop/AdService.java::getAdsByCategory",
+               "src/adservice/src/main/java/hipstershop/AdService.java::getAds"]
+  - q: "¿Qué anuncios se muestran cuando no hay una categoría?"
+    expected: ["src/adservice/src/main/java/hipstershop/AdService.java::getRandomAds"]
+  - q: "¿Cómo se identifica la sesión de un usuario en el frontend?"
+    expected: ["src/frontend/middleware.go::ensureSessionID", "src/frontend/handlers.go::sessionID"]
+  - q: "¿Cómo se validan los datos del formulario de compra?"
+    expected: ["src/frontend/validator/validator.go::PlaceOrderPayload", "src/frontend/validator/validator.go::Validate"]
+  - q: "¿Cómo se simula el comportamiento de los usuarios para las pruebas de carga?"
+    expected: ["src/loadgenerator/locustfile.py::UserBehavior", "src/loadgenerator/locustfile.py::WebsiteUser"]
+  - q: "¿Cómo se registra cada petición HTTP del frontend con su duración?"
+    expected: ["src/frontend/middleware.go::ServeHTTP", "src/frontend/middleware.go::logHandler"]
+  - q: "¿Cómo se verifica que el servicio del carrito está disponible?"
+    expected: ["src/cartservice/src/services/HealthCheckService.cs::Check"]
+  - q: "¿Cómo se vacía el carrito después de realizar la compra?"
+    expected: ["src/checkoutservice/main.go::emptyUserCart", "src/cartservice/src/services/CartService.cs::EmptyCart"]
