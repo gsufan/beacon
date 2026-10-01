@@ -138,3 +138,14 @@ def test_sync_still_skips_chunk_rejected_for_length(tmp_path):
 
     result = indexer.sync()
     assert result["status"] == "ok"
+
+
+def test_chromadb_is_only_used_embedded():
+    # Los CVE de chromadb 0.5.x publicados en 2026 (CVE-2026-45830/45831/45833)
+    # afectan su modo servidor (API HTTP, permisos por tenant). Beacon usa la
+    # base embebida en el proceso; esta prueba falla si alguien introduce un
+    # cliente o un servidor HTTP de ChromaDB sin revisar esos riesgos.
+    src = Path(__file__).resolve().parents[1] / "src"
+    offenders = [str(p) for p in src.rglob("*.py")
+                 if any(t in p.read_text(encoding="utf-8") for t in ("HttpClient", "chromadb.Client(", "chroma run"))]
+    assert offenders == []
