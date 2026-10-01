@@ -13,6 +13,9 @@ from core.engine.embeddings import embed_documents
 from core.engine.git_watcher import GitWatcher, ChangeSet
 
 COLLECTION_NAME = "codebase_index"
+# Colección donde se arma una reconstrucción completa antes de reemplazar a
+# la vigente (ver CodebaseIndexer.sync).
+STAGING_COLLECTION_NAME = "codebase_index__rebuild"
 CONTROL_COLLECTION_NAME = "sys_index_control"
 CONTROL_KEY_ID = "last_indexed_commit"
 # Índices creados antes de registrar el modelo usaban siempre nomic-embed-text.
@@ -77,12 +80,34 @@ class CodebaseIndexer:
                         "index_format": INDEX_FORMAT}],
         )
 
-    def _reset_collection(self):
-        """Vacía el índice recreando la colección: al cambiar de modelo cambia
-        la dimensión de los vectores (768 → 1024) y ChromaDB no la admite en
-        una colección que ya la fijó."""
+    def _start_rebuild(self):
+        """Empieza una reconstrucción completa en una colección aparte. La
+        vigente sigue respondiendo consultas hasta el reemplazo; antes se
+        borraba al comenzar y una consulta llegada en ese lapso fallaba
+        (medido con tools/stress_test.py: el servidor respondía error 500
+        mientras otra consola corría `sync --full`). También sirve al cambiar
+        de modelo, porque la colección nueva admite otra dimensión de vector."""
+        try:
+            self.client.delete_collection(STAGING_COLLECTION_NAME)  # restos de un intento fallido
+        except Exception:
+            pass
+        live = self.collection
+        self.collection = self.client.create_collection(name=STAGING_COLLECTION_NAME,
+                                                        metadata={"hnsw:space": "cosine"})
+        return live
+
+    def _finish_rebuild(self):
+        """Reemplaza la colección vigente por la reconstruida."""
         self.client.delete_collection(COLLECTION_NAME)
-        self.collection = self.client.get_or_create_collection(name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
+        self.collection.modify(name=COLLECTION_NAME)
+        self.collection = self.client.get_collection(COLLECTION_NAME)
+
+    def _abort_rebuild(self, live):
+        try:
+            self.client.delete_collection(STAGING_COLLECTION_NAME)
+        except Exception:
+            pass
+        self.collection = live
 
     # ---------- Embeddings (con división recursiva adaptativa) ----------
 
@@ -183,9 +208,7 @@ class CodebaseIndexer:
         previous_model = self.indexed_embedding_model()
         model_changed = previous_model is not None and previous_model != self.ai_config.embedding_model
         if model_changed:
-            # Vectores de otro modelo no son comparables: se reconstruye todo.
-            self._reset_collection()
-            full = True
+            full = True  # vectores de otro modelo no son comparables: se reconstruye todo
         previous_format = self._indexed_format()
         format_changed = previous_model is not None and not model_changed and previous_format != INDEX_FORMAT
         if format_changed:
@@ -203,24 +226,21 @@ class CodebaseIndexer:
             changes.modified += u.modified
             changes.deleted += u.deleted
 
-        if changes.is_empty():
+        if changes.is_empty() and not changes.full_rescan:
             return {"status": "sin_cambios", "detalle": changes.summary()}
-        if model_changed:
-            bump_index_version(os.path.dirname(self.project.chroma_dir))
 
         files = changes.files_to_reindex()
         purged = 0
         indexed, files_indexed = 0, 0
+        # Una reconstrucción completa se arma en una colección nueva en vez de
+        # borrar fragmento por fragmento: hnswlib solo marca los borrados, así
+        # que cada reconstrucción inflaba el índice (13 MB para 363 fragmentos
+        # tras cinco reconstrucciones) y con muchos borrados la búsqueda puede
+        # fallar ("Cannot return the results in a contigious 2D array").
+        live = self._start_rebuild() if changes.full_rescan else None
         try:
             if changes.full_rescan:
-                # Se recrea la colección en vez de borrar fragmento por
-                # fragmento: hnswlib solo marca los borrados, así que cada
-                # reconstrucción inflaba el índice (13 MB para 363 fragmentos
-                # tras cinco reconstrucciones) y con muchos borrados la
-                # búsqueda puede fallar ("Cannot return the results in a
-                # contigious 2D array").
-                purged += self.collection.count()
-                self._reset_collection()
+                purged += live.count()
             else:
                 # también los que se reindexan: un 'added' pudo quedar indexado por un --uncommitted previo
                 for fp in changes.files_to_purge() + files:
@@ -233,7 +253,12 @@ class CodebaseIndexer:
                     files_indexed += 1
                 if on_progress:
                     on_progress(i, total, fp)
+            if live is not None:
+                self._finish_rebuild()
+                live = None
         finally:
+            if live is not None:  # falló a mitad: el índice anterior queda intacto
+                self._abort_rebuild(live)
             # Aunque el sync falle a mitad, el índice ya cambió: avisar a otros
             # procesos (el servidor) para que no sigan buscando en su copia vieja.
             bump_index_version(os.path.dirname(self.project.chroma_dir))

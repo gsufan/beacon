@@ -7,6 +7,8 @@ from dataclasses import dataclass
 import numpy as np
 from typing import List, Optional
 
+from chromadb.errors import InvalidCollectionException
+
 from core.engine.chroma_utils import get_chroma_client
 import ollama
 
@@ -176,11 +178,16 @@ class RAGEngine:
         fragmentos que coinciden con identificadores de la pregunta, con la
         penalización a tests."""
         self._check_index_model()
-        count = self.collection.count()
-        if count == 0:
-            return []
         embedding = embed_query(self.client_ollama, self.ai_config.embedding_model, question)
-        results = self._query(embedding, min(n, count))
+        try:
+            count = self.collection.count()
+            results = self._query(embedding, min(n, count)) if count else None
+        except InvalidCollectionException:
+            self._refresh_collection()  # se reemplazó durante una reconstrucción
+            count = self.collection.count()
+            results = self._query(embedding, min(n, count)) if count else None
+        if not count:
+            return []
         rows = {chunk_id: [doc, meta, dist] for chunk_id, doc, meta, dist in zip(
             results["ids"][0], results["documents"][0], results["metadatas"][0], results["distances"][0])}
         for chunk_id, (doc, meta, dist, bonus) in self._identifier_matches(question, embedding).items():
@@ -239,6 +246,13 @@ class RAGEngine:
             if len(in_code["ids"]) <= IDENTIFIER_MAX_CODE_MATCHES:
                 add(in_code, code_bonus)
         return found
+
+    def _refresh_collection(self):
+        """Vuelve a buscar la colección por nombre: una reconstrucción completa
+        (en este u otro proceso) la reemplaza por una nueva y la referencia
+        guardada apunta a la anterior, ya borrada."""
+        self.collection = self.client.get_or_create_collection(name=COLLECTION_NAME,
+                                                               metadata={"hnsw:space": "cosine"})
 
     def _query(self, embedding: List[float], n: int) -> dict:
         """Consulta a ChromaDB. Con muchos elementos borrados en el grafo HNSW,

@@ -13,6 +13,7 @@ esa) y ChromaDB la recarga desde disco. Las escrituras hechas por el propio
 proceso registran su versión, así que no provocan recargas innecesarias.
 """
 
+import gc
 import os
 import re
 import shutil
@@ -56,6 +57,19 @@ def bump_index_version(project_dir) -> str:
     with _versions_lock:
         _seen_versions[str(project_dir / "chroma_db")] = version
     return version
+
+
+def release_chroma_client(path: str) -> None:
+    """Cierra la instancia de ChromaDB de este proceso para data/<id>/chroma_db.
+    En Windows no se puede borrar una carpeta con archivos abiertos, y el
+    índice vectorial queda abierto mientras la instancia exista (probado: sin
+    esto, borrar el proyecto fallaba con WinError 32)."""
+    with _versions_lock:
+        system = SharedSystemClient._identifier_to_system.pop(path, None)
+        _seen_versions.pop(str(Path(path)), None)
+    if system is not None:
+        system.stop()
+    gc.collect()  # las colecciones que aún apunten a la instancia sueltan sus archivos
 
 
 def remove_orphan_segments(path: str) -> int:
