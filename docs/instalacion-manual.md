@@ -88,3 +88,25 @@ que otras personas de la red local lo usen desde su navegador, levántalo con
 con la API abierta cualquiera en la red puede usarla). Los comandos de la CLI
 (`beacon ask`, `sync`, `docs`) no necesitan el servidor y funcionan en un solo
 equipo; el watcher automático sí requiere `beacon serve`.
+
+## Usar `beacon` desde cualquier carpeta
+
+El comando `beacon` es un ejecutable que se crea dentro del entorno virtual (`.venv\Scripts\beacon.exe` en Windows, `.venv/bin/beacon` en Linux y macOS) al hacer `pip install -e .`. Para usarlo desde cualquier carpeta sin activar el entorno, hay que agregar **esa carpeta del entorno** al `PATH`, no la raíz del proyecto (que no contiene ningún ejecutable).
+
+```powershell
+# Windows, solo para la consola actual
+$env:Path = "C:\ruta\a\beacon\.venv\Scripts;" + $env:Path
+
+# Para dejarlo permanente: Configuración de Windows > Variables de entorno > Path > Nuevo
+```
+
+```bash
+# Linux / macOS (agregar a ~/.bashrc o ~/.zshrc para dejarlo permanente)
+export PATH="/ruta/a/beacon/.venv/bin:$PATH"
+```
+
+Después, `beacon projects` o `beacon ask <id> "pregunta"` funcionan desde cualquier carpeta. Hay que tener presente:
+
+- **La configuración y los datos siguen siendo los del proyecto.** `beacon` busca `config/config.yaml` y `data/` junto al código, no en la carpeta donde se ejecuta, así que siempre usa los mismos proyectos registrados e índices. Los dos archivos de configuración se pueden cambiar con las variables de entorno `DEUDA_TECNICA_CONFIG` y `DEUDA_TECNICA_CREDENTIALS`; la carpeta `data/` no tiene variable equivalente.
+- **Las rutas relativas de `repo_path` se interpretan desde la carpeta donde se ejecuta el comando**, no desde la del proyecto. Un proyecto registrado con `../requests-main` solo se encuentra si el comando se ejecuta desde la carpeta del proyecto (o desde una equivalente). Para usar `beacon` desde cualquier carpeta hay que registrar los repositorios con rutas absolutas (`beacon add <id> --repo-path C:utalepo`, o editando `repo_path` con `beacon edit <id> --repo-path ...`).
+- **`pipx install .` no está soportado por ahora.** `pyproject.toml` no declara las dependencias (están en `requirements.txt`), así que una instalación no editable queda sin ellas y `beacon` falla al arrancar con `ModuleNotFoundError`.
