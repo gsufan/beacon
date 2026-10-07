@@ -37,7 +37,7 @@ from core import services
 app = FastAPI(title="Beacon API", version="0.3.0", docs_url="/api/docs", redoc_url="/api/redoc")
 # Beacon se sirve same-origin en producción (la UI compilada vive en el mismo
 # host:puerto que la API); el único caso legítimo de origen cruzado es el dev
-# server de Vite. No usar "*" — sin auth en la API (ver README/ARQUITECTURA),
+# server de Vite. No usar "*" — sin auth en la API (ver docs/seguridad.md),
 # un CORS abierto ampliaría la superficie de ataque sin necesidad real.
 app.add_middleware(
     CORSMiddleware,

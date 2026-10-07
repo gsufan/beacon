@@ -72,7 +72,7 @@ ASKS_ABOUT_USAGE = re.compile(
 # de evaluación: coinciden en el 98% (requests) y 92% (microservices-demo) de
 # las expansiones, y casi todas las diferencias están en tests; fuera de
 # ellos, el AST evitaría 3 expansiones de más. No justifica mantener reglas
-# de extracción para cada lenguaje (detalle en docs/ARQUITECTURA.md).
+# de extracción para cada lenguaje.
 CALL_CANDIDATE_PATTERN = re.compile(
     r"(?<!\bdef )(?<!\bfunc )(?<!\bfunction )(?<!\bclass )\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 KEYWORD_BLOCKLIST = {

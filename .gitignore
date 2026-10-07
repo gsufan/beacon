@@ -34,29 +34,13 @@ Thumbs.db
 .vscode/
 .idea/
 
-# Claude Code: permisos/config local de sesión, no del proyecto
-.claude/settings.local.json
+# Pruebas y cobertura
+.coverage
 
-# Notas personales del autor, no propósito general del repo
-/DEFENSA.md
+# Configuración local de Claude Code
+.claude/
 
-# Centro de memoria para retomar el proyecto con cualquier IA — contexto
-# interno de desarrollo, no documentación pública. El nombre real en disco
-# es minúscula (context.md); se ignoran ambos casos para no depender de
-# que git corra en modo case-insensitive (default en Windows/Mac, no en Linux).
-/CONTEXT.md
-/context.md
-
-# Entregables personales (informes para el profe, etc.), no documentación pública del repo
+# Material personal del equipo (informes, defensa, notas, diagramas, guías):
+# no es parte del software y no se publica
+/privado/
 *.docx
-
-# Documentación de la carrera (INACAP: marco teórico, historias de usuario,
-# diagramas UML de la memoria) — es material de la asignatura/defensa, no
-# documentación del software en sí (eso vive en docs/ARQUITECTURA.md y README.md)
-/marco-teorico-beacon-v2.md
-/requerimientos_historias_usuario.md
-/resumen_notebooklm_beacon.md
-/diagramas-drawio/
-/Beacon_Cronograma.xml
-/gantt.png
-/Beacon_ES1_Respuesta_a_comentarios.docx
