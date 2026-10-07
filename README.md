@@ -171,6 +171,14 @@ beacon serve
 Si levantas `beacon serve` sin haber compilado la UI, la API funciona igual y
 la raíz (`http://127.0.0.1:8000`) muestra cómo compilarla.
 
+**Usarlo solo o compartirlo con un equipo, sin Docker.** Por defecto
+`beacon serve` escucha solo en `127.0.0.1`, es decir, para quien lo corre. Para
+que otras personas de la red local lo usen desde su navegador, levántalo con
+`beacon serve --host 0.0.0.0` (y activa `BEACON_API_KEY`, ver más abajo, porque
+con la API abierta cualquiera en la red puede usarla). Los comandos de la CLI
+(`beacon ask`, `sync`, `docs`) no necesitan el servidor y funcionan en un solo
+equipo; el watcher automático sí requiere `beacon serve`.
+
 ## Uso — CLI
 
 ```bash
