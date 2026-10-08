@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from typing import Optional
 
+import httpx
 import ollama
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -113,6 +114,7 @@ class SourceItem(BaseModel):
     end_line: int
     distance: float
     expanded: bool = False
+    code: str = ""
 
 
 class QueryResponse(BaseModel):
@@ -167,6 +169,10 @@ def query(project_id: str, req: QueryRequest):
         result = engine.ask(req.question, top_k=req.top_k, language=req.language)
     except IndexModelMismatchError as e:
         raise HTTPException(status_code=409, detail=str(e))
+    except (ConnectionError, httpx.TransportError):
+        # 503 lets the UI tell "Ollama is down" apart from other engine errors.
+        host = engine.ai_config.ollama_host
+        raise HTTPException(status_code=503, detail=f"No se pudo conectar a Ollama en '{host}'. Verifica que esté ejecutándose.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el motor RAG: {e}")
     return result.to_dict()
@@ -246,6 +252,27 @@ def system_available_models(ollama_host: Optional[str] = None):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"No se pudo conectar a Ollama en '{host}': {e}")
     return {"models": models}
+
+
+def _model_installed(name: str, installed: list) -> bool:
+    # Ollama lists untagged models as "<name>:latest".
+    return name in installed or f"{name}:latest" in installed
+
+
+@app.get("/system/ai-status")
+def system_ai_status():
+    """Whether Ollama answers and the configured models are installed."""
+    ai = load_config().ai_provider
+    try:
+        client = ollama.Client(host=ai.ollama_host, timeout=3)
+        installed = [m["model"] for m in client.list().get("models", [])]
+    except Exception:
+        return {"reachable": False, "llm_model_available": False, "embedding_model_available": False}
+    return {
+        "reachable": True,
+        "llm_model_available": _model_installed(ai.llm_model, installed),
+        "embedding_model_available": _model_installed(ai.embedding_model, installed),
+    }
 
 
 BROWSE_ROOT = Path.home().resolve()

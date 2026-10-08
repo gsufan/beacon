@@ -273,3 +273,69 @@ def test_auto_watch_tick_skips_projects_with_auto_watch_disabled(monkeypatch):
     api._auto_watch_tick()
 
     assert calls == []
+
+
+class _FakeOllama:
+    def __init__(self, models):
+        self._models = models
+
+    def list(self):
+        return {"models": [{"model": m} for m in self._models]}
+
+
+def test_ai_status_unreachable(monkeypatch):
+    def refuse(**kwargs):
+        raise ConnectionError("down")
+
+    monkeypatch.setattr(api.ollama, "Client", refuse)
+    resp = client.get("/system/ai-status")
+    assert resp.status_code == 200
+    assert resp.json() == {"reachable": False, "llm_model_available": False, "embedding_model_available": False}
+
+
+def test_ai_status_reports_missing_model(monkeypatch):
+    ai = api.load_config().ai_provider
+    monkeypatch.setattr(api.ollama, "Client", lambda **kwargs: _FakeOllama([ai.llm_model]))
+    body = client.get("/system/ai-status").json()
+    assert body == {"reachable": True, "llm_model_available": True, "embedding_model_available": False}
+
+
+def test_ai_status_accepts_latest_tag():
+    assert api._model_installed("llama3", ["llama3:latest"])
+    assert not api._model_installed("llama3", ["llama3:8b"])
+
+
+class _FakeEngine:
+    def __init__(self, ask):
+        self.ask = ask
+        self.ai_config = AIProviderConfig(
+            provider="ollama", ollama_host="http://localhost:11434",
+            embedding_model="nomic-embed-text", llm_model="llama3:8b",
+        )
+
+    class collection:
+        @staticmethod
+        def count():
+            return 1
+
+
+def test_query_returns_503_when_ollama_is_down(monkeypatch):
+    def ask(question, top_k, language):
+        raise ConnectionError("Failed to connect to Ollama")
+
+    monkeypatch.setattr(api, "_get_engine", lambda project_id: _FakeEngine(ask))
+    resp = client.post("/projects/demo/query", json={"question": "que hace este repo?"})
+    assert resp.status_code == 503
+    assert "http://localhost:11434" in resp.json()["detail"]
+
+
+def test_query_includes_source_code(monkeypatch):
+    from core.engine.rag_engine import RAGResponse, RetrievedChunk
+
+    chunk = RetrievedChunk(file_path="a.py", chunk_type="function", name="f", start_line=1,
+                           end_line=2, code="def f():\n    return 1", distance=0.2)
+    monkeypatch.setattr(api, "_get_engine",
+                        lambda project_id: _FakeEngine(lambda question, top_k, language: RAGResponse("ok", [chunk])))
+    resp = client.post("/projects/demo/query", json={"question": "que hace este repo?"})
+    assert resp.status_code == 200
+    assert resp.json()["sources"][0]["code"] == "def f():\n    return 1"

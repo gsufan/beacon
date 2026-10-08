@@ -148,7 +148,8 @@ class RAGResponse:
             "sources": [
                 {"file_path": s.file_path, "chunk_type": s.chunk_type, "name": s.name,
                  "start_line": s.start_line, "end_line": s.end_line,
-                 "distance": round(s.distance, 4), "expanded": s.expanded}
+                 "distance": round(s.distance, 4), "expanded": s.expanded,
+                 "code": s.code}
                 for s in self.sources
             ],
         }
