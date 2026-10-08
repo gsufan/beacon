@@ -10,6 +10,7 @@ import pytest  # noqa: E402
 from core.engine.chunker import (  # noqa: E402
     chunk_fallback,
     chunk_file,
+    chunk_source,
     chunk_with_treesitter,
     detect_language,
 )
@@ -358,3 +359,13 @@ def test_code_chunk_to_metadata_and_chunk_id():
     assert metadata["name"] == "standalone"
 
     assert func.chunk_id() == f"mod.py::{func.start_line}-{func.end_line}"
+
+
+def test_chunk_source_never_repeats_chunk_ids_for_same_line_getter_and_setter():
+    # hallado indexando un repo real: getter y setter en la misma línea tenían el mismo id
+    source = ("const anchor = { click: () => 1, set download(v) { this._d = v }, "
+              "get download() { return this._d } }")
+    chunks = chunk_source("web/anchor.test.js", source + chr(10))
+    ids = [c.chunk_id() for c in chunks]
+    assert ids, "debe haber al menos un chunk"
+    assert len(ids) == len(set(ids))

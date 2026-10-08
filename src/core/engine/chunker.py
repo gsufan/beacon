@@ -405,10 +405,24 @@ def chunk_source(file_path: str, source_code: str) -> List[CodeChunk]:
         return chunk_fallback(file_path, source_code)
 
     try:
-        return chunk_with_treesitter(file_path, source_code, language)
+        return _unique_ids(chunk_with_treesitter(file_path, source_code, language))
     except Exception:
         # Si el parser falla (sintaxis rota, versión de gramática, etc.) no perdemos el archivo
         return chunk_fallback(file_path, source_code)
+
+
+def _unique_ids(chunks: List[CodeChunk]) -> List[CodeChunk]:
+    """Descarta los chunks cuyo id ya salió antes. Dos funciones en las mismas líneas
+    (`{ get x() {}, set x(v) {} }` en una sola línea) comparten rango y, por lo tanto,
+    id; Chroma rechaza el upsert completo si hay ids repetidos y el sync del repo falla."""
+    seen = set()
+    unique = []
+    for chunk in chunks:
+        cid = chunk.chunk_id()
+        if cid not in seen:
+            seen.add(cid)
+            unique.append(chunk)
+    return unique
 
 
 if __name__ == "__main__":
