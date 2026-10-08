@@ -38,6 +38,7 @@ export interface SourceItem {
   end_line: number;
   distance: number;
   expanded: boolean;
+  code?: string;
 }
 
 export interface QueryResponse {
@@ -59,6 +60,12 @@ export interface AIProviderConfig {
   ollama_host: string;
   embedding_model: string;
   llm_model: string;
+}
+
+export interface AIStatus {
+  reachable: boolean;
+  llm_model_available: boolean;
+  embedding_model_available: boolean;
 }
 
 export interface AppConfigResponse {

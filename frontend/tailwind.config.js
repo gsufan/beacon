@@ -7,26 +7,32 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["Inter", "-apple-system", "system-ui", "sans-serif"],
-        display: ["Poppins", "Inter", "-apple-system", "sans-serif"],
+        sans: ["Figtree", "Segoe UI", "system-ui", "sans-serif"],
+        display: ["Poppins", "Figtree", "system-ui", "sans-serif"],
+        mono: ["JetBrains Mono", "Consolas", "ui-monospace", "monospace"],
       },
       colors: {
-        // Paleta tomada de beacon.tv (variables --c-primary1..12 de su CSS).
-        // 1 = más oscuro, 12 = más claro.
-        beacon: {
-          1: "#0E0616",
-          2: "#12081E",
-          3: "#190D25",
-          4: "#28153B",
-          5: "#3A2252",
-          6: "#472C63",
-          7: "#4D3169",
-          8: "#5A3A7A",
-          9: "#73499D",
-          10: "#BF93EB",
-          11: "#E1C3FF",
-          12: "#F7EFFF",
+        // Semantic tokens: values live in src/styles/index.css and switch with the theme.
+        ground: "var(--ground)",
+        surface: { DEFAULT: "var(--surface)", 2: "var(--surface-2)" },
+        line: { DEFAULT: "var(--line)", strong: "var(--line-strong)" },
+        ink: { DEFAULT: "var(--ink)", 2: "var(--ink-2)" },
+        muted: "var(--muted)",
+        accent: {
+          DEFAULT: "var(--accent)",
+          on: "var(--accent-on)",
+          ink: "var(--accent-ink)",
+          tint: "var(--accent-tint)",
         },
+        code: { bg: "var(--code-bg)", ink: "var(--code-ink)" },
+        ok: "var(--ok)",
+        graph: {
+          ink: "var(--graph-ink)",
+          line: "var(--graph-line)",
+          bg: "var(--graph-bg)",
+          chip: "var(--graph-chip)",
+        },
+        danger: { ink: "var(--danger-ink)", line: "var(--danger-line)", bg: "var(--danger-bg)" },
       },
     },
   },

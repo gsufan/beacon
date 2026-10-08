@@ -6,7 +6,7 @@ export type Language = "es" | "en";
 interface LanguageContextValue {
   language: Language;
   setLanguage: (lang: Language) => void;
-  t: (key: TranslationKey) => string;
+  t: (key: TranslationKey, vars?: Record<string, string | number>) => string;
 }
 
 const LanguageContext = createContext<LanguageContextValue | null>(null);
@@ -21,7 +21,11 @@ export function LanguageProvider({ children }: { children: React.ReactNode }) {
     setLanguageState(lang);
   };
 
-  const t = (key: TranslationKey) => translations[language][key];
+  const t = (key: TranslationKey, vars?: Record<string, string | number>) => {
+    let text: string = translations[language][key];
+    for (const [name, value] of Object.entries(vars ?? {})) text = text.replace(`{${name}}`, String(value));
+    return text;
+  };
 
   return (
     <LanguageContext.Provider value={{ language, setLanguage, t }}>{children}</LanguageContext.Provider>
@@ -34,13 +38,14 @@ export function useLanguage() {
   return ctx;
 }
 
-export function LanguageSelector() {
+export function LanguageSelector({ id }: { id?: string }) {
   const { language, setLanguage } = useLanguage();
   return (
     <select
+      id={id}
       value={language}
       onChange={(e) => setLanguage(e.target.value as Language)}
-      className="w-full rounded-lg border border-beacon-11 bg-white px-3 py-2 text-sm text-beacon-4 dark:border-beacon-6 dark:bg-beacon-4 dark:text-beacon-11"
+      className="h-[30px] rounded-lg border border-line-strong bg-surface px-1.5 text-[13px] text-ink"
     >
       <option value="es">Español</option>
       <option value="en">English</option>

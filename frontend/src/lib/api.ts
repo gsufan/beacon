@@ -1,5 +1,6 @@
 import type {
   AIProviderConfig,
+  AIStatus,
   AppConfigResponse,
   BrowseDirsResponse,
   DocContent,
@@ -94,6 +95,8 @@ export const api = {
     request<{ status: string }>(`/projects/${projectId}/sync`, { method: "POST" }),
 
   syncStatus: (projectId: string) => request<SyncStatus>(`/projects/${projectId}/sync-status`),
+
+  aiStatus: () => request<AIStatus>("/system/ai-status"),
 
   systemProviders: () => request<{ providers: SystemProvider[] }>("/system/providers"),
 

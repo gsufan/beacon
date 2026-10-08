@@ -1,7 +1,71 @@
+@import "@fontsource/poppins/latin-600.css";
+@import "@fontsource/poppins/latin-700.css";
+@import "@fontsource/figtree/latin-400.css";
+@import "@fontsource/figtree/latin-500.css";
+@import "@fontsource/figtree/latin-600.css";
+@import "@fontsource/jetbrains-mono/latin-400.css";
+@import "@fontsource/jetbrains-mono/latin-500.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --ground: #f8f7fa;
+  --surface: #ffffff;
+  --surface-2: #f1eef6;
+  --line: #e4dfec;
+  --line-strong: #cfc7dd;
+  --ink: #1c1626;
+  --ink-2: #4b435a;
+  --muted: #5f566e;
+  --accent: #5b3fa8;
+  --accent-on: #ffffff;
+  --accent-ink: #4a3191;
+  --accent-tint: #eee8fb;
+  --ok: #1e7f5c;
+  --graph-ink: #0b5f63;
+  --graph-line: #7fbfc0;
+  --graph-bg: #f2fafa;
+  --graph-chip: #d9f0f0;
+  --danger-ink: #8f1d15;
+  --danger-line: #e8b4ae;
+  --danger-bg: #fdf3f2;
+  --code-bg: #1c1626;
+  --code-ink: #ede8f7;
+}
+
+.dark {
+  --ground: #0e1311;
+  --surface: #151b18;
+  --surface-2: #1f2823;
+  --line: #27312c;
+  --line-strong: #36423c;
+  --ink: #e7ece8;
+  --ink-2: #b4bfb8;
+  --muted: #98a49d;
+  --accent: #d4f26a;
+  --accent-on: #0e1311;
+  --accent-ink: #d4f26a;
+  --accent-tint: #252e1c;
+  --ok: #7bd88f;
+  --graph-ink: #b1a8ff;
+  --graph-line: #4b4590;
+  --graph-bg: #17162a;
+  --graph-chip: #26244a;
+  --danger-ink: #f2a29b;
+  --danger-line: #6e2c27;
+  --danger-bg: #241412;
+  --code-bg: #0a0e0c;
+  --code-ink: #d5dcd7;
+}
+
 body {
-  font-family: "Inter", -apple-system, system-ui, sans-serif;
+  font-family: "Figtree", "Segoe UI", system-ui, sans-serif;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-pulse {
+    animation: none;
+  }
 }

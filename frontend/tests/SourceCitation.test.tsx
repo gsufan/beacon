@@ -1,4 +1,5 @@
 import { render, screen } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it } from "vitest";
 import { LanguageProvider } from "../src/components/LanguageSelector";
 import SourceCitation from "../src/components/SourceCitation";
@@ -30,7 +31,8 @@ describe("SourceCitation", () => {
     renderWithLanguage(baseSource());
     expect(screen.getByText("src/cartservice/src/services/CartService.cs")).toBeInTheDocument();
     expect(screen.getByText("(24-50)")).toBeInTheDocument();
-    expect(screen.getByText("class · CartService")).toBeInTheDocument();
+    expect(screen.getByText("class")).toBeInTheDocument();
+    expect(screen.getByText("CartService")).toBeInTheDocument();
   });
 
   it("cuando NO es un chunk expandido por grafo de llamadas, muestra la distancia", () => {
@@ -42,6 +44,19 @@ describe("SourceCitation", () => {
     renderWithLanguage(baseSource({ expanded: true }));
     expect(screen.getByText("grafo de llamadas")).toBeInTheDocument();
     expect(screen.queryByText(/dist\./)).not.toBeInTheDocument();
+  });
+
+  it("muestra el código del fragmento solo cuando se pide", async () => {
+    const user = userEvent.setup();
+    renderWithLanguage(baseSource({ code: "public class CartService {}" }));
+    expect(screen.queryByText("public class CartService {}")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Ver código" }));
+    expect(screen.getByText("public class CartService {}")).toBeInTheDocument();
+  });
+
+  it("no ofrece ver el código si la API no lo envía", () => {
+    renderWithLanguage(baseSource());
+    expect(screen.queryByRole("button", { name: "Ver código" })).not.toBeInTheDocument();
   });
 
   it("no muestra el nombre del chunk si viene vacío", () => {

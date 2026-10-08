@@ -12,14 +12,14 @@ export default function Toggle({
       type="button"
       onClick={() => onChange(!checked)}
       className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
-        checked ? "bg-beacon-9" : "bg-beacon-8 dark:bg-beacon-6"
+        checked ? "bg-accent" : "bg-line-strong"
       }`}
       aria-label={label}
       aria-pressed={checked}
     >
       <span
-        className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition-transform ${
-          checked ? "translate-x-4" : "translate-x-0.5"
+        className={`absolute left-0 top-0.5 h-4 w-4 rounded-full transition-transform ${
+          checked ? "translate-x-[18px] bg-accent-on" : "translate-x-0.5 bg-ink-2"
         }`}
       />
     </button>

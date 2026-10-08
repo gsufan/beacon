@@ -50,14 +50,36 @@ export function useProject() {
   return ctx;
 }
 
-export function ProjectSelector() {
+// Indexed chunk count for the current project; null while unknown.
+export function useChunkCount(refreshKey?: string) {
+  const { projectId } = useProject();
+  const [count, setCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    setCount(null);
+    if (!projectId) return;
+    let cancelled = false;
+    api
+      .health(projectId)
+      .then((res) => !cancelled && setCount(res.total_chunks_indexados))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, refreshKey]);
+
+  return count;
+}
+
+export function ProjectSelector({ id }: { id?: string }) {
   const { projects, projectId, setProjectId } = useProject();
   const { t } = useLanguage();
   return (
     <select
+      id={id}
       value={projectId ?? ""}
       onChange={(e) => setProjectId(e.target.value)}
-      className="w-full rounded-lg border border-beacon-11 bg-white px-3 py-2 text-sm text-beacon-4 dark:border-beacon-6 dark:bg-beacon-4 dark:text-beacon-11"
+      className="h-9 w-full rounded-lg border border-line-strong bg-surface px-2 text-sm font-semibold text-ink"
     >
       {projects.length === 0 && <option value="">{t("no_projects")}</option>}
       {projects.map((p) => (

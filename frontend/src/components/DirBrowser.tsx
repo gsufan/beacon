@@ -35,30 +35,30 @@ export default function DirBrowser({ value, onChange }: Props) {
   }, []);
 
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-beacon-11 p-2 dark:border-beacon-6">
+    <div className="flex flex-col gap-2 rounded-lg border border-line p-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="truncate font-mono text-xs text-stone-600 dark:text-stone-400">{path}</span>
+        <span className="truncate font-mono text-xs text-ink-2">{path}</span>
         {parent && (
           <button
             onClick={() => load(parent)}
-            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-stone-500 hover:bg-beacon-11 dark:hover:bg-beacon-6"
+            className="flex shrink-0 items-center gap-1 rounded-md px-2 py-1 text-xs text-muted hover:bg-surface-2"
           >
             <FolderUp size={14} /> {t("dirbrowser_up")}
           </button>
         )}
       </div>
-      {error && <p className="text-xs text-red-600 dark:text-red-400">{error}</p>}
+      {error && <p className="text-xs text-danger-ink">{error}</p>}
       <div className="flex max-h-40 flex-col gap-0.5 overflow-y-auto">
         {dirs.map((d) => (
           <button
             key={d}
             onClick={() => load(`${path}/${d}`)}
-            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-beacon-6 hover:bg-beacon-11 dark:text-beacon-8 dark:hover:bg-beacon-6"
+            className="flex items-center gap-1.5 rounded-md px-2 py-1 text-left text-xs text-ink-2 hover:bg-surface-2"
           >
             <Folder size={14} /> {d}
           </button>
         ))}
-        {dirs.length === 0 && <p className="px-2 py-1 text-xs text-stone-400">{t("dirbrowser_empty")}</p>}
+        {dirs.length === 0 && <p className="px-2 py-1 text-xs text-muted">{t("dirbrowser_empty")}</p>}
       </div>
     </div>
   );

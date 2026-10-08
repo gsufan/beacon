@@ -40,9 +40,11 @@ beacon serve                         # levanta la API + UI en http://127.0.0.1:8
 
 Con `beacon serve` corriendo (y la UI ya compilada, ver [instalacion-manual.md](instalacion-manual.md)), abre `http://127.0.0.1:8000`:
 
-- **Chat**: preguntas en lenguaje natural sobre el código indexado, con fuentes citadas.
-- **Docs**: navegador de la documentación generada por archivo.
-- **Configuración**: proveedor/modelo de IA (auto-detectados desde Ollama), registro de nuevos proyectos (ruta local o clonado por URL desde GitHub/GitLab/Bitbucket), watcher automático opcional por proyecto.
+- **Chat**: preguntas en lenguaje natural sobre el código indexado. Conserva el historial de preguntas de la sesión (se reinicia al cambiar de proyecto) y muestra, junto a cada respuesta, sus fuentes separadas en coincidencia semántica y grafo de llamadas, con la similitud, las líneas y el código de cada una. La cabecera indica el modelo en uso y si Ollama responde; si una consulta falla, la pregunta se conserva y se puede reintentar.
+- **Docs**: árbol de la documentación generada por archivo, con carpetas plegables y filtro de texto.
+- **Configuración**: proyectos (registro por ruta local o clonado por URL desde GitHub/GitLab/Bitbucket, sincronización de varios a la vez, watcher automático opcional y eliminación con confirmación), proveedor y modelos de IA (detectados desde Ollama, con aviso si un modelo configurado no está instalado) y clave de API.
+
+El tema claro u oscuro se elige en la barra lateral, y las tipografías vienen empaquetadas: la interfaz no hace peticiones a servicios externos.
 
 Soporta español e inglés (selector en la barra lateral).
 
