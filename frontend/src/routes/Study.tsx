@@ -42,7 +42,7 @@ const T = {
     consent_send: "Autorizo generar el archivo de resultados para enviarlo.",
     identity: "Opcional: tu perfil de GitHub o una presentación breve (se descarga en un archivo aparte).",
     github: "Perfil de GitHub", intro_me: "Presentación",
-    generate: "Generar archivos", dl_results: "Descargar resultados", dl_identity: "Descargar identidad (opcional)",
+    generate: "Generar archivos", dl_results: "Descargar resultados", copy: "Copiar resultados", copied: "Copiado", dl_identity: "Descargar identidad (opcional)",
     review: "Revisa el contenido antes de enviarlo:", sent_note: "Envía el archivo de resultados por el canal indicado en la invitación.",
     discard: "Descartar todo y salir", error: "Error",
   },
@@ -66,7 +66,7 @@ const T = {
     consent_send: "I allow generating the results file so I can send it.",
     identity: "Optional: your GitHub profile or a short introduction (downloaded as a separate file).",
     github: "GitHub profile", intro_me: "Introduction",
-    generate: "Generate files", dl_results: "Download results", dl_identity: "Download identity (optional)",
+    generate: "Generate files", dl_results: "Download results", copy: "Copy results", copied: "Copied", dl_identity: "Download identity (optional)",
     review: "Review the content before sending it:", sent_note: "Send the results file through the channel given in the invitation.",
     discard: "Discard everything and quit", error: "Error",
   },
@@ -163,6 +163,7 @@ function StudyBody({ state, t, lang, busy, act, stage }: BodyProps) {
   const [years, setYears] = useState("");
   const [useful, setUseful] = useState("");
   const [sendOk, setSendOk] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [github, setGithub] = useState("");
   const [intro, setIntro] = useState("");
   const [files, setFiles] = useState<{ resultado: unknown; identidad: unknown } | null>(null);
@@ -260,6 +261,9 @@ function StudyBody({ state, t, lang, busy, act, stage }: BodyProps) {
             <pre className="max-h-64 overflow-auto rounded-lg bg-code-bg p-3 font-mono text-xs text-code-ink">{JSON.stringify(files.resultado, null, 2)}</pre>
             <div className="flex flex-wrap gap-3">
               <button className={btn} onClick={() => download("beacon-estudio-resultados.json", files.resultado)}>{t("dl_results")}</button>
+              <button className={btnGhost} onClick={() => {
+                void navigator.clipboard?.writeText(JSON.stringify(files.resultado)).then(() => setCopied(true));
+              }}>{copied ? t("copied") : t("copy")}</button>
               {files.identidad !== null && (
                 <button className={btnGhost} onClick={() => download("beacon-estudio-identidad.json", files.identidad)}>{t("dl_identity")}</button>
               )}
