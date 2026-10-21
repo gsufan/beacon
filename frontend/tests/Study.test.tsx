@@ -159,6 +159,19 @@ describe("modo estudio", () => {
     await new Promise((r) => setTimeout(r, 50));  // el efecto que cerraba el formulario corría justo después
     expect(screen.getByRole("textbox", { name: "URL" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /^Siguiente$|^Next$/ })).toBeDisabled();  // hasta que el nuevo esté listo
+    expect(screen.getByRole("textbox", { name: "URL" })).toHaveValue("");  // parte vacío, sin repetir el anterior
+  });
+
+  it("elegir el mismo repositorio que ya está listo no vuelve a indexarlo", async () => {
+    state = started({ hardware: { cpu_modelo: "x" }, repo: { url: "https://github.com/u/r", archivos_indexados: 3 },
+      repo_status: { estado: "listo", detalle: null } });
+    open();
+    await userEvent.click(await screen.findByRole("button", { name: /Atrás|Back/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Elegir otro repositorio|Pick another repository/ }));
+    await userEvent.type(screen.getByRole("textbox", { name: "URL" }), "https://github.com/u/r");
+    await userEvent.click(screen.getByRole("button", { name: /Preparar repositorio|Prepare repository/ }));
+    expect(calls.some((c) => c.path === "/study/repo")).toBe(false);
+    expect(screen.getByText(/Repositorio listo|Repository ready/)).toBeInTheDocument();
   });
 
   it("muestra el avance del indexado archivo por archivo", async () => {

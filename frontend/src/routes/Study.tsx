@@ -388,13 +388,17 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
               })}
             </ul>
             <button className={btn + " self-start"} disabled={!url.trim() || busy || preparing}
-              onClick={() => { setWorkingOn(url.trim()); void act(() => call("POST", "/repo", { url: url.trim() })); }}>{t("prepare")}</button>
+              onClick={() => {
+                if (changing && url.trim() === state.repo?.url) { setChanging(false); return; }  // ya está preparado: no se repite el indexado
+                setWorkingOn(url.trim());
+                void act(() => call("POST", "/repo", { url: url.trim() }));
+              }}>{t("prepare")}</button>
           </>
         ) : (
           <>
             <p className="text-sm text-ink-2">{t("repo_ready", { n: state.repo?.archivos_indexados ?? 0 })} <span className="font-mono text-xs">{state.repo?.url}</span></p>
             {questions.length === 0
-              ? <button className={btnGhost + " self-start"} onClick={() => { setSawPreparing(false); setWorkingOn(""); setChanging(true); }}>{t("change_repo")}</button>
+              ? <button className={btnGhost + " self-start"} onClick={() => { setSawPreparing(false); setWorkingOn(""); setUrl(""); setChanging(true); }}>{t("change_repo")}</button>
               : <p className="text-xs text-muted">{t("repo_locked")}</p>}
           </>
         )}

@@ -44,7 +44,9 @@ def validate_result(data: dict) -> Tuple[List[str], List[str]]:
         warnings.append("tiempo de respuesta mayor a 15 minutos")
     if all(q.get("valoracion") is None for q in questions):
         warnings.append("ninguna respuesta fue valorada")
-    hw = data.get("hardware")
-    if hw and hw.get("gpus") and min(times) < 1.0:
-        warnings.append("respuestas en menos de 1 s con GPU declarada: poco plausible para un modelo local de 8B")
+    # Una negativa corta («no encontré información») puede salir en menos de 1 s: lo que no es plausible es generar
+    # respuestas largas a más de 400 tokens/s con un modelo local de 8B.
+    if any(q.get("tokens_respuesta", 0) >= 50 and q.get("segundos_respuesta", 0) > 0
+           and q["tokens_respuesta"] / q["segundos_respuesta"] > 400 for q in questions):
+        warnings.append("velocidad de generación de más de 400 tokens/s: poco plausible para un modelo local de 8B")
     return problems, warnings

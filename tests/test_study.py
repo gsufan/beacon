@@ -151,11 +151,16 @@ def test_validation_reports_problems_and_suspicious_files(session):
     assert validate_result([])[0]
 
     suspicious = json.loads(json.dumps(data))
-    suspicious["hardware"] = {"gpus": [{"modelo": "g", "vram_gb": 8}]}
     for q in suspicious["preguntas"]:
         q["segundos_respuesta"] = 0.1
+        q["tokens_respuesta"] = 300
     warnings = validate_result(suspicious)[1]
-    assert any("imposible" in w for w in warnings) and any("GPU" in w for w in warnings)
+    assert any("imposible" in w for w in warnings) and any("tokens/s" in w for w in warnings)
+
+    short_refusal = json.loads(json.dumps(data))  # una negativa corta y rápida es normal, no sospechosa
+    for q in short_refusal["preguntas"]:
+        q["segundos_respuesta"], q["tokens_respuesta"] = 0.75, 16
+    assert validate_result(short_refusal)[1] == []
 
     repeated = json.loads(json.dumps(data))
     for q in repeated["preguntas"]:
