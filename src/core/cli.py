@@ -1,6 +1,7 @@
 """
 Punto de entrada único. Antes: 5 scripts sueltos, cada uno con su propia
 consola muda. Ahora: un comando, con progreso real y mensajes claros.
+Los mensajes y la ayuda salen en el idioma del sistema operativo (ver cli_lang).
 
 Uso:
     beacon projects                        # lista proyectos registrados (Read)
@@ -16,6 +17,7 @@ Uso:
     beacon export <id>                     # empaqueta el índice+docs en un .zip portable
     beacon import <archivo.zip>            # registra un proyecto desde un .zip exportado
     beacon serve                           # levanta la API + UI
+    beacon study                           # modo estudio (ver docs/estudio.md)
 """
 
 import json
@@ -32,6 +34,7 @@ from rich.console import Console
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
+from core.cli_lang import tr
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -56,7 +59,10 @@ from core.engine.indexer import CodebaseIndexer, IndexModelMismatchError
 from core.engine.doc_generator import DocGenerator, IndexOutOfDateError
 from core.engine.rag_engine import RAGEngine
 
-app = typer.Typer(help="Beacon — plataforma de mitigación de deuda técnica", invoke_without_command=True)
+app = typer.Typer(
+    help=tr("Beacon — plataforma de mitigación de deuda técnica", "Beacon — platform to mitigate technical debt"),
+    invoke_without_command=True,
+)
 console = Console()
 
 
@@ -65,7 +71,7 @@ def _version() -> str:
     try:
         return version("beacon")
     except PackageNotFoundError:
-        return "desarrollo"
+        return tr("desarrollo", "development")
 
 
 def _version_callback(show: bool):
@@ -78,26 +84,27 @@ def _version_callback(show: bool):
 def main(
     ctx: typer.Context,
     version: bool = typer.Option(False, "--version", "-v", callback=_version_callback, is_eager=True,
-                                 help="Muestra la versión y sale."),
+                                 help=tr("Muestra la versión y sale.", "Show the version and exit.")),
 ):
-    """Sin comando, muestra un resumen con los comandos más útiles."""
+    """Beacon"""
     if ctx.invoked_subcommand is not None:
         return
     console.print()
-    console.print(f"[bold]Beacon[/bold] {_version()} · preguntas sobre tu código, todo en tu equipo")
+    console.print(f"[bold]Beacon[/bold] {_version()} · " + tr("preguntas sobre tu código, todo en tu equipo",
+                                                              "questions about your code, all on your machine"))
     console.print()
-    console.print("Para empezar:")
+    console.print(tr("Para empezar:", "To get started:"))
     for cmd, desc in (
-        ("beacon add", "registrar un repositorio"),
-        ("beacon sync <id>", "indexarlo"),
-        ("beacon ask <id> \"¿qué hace...?\"", "hacer una pregunta"),
-        ("beacon serve", "abrir la interfaz web"),
-        ("beacon doctor", "revisar que todo esté bien configurado"),
-        ("beacon study", "participar en el estudio de evaluación"),
+        ("beacon add", tr("registrar un repositorio", "register a repository")),
+        ("beacon sync <id>", tr("indexarlo", "index it")),
+        ("beacon ask <id> \"...?\"", tr("hacer una pregunta", "ask a question")),
+        ("beacon serve", tr("abrir la interfaz web", "open the web interface")),
+        ("beacon doctor", tr("revisar que todo esté bien configurado", "check that everything is set up")),
+        ("beacon study", tr("participar en el estudio de evaluación", "take part in the evaluation study")),
     ):
         console.print(f"  [cyan]{cmd:<34}[/cyan] {desc}")
     console.print()
-    console.print("Todos los comandos: [cyan]beacon --help[/cyan]. ¡Happy hacking!")
+    console.print(tr("Todos los comandos: ", "All commands: ") + "[cyan]beacon --help[/cyan]. " + tr("¡Happy hacking!", "Happy hacking!"))
     console.print()
 
 
@@ -116,57 +123,62 @@ def _progress_callback(progress, task):
     return on_progress
 
 
-@app.command("projects")
+@app.command("projects", help=tr("Lista los proyectos registrados en config.yaml.", "List the projects registered in config.yaml."))
 def cmd_list_projects():
-    """Lista los proyectos registrados en config.yaml."""
     projects = list_projects()
     if not projects:
-        console.print("[yellow]No hay proyectos registrados en config/config.yaml todavía.[/yellow]")
+        console.print(tr("[yellow]No hay proyectos registrados en config/config.yaml todavía.[/yellow]",
+                         "[yellow]No projects are registered in config/config.yaml yet.[/yellow]"))
         raise typer.Exit()
-    table = Table(title="Proyectos registrados")
-    table.add_column("id"); table.add_column("nombre"); table.add_column("repo")
+    table = Table(title=tr("Proyectos registrados", "Registered projects"))
+    table.add_column("id"); table.add_column(tr("nombre", "name")); table.add_column("repo")
     for p in projects:
         table.add_row(p.id, p.name, p.repo_path)
     console.print(table)
 
 
-@app.command("add")
+@app.command("add", help=tr("Registra un proyecto nuevo: un repo local ya clonado (--repo-path), o clona uno remoto y lo registra (--url).",
+                            "Register a new project: an already cloned local repo (--repo-path), or clone a remote one and register it (--url)."))
 def cmd_add(
     project_id: str,
-    repo_path: str = typer.Option(None, "--repo-path", help="Ruta local a un repo git ya clonado."),
-    url: str = typer.Option(None, "--url", help="URL de un repo remoto a clonar (alternativa a --repo-path)."),
-    name: str = typer.Option(None, "--name", help="Nombre visible (por defecto, el id)."),
+    repo_path: str = typer.Option(None, "--repo-path", help=tr("Ruta local a un repo git ya clonado.", "Local path to an already cloned git repo.")),
+    url: str = typer.Option(None, "--url", help=tr("URL de un repo remoto a clonar (alternativa a --repo-path).",
+                                                    "URL of a remote repo to clone (alternative to --repo-path).")),
+    name: str = typer.Option(None, "--name", help=tr("Nombre visible (por defecto, el id).", "Display name (the id by default).")),
     auto_watch: bool = typer.Option(False, "--auto-watch/--no-auto-watch"),
-    private: bool = typer.Option(False, "--private", help="Repo privado: pide un token de acceso (no se muestra al escribirlo)."),
+    private: bool = typer.Option(False, "--private", help=tr("Repo privado: pide un token de acceso (no se muestra al escribirlo).",
+                                                              "Private repo: asks for an access token (hidden while typing).")),
 ):
-    """Registra un proyecto nuevo: un repo local ya clonado (--repo-path),
-    o clona uno remoto y lo registra (--url)."""
     token = None
     if private:
         if not url:
-            console.print("[red]--private solo aplica a repos remotos (--url).[/red]")
+            console.print(tr("[red]--private solo aplica a repos remotos (--url).[/red]",
+                             "[red]--private only applies to remote repos (--url).[/red]"))
             raise typer.Exit(code=1)
-        token = typer.prompt("Token de acceso", hide_input=True)
-    with console.status(f"Clonando {url}...") if url else nullcontext():
+        token = typer.prompt(tr("Token de acceso", "Access token"), hide_input=True)
+    with console.status(tr(f"Clonando {url}...", f"Cloning {url}...")) if url else nullcontext():
         entry = _run_safely(lambda: services.register_project(
             project_id, name=name, repo_path=repo_path, repo_url=url, auth_token=token, auto_watch=auto_watch,
         ), repo_path=repo_path or "")
-    console.print(f"[green]OK[/green] Proyecto '{entry.id}' registrado. Corre: beacon sync {entry.id}")
+    console.print(tr(f"[green]OK[/green] Proyecto '{entry.id}' registrado. Corre: beacon sync {entry.id}",
+                     f"[green]OK[/green] Project '{entry.id}' registered. Run: beacon sync {entry.id}"))
 
 
-@app.command("edit")
+@app.command("edit", help=tr("Edita un proyecto ya registrado (nombre, repo_path y/o auto_watch).",
+                             "Edit an already registered project (name, repo_path and/or auto_watch)."))
 def cmd_edit(
     project_id: str,
-    name: str = typer.Option(None, "--name", help="Nuevo nombre visible."),
-    repo_path: str = typer.Option(None, "--repo-path", help="Nueva ruta local del repo."),
-    auto_watch: Optional[bool] = typer.Option(None, "--auto-watch/--no-auto-watch", help="Activa/desactiva el watcher automático."),
+    name: str = typer.Option(None, "--name", help=tr("Nuevo nombre visible.", "New display name.")),
+    repo_path: str = typer.Option(None, "--repo-path", help=tr("Nueva ruta local del repo.", "New local path of the repo.")),
+    auto_watch: Optional[bool] = typer.Option(None, "--auto-watch/--no-auto-watch",
+                                              help=tr("Activa/desactiva el watcher automático.", "Turn the automatic watcher on/off.")),
 ):
-    """Edita un proyecto ya registrado (nombre, repo_path y/o auto_watch)."""
     if name is None and repo_path is None and auto_watch is None:
-        console.print("[yellow]No pasaste nada para editar — usa --name, --repo-path y/o --auto-watch/--no-auto-watch.[/yellow]")
+        console.print(tr("[yellow]No pasaste nada para editar — usa --name, --repo-path y/o --auto-watch/--no-auto-watch.[/yellow]",
+                         "[yellow]Nothing to edit — use --name, --repo-path and/or --auto-watch/--no-auto-watch.[/yellow]"))
         raise typer.Exit(code=1)
     if repo_path is not None and not Path(repo_path).exists():
-        console.print(f"[red]'{repo_path}' no existe.[/red]")
+        console.print(tr(f"[red]'{repo_path}' no existe.[/red]", f"[red]'{repo_path}' does not exist.[/red]"))
         raise typer.Exit(code=1)
 
     changed = False
@@ -176,39 +188,48 @@ def cmd_edit(
         changed = set_auto_watch(project_id, auto_watch) or changed
 
     if not changed:
-        console.print(f"[red]Proyecto '{project_id}' no encontrado en config.yaml.[/red]")
+        console.print(tr(f"[red]Proyecto '{project_id}' no encontrado en config.yaml.[/red]",
+                         f"[red]Project '{project_id}' not found in config.yaml.[/red]"))
         raise typer.Exit(code=1)
-    console.print(f"[green]OK[/green] '{project_id}' actualizado.")
+    console.print(tr(f"[green]OK[/green] '{project_id}' actualizado.", f"[green]OK[/green] '{project_id}' updated."))
 
 
-@app.command("remove")
+@app.command("remove", help=tr("Desregistra un proyecto de config.yaml (y opcionalmente borra sus datos indexados).",
+                               "Unregister a project from config.yaml (and optionally delete its indexed data)."))
 def cmd_remove(
     project_id: str,
-    purge_data: bool = typer.Option(False, "--purge-data", help="Además borra data/<id>/ (índice + docs) del disco."),
+    purge_data: bool = typer.Option(False, "--purge-data", help=tr("Además borra data/<id>/ (índice + docs) del disco.",
+                                                                    "Also delete data/<id>/ (index + docs) from disk.")),
 ):
-    """Desregistra un proyecto de config.yaml (y opcionalmente borra sus datos indexados)."""
     _run_safely(lambda: services.unregister_project(project_id, purge_data=purge_data))
-    console.print(f"[green]OK[/green] '{project_id}' eliminado de config.yaml."
-                  + (" Datos en data/ también borrados." if purge_data else " (los datos en data/ quedaron intactos — usa --purge-data para borrarlos)."))
+    if purge_data:
+        console.print(tr(f"[green]OK[/green] '{project_id}' eliminado de config.yaml. Datos en data/ también borrados.",
+                         f"[green]OK[/green] '{project_id}' removed from config.yaml. Data in data/ deleted too."))
+    else:
+        console.print(tr(f"[green]OK[/green] '{project_id}' eliminado de config.yaml. (los datos en data/ quedaron intactos — usa --purge-data para borrarlos).",
+                         f"[green]OK[/green] '{project_id}' removed from config.yaml. (data in data/ was left untouched — use --purge-data to delete it)."))
 
 
-@app.command("sync")
+@app.command("sync", help=tr("Pone al día el índice de un proyecto (incremental). En proyectos clonados por URL, primero trae los cambios del remoto.",
+                             "Bring a project's index up to date (incremental). For projects cloned by URL, remote changes are pulled first."))
 def cmd_sync(
     project_id: str,
-    uncommitted: bool = typer.Option(False, "--uncommitted", help="Incluye cambios sin commitear (no registra commit)."),
-    full: bool = typer.Option(False, "--full", help="Rehace el índice completo en vez de solo lo que cambió."),
-    docs: bool = typer.Option(False, "--docs", help="Además actualiza la documentación (como el botón de la UI)."),
-    pull: bool = typer.Option(True, "--pull/--no-pull", help="Traer cambios del remoto antes (solo proyectos clonados por URL)."),
+    uncommitted: bool = typer.Option(False, "--uncommitted", help=tr("Incluye cambios sin commitear (no registra commit).",
+                                                                      "Include uncommitted changes (no commit is recorded).")),
+    full: bool = typer.Option(False, "--full", help=tr("Rehace el índice completo en vez de solo lo que cambió.",
+                                                        "Rebuild the whole index instead of only what changed.")),
+    docs: bool = typer.Option(False, "--docs", help=tr("Además actualiza la documentación (como el botón de la UI).",
+                                                        "Also update the documentation (like the UI button).")),
+    pull: bool = typer.Option(True, "--pull/--no-pull", help=tr("Traer cambios del remoto antes (solo proyectos clonados por URL).",
+                                                                 "Pull remote changes first (only for projects cloned by URL).")),
 ):
-    """Pone al día el índice de un proyecto (incremental). En proyectos
-    clonados por URL, primero trae los cambios del remoto."""
     project = _resolve_or_exit(project_id)
-    console.print(f"[bold]Sincronizando[/bold] {project.name}...")
+    console.print(tr(f"[bold]Sincronizando[/bold] {project.name}...", f"[bold]Syncing[/bold] {project.name}..."))
 
     def _do_sync():
-        with _progress_bar("Procesando") as progress:
-            idx_task = progress.add_task("indexando", total=1, current_file="")
-            doc_task = progress.add_task("documentando", total=1, current_file="", visible=docs)
+        with _progress_bar(tr("Procesando", "Processing")) as progress:
+            idx_task = progress.add_task(tr("indexando", "indexing"), total=1, current_file="")
+            doc_task = progress.add_task(tr("documentando", "documenting"), total=1, current_file="", visible=docs)
             return services.sync_project(
                 project_id, docs=docs, full=full, include_uncommitted=uncommitted, pull=pull,
                 on_index_progress=_progress_callback(progress, idx_task),
@@ -217,71 +238,76 @@ def cmd_sync(
 
     result = _run_safely(_do_sync, repo_path=project.repo_path)
     if result.pulled:
-        console.print("[dim]Cambios del remoto traídos con git pull.[/dim]")
+        console.print(tr("[dim]Cambios del remoto traídos con git pull.[/dim]", "[dim]Remote changes pulled with git pull.[/dim]"))
     console.print(f"[green]OK[/green] {result.index}")
     if result.generated_purged:
-        console.print(f"[green]Purgados {result.generated_purged} chunks de código generado/vendor.[/green]")
+        console.print(tr(f"[green]Purgados {result.generated_purged} chunks de código generado/vendor.[/green]",
+                         f"[green]Purged {result.generated_purged} chunks of generated/vendor code.[/green]"))
     if result.docs is not None:
-        console.print(f"[green]Documentación:[/green] {result.docs}")
+        console.print(tr("[green]Documentación:[/green] ", "[green]Documentation:[/green] ") + f"{result.docs}")
 
 
-@app.command("docs")
+@app.command("docs", help=tr("Genera/actualiza documentación .md incremental para un proyecto (requiere 'sync' al día).",
+                             "Generate/update incremental .md documentation for a project (requires an up-to-date 'sync')."))
 def cmd_docs(
     project_id: str,
-    full: bool = typer.Option(False, "--full", help="Regenera toda la documentación en vez de solo lo que cambió."),
+    full: bool = typer.Option(False, "--full", help=tr("Regenera toda la documentación en vez de solo lo que cambió.",
+                                                        "Regenerate all the documentation instead of only what changed.")),
 ):
-    """Genera/actualiza documentación .md incremental para un proyecto (requiere 'sync' al día)."""
     project = _resolve_or_exit(project_id)
-    console.print(f"[bold]Generando documentación[/bold] para {project.name}...")
+    console.print(tr(f"[bold]Generando documentación[/bold] para {project.name}...",
+                     f"[bold]Generating documentation[/bold] for {project.name}..."))
 
     def _do_docs():
-        with _progress_bar("Documentando") as progress:
-            task = progress.add_task("documentando", total=1, current_file="")
+        with _progress_bar(tr("Documentando", "Documenting")) as progress:
+            task = progress.add_task(tr("documentando", "documenting"), total=1, current_file="")
             return services.generate_docs(project_id, full=full, on_progress=_progress_callback(progress, task))
 
     result = _run_safely(_do_docs, repo_path=project.repo_path)
     console.print(f"[green]OK[/green] {result}")
 
 
-@app.command("ask")
+@app.command("ask", help=tr("Consulta en lenguaje natural sobre un proyecto ya indexado.",
+                            "Ask a natural-language question about an already indexed project."))
 def cmd_ask(project_id: str, question: str, top_k: int = 5):
-    """Consulta en lenguaje natural sobre un proyecto ya indexado."""
     project = _resolve_or_exit(project_id)
     cfg = load_config()
     engine = RAGEngine(project, cfg.ai_provider)
 
     if engine.collection.count() == 0:
-        console.print(f"[red]El índice de '{project_id}' está vacío. Corre 'beacon sync {project_id}' primero.[/red]")
+        console.print(tr(f"[red]El índice de '{project_id}' está vacío. Corre 'beacon sync {project_id}' primero.[/red]",
+                         f"[red]The index of '{project_id}' is empty. Run 'beacon sync {project_id}' first.[/red]"))
         raise typer.Exit(code=1)
 
-    with console.status("Consultando..."):
+    with console.status(tr("Consultando...", "Querying...")):
         result = _run_safely(lambda: engine.ask(question, top_k=top_k), repo_path=project.repo_path)
 
     console.print(f"\n[bold]{result.answer}[/bold]\n")
-    table = Table(title="Fuentes")
-    table.add_column("archivo"); table.add_column("tipo"); table.add_column("nombre"); table.add_column("origen")
+    table = Table(title=tr("Fuentes", "Sources"))
+    table.add_column(tr("archivo", "file")); table.add_column(tr("tipo", "type")); table.add_column(tr("nombre", "name"))
+    table.add_column(tr("origen", "origin"))
     for s in result.sources:
-        origen = "grafo de llamadas" if s.expanded else f"semántico ({s.distance:.3f})"
-        table.add_row(f"{s.file_path}:{s.start_line}-{s.end_line}", s.chunk_type, s.name, origen)
+        origin = tr("grafo de llamadas", "call graph") if s.expanded else tr(f"semántico ({s.distance:.3f})", f"semantic ({s.distance:.3f})")
+        table.add_row(f"{s.file_path}:{s.start_line}-{s.end_line}", s.chunk_type, s.name, origin)
     console.print(table)
 
 
-@app.command("export")
+@app.command("export", help=tr("Empaqueta el índice (ChromaDB) y la documentación de un proyecto en un .zip portable. "
+                               "Útil para llevar un proyecto ya indexado a otra máquina sin reindexar en vivo.",
+                               "Pack a project's index (ChromaDB) and documentation into a portable .zip. "
+                               "Useful to take an already indexed project to another machine without reindexing."))
 def cmd_export(project_id: str, output: str = typer.Option(None, "--output", "-o")):
-    """Empaqueta el índice (ChromaDB) y la documentación de un proyecto en un .zip portable.
-
-    Útil para llevar un proyecto ya indexado a otra máquina (ej. una demo o
-    la defensa) sin depender de reindexar en vivo.
-    """
     cfg = load_config()
     entry = next((p for p in cfg.projects if p.id == project_id), None)
     if entry is None:
-        console.print(f"[red]Proyecto '{project_id}' no encontrado en config.yaml.[/red]")
+        console.print(tr(f"[red]Proyecto '{project_id}' no encontrado en config.yaml.[/red]",
+                         f"[red]Project '{project_id}' not found in config.yaml.[/red]"))
         raise typer.Exit(code=1)
 
     project_dir = DATA_ROOT / project_id
     if not project_dir.exists():
-        console.print(f"[red]No hay datos indexados para '{project_id}' todavía — corre 'beacon sync {project_id}' primero.[/red]")
+        console.print(tr(f"[red]No hay datos indexados para '{project_id}' todavía — corre 'beacon sync {project_id}' primero.[/red]",
+                         f"[red]There is no indexed data for '{project_id}' yet — run 'beacon sync {project_id}' first.[/red]"))
         raise typer.Exit(code=1)
 
     output_path = Path(output) if output else Path(f"{project_id}.beacon.zip")
@@ -289,7 +315,7 @@ def cmd_export(project_id: str, output: str = typer.Option(None, "--output", "-o
         "id": entry.id, "name": entry.name, "repo_path": entry.repo_path,
         "source_type": entry.source_type, "repo_url": entry.repo_url,
     }
-    with console.status(f"Empaquetando {project_id}..."):
+    with console.status(tr(f"Empaquetando {project_id}...", f"Packing {project_id}...")):
         with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
             for file in project_dir.rglob("*"):
@@ -297,26 +323,30 @@ def cmd_export(project_id: str, output: str = typer.Option(None, "--output", "-o
                     zf.write(file, arcname=str(Path("data") / file.relative_to(project_dir)))
 
     size_mb = output_path.stat().st_size / 1_048_576
-    console.print(f"[green]OK[/green] Exportado a {output_path} ({size_mb:.1f} MB)")
+    console.print(tr(f"[green]OK[/green] Exportado a {output_path} ({size_mb:.1f} MB)",
+                     f"[green]OK[/green] Exported to {output_path} ({size_mb:.1f} MB)"))
 
 
-@app.command("import")
+@app.command("import", help=tr("Registra un proyecto a partir de un .zip generado con 'beacon export'.",
+                               "Register a project from a .zip created with 'beacon export'."))
 def cmd_import(
     zip_path: str,
-    project_id: str = typer.Option(None, "--id", help="Sobreescribe el id del manifest (por si ya existe)."),
-    repo_path: str = typer.Option(None, "--repo-path", help="Sobreescribe repo_path (útil si cambió de máquina)."),
+    project_id: str = typer.Option(None, "--id", help=tr("Sobreescribe el id del manifest (por si ya existe).",
+                                                          "Override the manifest id (in case it already exists).")),
+    repo_path: str = typer.Option(None, "--repo-path", help=tr("Sobreescribe repo_path (útil si cambió de máquina).",
+                                                                "Override repo_path (useful if you changed machines).")),
 ):
-    """Registra un proyecto a partir de un .zip generado con 'beacon export'."""
     zpath = Path(zip_path)
     if not zpath.exists():
-        console.print(f"[red]No existe el archivo '{zip_path}'.[/red]")
+        console.print(tr(f"[red]No existe el archivo '{zip_path}'.[/red]", f"[red]The file '{zip_path}' does not exist.[/red]"))
         raise typer.Exit(code=1)
 
     with zipfile.ZipFile(zpath) as zf:
         try:
             manifest = json.loads(zf.read("manifest.json"))
         except KeyError:
-            console.print("[red]El .zip no tiene manifest.json — ¿fue generado con 'beacon export'?[/red]")
+            console.print(tr("[red]El .zip no tiene manifest.json — ¿fue generado con 'beacon export'?[/red]",
+                             "[red]The .zip has no manifest.json — was it created with 'beacon export'?[/red]"))
             raise typer.Exit(code=1)
 
         target_id = project_id or manifest["id"]
@@ -325,11 +355,12 @@ def cmd_import(
         _validate_id_or_exit(target_id)
         target_dir = (DATA_ROOT / target_id).resolve()
         if target_dir.exists():
-            console.print(f"[red]Ya existe data/{target_id}/ — usa --id para elegir otro nombre, o borra esa carpeta primero.[/red]")
+            console.print(tr(f"[red]Ya existe data/{target_id}/ — usa --id para elegir otro nombre, o borra esa carpeta primero.[/red]",
+                             f"[red]data/{target_id}/ already exists — use --id to pick another name, or delete that folder first.[/red]"))
             raise typer.Exit(code=1)
 
         target_dir.mkdir(parents=True, exist_ok=True)
-        with console.status(f"Extrayendo a data/{target_id}/..."):
+        with console.status(tr(f"Extrayendo a data/{target_id}/...", f"Extracting to data/{target_id}/...")):
             for member in zf.namelist():
                 if member == "manifest.json" or not member.startswith("data/"):
                     continue
@@ -348,21 +379,26 @@ def cmd_import(
             source_type=manifest.get("source_type", "local"), repo_url=manifest.get("repo_url"),
         ))
     except ProjectAlreadyExistsError as e:
-        console.print(f"[red]{e}[/red] [dim](los datos ya se copiaron a data/{target_id}/, pero no se registró en config.yaml)[/dim]")
+        console.print(f"[red]{e}[/red] " + tr(f"[dim](los datos ya se copiaron a data/{target_id}/, pero no se registró en config.yaml)[/dim]",
+                                              f"[dim](the data was already copied to data/{target_id}/, but it was not registered in config.yaml)[/dim]"))
         raise typer.Exit(code=1)
 
-    console.print(f"[green]OK[/green] Importado como '{target_id}'. Prueba: beacon ask {target_id} \"...\"")
+    console.print(tr(f"[green]OK[/green] Importado como '{target_id}'. Prueba: beacon ask {target_id} \"...\"",
+                     f"[green]OK[/green] Imported as '{target_id}'. Try: beacon ask {target_id} \"...\""))
     if not Path(final_repo_path).exists():
-        console.print(
+        console.print(tr(
             f"[yellow]![/yellow] 'repo_path' ({final_repo_path}) no existe en esta máquina — "
             "las consultas sobre lo ya indexado funcionan igual, pero 'sync'/'docs' incrementales "
-            "van a fallar hasta que ajustes la ruta en config.yaml (o reimportes con --repo-path)."
-        )
+            "van a fallar hasta que ajustes la ruta en config.yaml (o reimportes con --repo-path).",
+            f"[yellow]![/yellow] 'repo_path' ({final_repo_path}) does not exist on this machine — "
+            "queries over what is already indexed work the same, but incremental 'sync'/'docs' "
+            "will fail until you fix the path in config.yaml (or re-import with --repo-path).",
+        ))
 
 
-@app.command("status")
+@app.command("status", help=tr("Muestra el estado del índice y la documentación de un proyecto.",
+                               "Show the state of a project's index and documentation."))
 def cmd_status(project_id: str):
-    """Muestra el estado del índice y la documentación de un proyecto."""
     project = _resolve_or_exit(project_id)
     cfg = load_config()
 
@@ -373,67 +409,78 @@ def cmd_status(project_id: str):
 
     index_stats, doc_stats = _run_safely(_do_status, repo_path=project.repo_path)
 
-    commit_actual = index_stats["commit_actual"][:8]
-    ultimo_indexado = (index_stats["ultimo_commit_indexado"] or "nunca")[:8] if index_stats["ultimo_commit_indexado"] else "nunca"
-    ultimo_documentado = (doc_stats["ultimo_commit_documentado"] or "nunca")[:8] if doc_stats["ultimo_commit_documentado"] else "nunca"
+    never = tr("nunca", "never")
+    yes, no = tr("sí", "yes"), tr("no", "no")
+    current_commit = index_stats["commit_actual"][:8]
+    last_indexed = (index_stats["ultimo_commit_indexado"] or never)[:8] if index_stats["ultimo_commit_indexado"] else never
+    last_documented = (doc_stats["ultimo_commit_documentado"] or never)[:8] if doc_stats["ultimo_commit_documentado"] else never
 
-    table = Table(title=f"Estado — {project.name}")
+    table = Table(title=tr(f"Estado — {project.name}", f"Status — {project.name}"))
     table.add_column("")
-    table.add_column("valor")
-    table.add_row("Chunks indexados", str(index_stats["total_chunks"]))
-    table.add_row("Commit actual del repo", commit_actual)
-    table.add_row("Último commit indexado", ultimo_indexado)
-    table.add_row("Índice al día", "[green]sí[/green]" if ultimo_indexado == commit_actual else "[yellow]no — corre 'sync'[/yellow]")
-    table.add_row("Último commit documentado", ultimo_documentado)
-    table.add_row("Docs al día", "[green]sí[/green]" if ultimo_documentado == commit_actual else "[yellow]no — corre 'docs'[/yellow]")
+    table.add_column(tr("valor", "value"))
+    table.add_row(tr("Chunks indexados", "Indexed chunks"), str(index_stats["total_chunks"]))
+    table.add_row(tr("Commit actual del repo", "Current repo commit"), current_commit)
+    table.add_row(tr("Último commit indexado", "Last indexed commit"), last_indexed)
+    table.add_row(tr("Índice al día", "Index up to date"),
+                  f"[green]{yes}[/green]" if last_indexed == current_commit else f"[yellow]{no} — " + tr("corre 'sync'", "run 'sync'") + "[/yellow]")
+    table.add_row(tr("Último commit documentado", "Last documented commit"), last_documented)
+    table.add_row(tr("Docs al día", "Docs up to date"),
+                  f"[green]{yes}[/green]" if last_documented == current_commit else f"[yellow]{no} — " + tr("corre 'docs'", "run 'docs'") + "[/yellow]")
     console.print(table)
 
 
-@app.command("doctor")
+@app.command("doctor", help=tr("Chequeo de salud: Ollama, modelos, y proyectos registrados.",
+                               "Health check: Ollama, models, and registered projects."))
 def cmd_doctor():
-    """Chequeo de salud: Ollama, modelos, y proyectos registrados."""
     cfg = load_config()
     ok_all = True
 
-    console.print("[bold]Chequeando Ollama...[/bold]")
+    console.print(tr("[bold]Chequeando Ollama...[/bold]", "[bold]Checking Ollama...[/bold]"))
     try:
         client = ollama.Client(host=cfg.ai_provider.ollama_host)
         models_response = client.list()
         installed = {m["model"] for m in models_response.get("models", [])}
-        console.print(f"  [green]✓[/green] Conectado en {cfg.ai_provider.ollama_host}")
+        console.print(tr(f"  [green]✓[/green] Conectado en {cfg.ai_provider.ollama_host}",
+                         f"  [green]✓[/green] Connected at {cfg.ai_provider.ollama_host}"))
 
         for label, model in [("embedding_model", cfg.ai_provider.embedding_model), ("llm_model", cfg.ai_provider.llm_model)]:
             match = any(model in m for m in installed)
             if match:
-                console.print(f"  [green]✓[/green] {label} ({model}) está descargado")
+                console.print(tr(f"  [green]✓[/green] {label} ({model}) está descargado", f"  [green]✓[/green] {label} ({model}) is downloaded"))
             else:
-                console.print(f"  [red]✗[/red] {label} ({model}) NO está descargado — corre: ollama pull {model}")
+                console.print(tr(f"  [red]✗[/red] {label} ({model}) NO está descargado — corre: ollama pull {model}",
+                                 f"  [red]✗[/red] {label} ({model}) is NOT downloaded — run: ollama pull {model}"))
                 ok_all = False
     except Exception as e:
-        console.print(f"  [red]✗[/red] No se pudo conectar a Ollama en {cfg.ai_provider.ollama_host}: {e}")
-        console.print("  [dim]¿Corriste 'ollama serve'?[/dim]")
+        console.print(tr(f"  [red]✗[/red] No se pudo conectar a Ollama en {cfg.ai_provider.ollama_host}: {e}",
+                         f"  [red]✗[/red] Could not connect to Ollama at {cfg.ai_provider.ollama_host}: {e}"))
+        console.print(tr("  [dim]¿Corriste 'ollama serve'?[/dim]", "  [dim]Did you run 'ollama serve'?[/dim]"))
         ok_all = False
 
-    console.print("\n[bold]Chequeando proyectos registrados...[/bold]")
+    console.print(tr("\n[bold]Chequeando proyectos registrados...[/bold]", "\n[bold]Checking registered projects...[/bold]"))
     projects = list_projects()
     if not projects:
-        console.print("  [yellow]![/yellow] No hay proyectos en config/config.yaml")
+        console.print(tr("  [yellow]![/yellow] No hay proyectos en config/config.yaml", "  [yellow]![/yellow] No projects in config/config.yaml"))
     for p in projects:
         try:
             r = git.Repo(p.repo_path)
-            console.print(f"  [green]✓[/green] {p.id} — repo válido ({r.head.commit.hexsha[:8]})")
+            console.print(tr(f"  [green]✓[/green] {p.id} — repo válido ({r.head.commit.hexsha[:8]})",
+                             f"  [green]✓[/green] {p.id} — valid repo ({r.head.commit.hexsha[:8]})"))
         except git.NoSuchPathError:
-            console.print(f"  [red]✗[/red] {p.id} — la ruta '{p.repo_path}' no existe")
+            console.print(tr(f"  [red]✗[/red] {p.id} — la ruta '{p.repo_path}' no existe",
+                             f"  [red]✗[/red] {p.id} — the path '{p.repo_path}' does not exist"))
             ok_all = False
         except git.InvalidGitRepositoryError:
-            console.print(f"  [red]✗[/red] {p.id} — '{p.repo_path}' no es un repo git")
+            console.print(tr(f"  [red]✗[/red] {p.id} — '{p.repo_path}' no es un repo git",
+                             f"  [red]✗[/red] {p.id} — '{p.repo_path}' is not a git repo"))
             ok_all = False
 
     console.print()
     if ok_all:
-        console.print("[bold green]Todo en orden.[/bold green]")
+        console.print(tr("[bold green]Todo en orden.[/bold green]", "[bold green]All good.[/bold green]"))
     else:
-        console.print("[bold yellow]Hay cosas que revisar arriba (✗).[/bold yellow]")
+        console.print(tr("[bold yellow]Hay cosas que revisar arriba (✗).[/bold yellow]",
+                         "[bold yellow]Some things need attention above (✗).[/bold yellow]"))
         raise typer.Exit(code=1)
 
 
@@ -453,31 +500,37 @@ def _configure_beacon_logging():
     beacon_logger.propagate = False
 
 
-@app.command("serve")
+@app.command("serve", help=tr("Levanta la API + UI web.", "Start the API + web UI."))
 def cmd_serve(host: str = "127.0.0.1", port: int = 8000):
-    """Levanta la API + UI web."""
     import uvicorn
     _configure_beacon_logging()
-    console.print(f"[bold]Sirviendo en[/bold] http://{host}:{port}")
+    console.print(tr(f"[bold]Sirviendo en[/bold] http://{host}:{port}", f"[bold]Serving at[/bold] http://{host}:{port}"))
     if not (Path(__file__).resolve().parents[2] / "frontend" / "dist").exists():
-        console.print("[yellow]La interfaz web no está compilada[/yellow] (solo responderá la API). "
-                      "Para compilarla: cd frontend, npm install, npm run build.")
-    console.print("[dim]El watcher automático corre mientras este proceso esté abierto (Ctrl+C para detener).[/dim]")
+        console.print(tr("[yellow]La interfaz web no está compilada[/yellow] (solo responderá la API). "
+                         "Para compilarla: cd frontend, npm install, npm run build.",
+                         "[yellow]The web interface is not built[/yellow] (only the API will respond). "
+                         "To build it: cd frontend, npm install, npm run build."))
+    console.print(tr("[dim]El watcher automático corre mientras este proceso esté abierto (Ctrl+C para detener).[/dim]",
+                     "[dim]The automatic watcher runs while this process is open (Ctrl+C to stop).[/dim]"))
     uvicorn.run("core.api:app", host=host, port=port, reload=False)
 
 
-@app.command("study")
+@app.command("study", help=tr("Modo estudio: una sesión guiada, con tu aprobación en cada paso, que genera dos archivos locales que puedes "
+                              "revisar antes de subirlos. No toca tu configuración ni tus proyectos.",
+                              "Study mode: a guided session, with your approval at every step, that generates two local files you can "
+                              "review before uploading them. It does not touch your configuration or projects."))
 def cmd_study(
-    profile: str = typer.Option("open", "--profile", help="'open' (elige su propio repositorio) o 'pilot' (tareas asignadas)."),
-    code: Optional[str] = typer.Option(None, "--code", help="Código de participante (obligatorio en el perfil pilot)."),
-    order: int = typer.Option(1, "--order", help="Orden de las condiciones del piloto (1 o 2)."),
-    language: str = typer.Option("es", "--language", help="Idioma de las respuestas: es o en."),
-    port: int = typer.Option(8000, "--port", help="Puerto local."),
-    new: bool = typer.Option(False, "--new", help="Descarta una sesión anterior sin terminar y empieza de cero."),
-    no_browser: bool = typer.Option(False, "--no-browser", help="No abrir el navegador automáticamente."),
+    profile: str = typer.Option("open", "--profile", help=tr("'open' (elige su propio repositorio) o 'pilot' (tareas asignadas).",
+                                                              "'open' (you pick your own repository) or 'pilot' (assigned tasks).")),
+    code: Optional[str] = typer.Option(None, "--code", help=tr("Código de participante (obligatorio en el perfil pilot).",
+                                                                "Participant code (required for the pilot profile).")),
+    order: int = typer.Option(1, "--order", help=tr("Orden de las condiciones del piloto (1 o 2).", "Order of the pilot conditions (1 or 2).")),
+    language: str = typer.Option("es", "--language", help=tr("Idioma de las respuestas: es o en.", "Language of the answers: es or en.")),
+    port: int = typer.Option(8000, "--port", help=tr("Puerto local.", "Local port.")),
+    new: bool = typer.Option(False, "--new", help=tr("Descarta una sesión anterior sin terminar y empieza de cero.",
+                                                      "Discard an unfinished previous session and start over.")),
+    no_browser: bool = typer.Option(False, "--no-browser", help=tr("No abrir el navegador automáticamente.", "Do not open the browser automatically.")),
 ):
-    """Modo estudio: una sesión guiada, con su aprobación en cada paso, que genera un archivo local que usted revisa
-    antes de enviarlo. No toca su configuración ni sus proyectos."""
     import os
     import subprocess
     import sys
@@ -512,8 +565,9 @@ def cmd_study(
     study_config.write_text(yaml.safe_dump({"ai_provider": ai_cfg, "projects": []}, allow_unicode=True), encoding="utf-8")
     env = dict(os.environ, BEACON_STUDY="1", DEUDA_TECNICA_CONFIG=str(study_config))
     url = f"http://127.0.0.1:{port}/study"
-    console.print(f"[bold]Modo estudio[/bold] en {url}")
-    console.print("[dim]Todo queda en este equipo hasta que usted descargue y envíe el archivo. Ctrl+C para salir.[/dim]")
+    console.print(tr(f"[bold]Modo estudio[/bold] en {url}", f"[bold]Study mode[/bold] at {url}"))
+    console.print(tr("[dim]Todo queda en este equipo hasta que subas los archivos que decidas. Ctrl+C para salir.[/dim]",
+                     "[dim]Everything stays on this machine until you upload the files you choose. Ctrl+C to quit.[/dim]"))
     if not no_browser:
         threading.Timer(4.0, lambda: webbrowser.open(url)).start()
     try:
@@ -546,34 +600,38 @@ def _run_safely(fn, *, repo_path: str = ""):
         return fn()
     except ProjectBusyError as e:
         console.print(f"[yellow]{e}[/yellow]")
-        console.print("[dim]Vuelve a intentarlo en unos momentos, o revisa el estado en la interfaz web.[/dim]")
+        console.print(tr("[dim]Vuelve a intentarlo en unos momentos, o revisa el estado en la interfaz web.[/dim]",
+                         "[dim]Try again in a moment, or check the status in the web interface.[/dim]"))
         raise typer.Exit(code=1)
     except (InvalidProjectIdError, InvalidRepoUrlError, services.InvalidRequestError,
             services.CloneError, ProjectAlreadyExistsError, ProjectNotFoundError, IndexModelMismatchError) as e:
         console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1)
     except git.NoSuchPathError:
-        console.print(f"[red]La ruta del repo no existe:[/red] {repo_path}")
-        console.print("[dim]Revisa 'repo_path' en config/config.yaml — probablemente esté mal escrita o el repo no esté clonado ahí.[/dim]")
+        console.print(tr("[red]La ruta del repo no existe:[/red] ", "[red]The repo path does not exist:[/red] ") + repo_path)
+        console.print(tr("[dim]Revisa 'repo_path' en config/config.yaml — probablemente esté mal escrita o el repo no esté clonado ahí.[/dim]",
+                         "[dim]Check 'repo_path' in config/config.yaml — it is probably misspelled or the repo is not cloned there.[/dim]"))
         raise typer.Exit(code=1)
     except git.InvalidGitRepositoryError:
-        console.print(f"[red]Esa carpeta existe pero no es un repositorio git:[/red] {repo_path}")
-        console.print("[dim]¿Falta un 'git init' o 'git clone' ahí?[/dim]")
+        console.print(tr("[red]Esa carpeta existe pero no es un repositorio git:[/red] ", "[red]That folder exists but is not a git repository:[/red] ") + repo_path)
+        console.print(tr("[dim]¿Falta un 'git init' o 'git clone' ahí?[/dim]", "[dim]Is a 'git init' or 'git clone' missing there?[/dim]"))
         raise typer.Exit(code=1)
     except IndexOutOfDateError as e:
         console.print(f"[yellow]{e}[/yellow]")
         raise typer.Exit(code=1)
     except ollama.ResponseError as e:
-        console.print(f"[red]Ollama respondió con un error:[/red] {e}")
-        console.print("[dim]¿El modelo está descargado? Revisa 'ollama_model'/'embedding_model' en config.yaml y corre 'ollama pull <modelo>'.[/dim]")
+        console.print(tr("[red]Ollama respondió con un error:[/red] ", "[red]Ollama responded with an error:[/red] ") + f"{e}")
+        console.print(tr("[dim]¿El modelo está descargado? Revisa 'ollama_model'/'embedding_model' en config.yaml y corre 'ollama pull <modelo>'.[/dim]",
+                         "[dim]Is the model downloaded? Check 'ollama_model'/'embedding_model' in config.yaml and run 'ollama pull <model>'.[/dim]"))
         raise typer.Exit(code=1)
     except Exception as e:
         msg = str(e).lower()
         if "connection" in msg or "refused" in msg or "connect" in msg:
-            console.print("[red]No se pudo conectar con Ollama.[/red]")
-            console.print("[dim]¿Está corriendo? Prueba 'ollama serve' en otra terminal, y confirma 'ollama_host' en config.yaml.[/dim]")
+            console.print(tr("[red]No se pudo conectar con Ollama.[/red]", "[red]Could not connect to Ollama.[/red]"))
+            console.print(tr("[dim]¿Está corriendo? Prueba 'ollama serve' en otra terminal, y confirma 'ollama_host' en config.yaml.[/dim]",
+                             "[dim]Is it running? Try 'ollama serve' in another terminal, and confirm 'ollama_host' in config.yaml.[/dim]"))
         else:
-            console.print(f"[red]Algo falló inesperadamente:[/red] {e}")
+            console.print(tr("[red]Algo falló inesperadamente:[/red] ", "[red]Something failed unexpectedly:[/red] ") + f"{e}")
         raise typer.Exit(code=1)
 
 

@@ -36,6 +36,8 @@ beacon serve                         # levanta la API + UI en http://127.0.0.1:8
 > de Beacon — ejecuta la CLI desde **PowerShell**, **cmd.exe** o **Windows
 > Terminal**, donde funciona sin problemas.
 
+**Idioma de la consola**: la ayuda y los mensajes salen en español si el sistema operativo está en español (cualquier variante) y en inglés en cualquier otro caso. Para forzar uno, define `BEACON_LANG=es` o `BEACON_LANG=en`. Los nombres de los comandos y de las opciones son siempre en inglés.
+
 ## Interfaz web
 
 Con `beacon serve` corriendo (y la UI ya compilada, ver [instalacion-manual.md](instalacion-manual.md)), abre `http://127.0.0.1:8000`:

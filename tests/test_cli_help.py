@@ -52,3 +52,14 @@ def test_bare_command_shows_a_friendly_summary_and_version_flag():
     assert out.exit_code == 0 and "Happy hacking" in out.output and "beacon sync" in out.output
     out = runner.invoke(cli_module.app, ["--version"])
     assert out.exit_code == 0 and out.output.startswith("Beacon ")
+
+
+def test_console_language_follows_the_os_locale_with_english_as_default(monkeypatch):
+    from core import cli_lang
+    monkeypatch.delenv("BEACON_LANG", raising=False)
+    for value, expected in (("es_CL.UTF-8", "es"), ("es-MX", "es"), ("ES_ES", "es"), ("en_US.UTF-8", "en"), ("de_DE", "en"), ("", "en")):
+        monkeypatch.setattr(cli_lang, "_os_language", lambda v=value: v)
+        assert cli_lang.detect_language() == expected, value
+    monkeypatch.setenv("BEACON_LANG", "es")  # el forzado manda sobre el sistema
+    monkeypatch.setattr(cli_lang, "_os_language", lambda: "en_US")
+    assert cli_lang.detect_language() == "es"
