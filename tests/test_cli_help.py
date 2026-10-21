@@ -63,3 +63,19 @@ def test_console_language_follows_the_os_locale_with_english_as_default(monkeypa
     monkeypatch.setenv("BEACON_LANG", "es")  # el forzado manda sobre el sistema
     monkeypatch.setattr(cli_lang, "_os_language", lambda: "en_US")
     assert cli_lang.detect_language() == "es"
+
+
+def test_study_session_is_discarded_when_the_server_is_closed(tmp_path, monkeypatch):
+    import subprocess
+    monkeypatch.setattr(cli_module, "DATA_ROOT", tmp_path)
+    (tmp_path / "estudio").mkdir()
+    (tmp_path / "estudio" / "repo.txt").write_text("x")
+
+    def fake_run(*args, **kwargs):
+        assert (tmp_path / "_study" / "sesion.json").exists()  # la sesión existía mientras corría
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    result = runner.invoke(cli_module.app, ["study", "--no-browser"])
+    assert result.exit_code == 0
+    assert not (tmp_path / "_study" / "sesion.json").exists() and not (tmp_path / "estudio").exists()

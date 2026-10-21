@@ -532,6 +532,7 @@ def cmd_study(
     no_browser: bool = typer.Option(False, "--no-browser", help=tr("No abrir el navegador automáticamente.", "Do not open the browser automatically.")),
 ):
     import os
+    import shutil
     import subprocess
     import sys
     import threading
@@ -574,6 +575,13 @@ def cmd_study(
         subprocess.run([sys.executable, "-m", "uvicorn", "core.api:app", "--host", "127.0.0.1", "--port", str(port)], env=env)
     except KeyboardInterrupt:
         pass
+    finally:
+        # Al cerrar, la sesión y el repositorio del estudio se borran: la próxima vez parte desde cero.
+        # Los archivos ya generados en la raíz del proyecto no se tocan.
+        session.discard()
+        shutil.rmtree(DATA_ROOT / "estudio", ignore_errors=True)
+        console.print(tr("[dim]Sesión cerrada: la próxima vez el estudio parte desde cero.[/dim]",
+                         "[dim]Session closed: next time the study starts from scratch.[/dim]"))
 
 
 def _validate_id_or_exit(project_id: str):
