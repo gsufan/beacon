@@ -25,7 +25,8 @@ const T = {
   es: {
     title: "Estudio de Beacon", lang: "Idioma",
     s1: "1. Participación", s2: "2. Tu equipo", s3: "3. Repositorio", s4: "4. Preguntas", s5: "5. Cierre",
-    intro: "Beacon responde preguntas sobre un repositorio usando un modelo que corre en tu equipo. Este estudio mide qué tan bien funciona en equipos reales. Tu código nunca sale de tu equipo: el archivo final no incluye código ni rutas, y tú lo revisas antes de enviarlo.",
+    intro: "Beacon responde preguntas sobre un repositorio usando un modelo que corre en tu equipo. Este estudio mide qué tan bien funciona en equipos reales.",
+    intro_files: "Este programa no envía nada a ninguna parte. Solo generará dos archivos en la carpeta de Beacon: uno con tus resultados (preguntas, respuestas, tiempos y valoraciones) y otro, opcional, con tu identidad. Podrás abrirlos y auditarlos antes de decidir si los subes. No incluyen tu código ni rutas de tu equipo, y subirlos es voluntario.",
     consent_part: "Acepto participar en el estudio y que se guarden en este equipo mis preguntas, las respuestas, los tiempos y mis valoraciones.",
     start: "Comenzar",
     hw_text: "Para interpretar los tiempos necesitamos saber qué equipo usas. Esto es lo que se guardaría (no incluye tu nombre ni rutas):",
@@ -49,7 +50,8 @@ const T = {
   en: {
     title: "Beacon study", lang: "Language",
     s1: "1. Participation", s2: "2. Your machine", s3: "3. Repository", s4: "4. Questions", s5: "5. Wrap-up",
-    intro: "Beacon answers questions about a repository using a model that runs on your machine. This study measures how well it works on real hardware. Your code never leaves your machine: the final file contains no code or paths, and you review it before sending it.",
+    intro: "Beacon answers questions about a repository using a model that runs on your machine. This study measures how well it works on real hardware.",
+    intro_files: "This program sends nothing anywhere. It will only generate two files in the Beacon folder: one with your results (questions, answers, timings and ratings) and an optional one with your identity. You can open and audit them before deciding whether to upload them. They contain no code or paths from your machine, and uploading them is entirely up to you.",
     consent_part: "I agree to take part in the study and to have my questions, the answers, timings and my ratings stored on this machine.",
     start: "Start",
     hw_text: "To interpret timings we need to know what machine you use. This is what would be stored (no name or paths):",
@@ -180,6 +182,7 @@ function StudyBody({ state, t, lang, busy, act, stage }: BodyProps) {
       <section className={section}>
         <h2 className="font-semibold">{t("s1")}</h2>
         <p className="text-sm text-ink-2">{t("intro")}</p>
+        <p className="rounded-lg bg-accent-tint p-3 text-sm text-accent-ink">{t("intro_files")}</p>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-1" />
           {t("consent_part")}
