@@ -2,6 +2,7 @@
 
 import logging
 import os
+from contextlib import asynccontextmanager
 import threading
 import time
 from pathlib import Path
@@ -35,7 +36,17 @@ from core.engine.indexer import IndexModelMismatchError
 from core.engine.rag_engine import RAGEngine
 from core import services
 
-app = FastAPI(title="Beacon API", version="0.3.0", docs_url="/api/docs", redoc_url="/api/redoc")
+_shutdown_hooks: list = []
+
+
+@asynccontextmanager
+async def _lifespan(_app):
+    yield
+    for hook in _shutdown_hooks:  # al cerrar el servidor: detener lo que siga en curso (ej. una respuesta del modelo)
+        hook()
+
+
+app = FastAPI(title="Beacon API", version="0.3.0", docs_url="/api/docs", redoc_url="/api/redoc", lifespan=_lifespan)
 # Beacon se sirve same-origin en producción (la UI compilada vive en el mismo
 # host:puerto que la API); el único caso legítimo de origen cruzado es el dev
 # server de Vite. No usar "*" — sin auth en la API (ver docs/seguridad.md),
@@ -103,7 +114,9 @@ _get_engine.cache_clear = _engines.clear  # para config/proyecto modificados
 if os.environ.get("BEACON_STUDY") == "1":
     from core.study.api import build_router
 
-    app.include_router(build_router(_get_engine, _get_engine.cache_clear))
+    _study_router = build_router(_get_engine, _get_engine.cache_clear)
+    _shutdown_hooks.append(_study_router.shutdown)
+    app.include_router(_study_router)
 
 
 class QueryRequest(BaseModel):

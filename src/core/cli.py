@@ -631,7 +631,8 @@ def cmd_study(
     if not no_browser:
         threading.Timer(4.0, lambda: webbrowser.open(url)).start()
     try:
-        subprocess.run([sys.executable, "-m", "uvicorn", "core.api:app", "--host", "127.0.0.1", "--port", str(port)], env=env)
+        subprocess.run([sys.executable, "-m", "uvicorn", "core.api:app", "--host", "127.0.0.1", "--port", str(port),
+                        "--timeout-graceful-shutdown", "3"], env=env)
     except KeyboardInterrupt:
         pass
     finally:

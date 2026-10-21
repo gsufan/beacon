@@ -7,6 +7,15 @@ import App from "../src/App";
 
 let calls: { method: string; path: string; body?: unknown }[];
 let state: Record<string, unknown>;
+const HEALTHY = [
+  { id: "ollama", estado: "ok", valor: "http://localhost:11434" },
+  { id: "model_embedding", estado: "ok", valor: "qwen3-embedding:0.6b" },
+  { id: "model_llm", estado: "ok", valor: "llama3:8b" },
+  { id: "gpu", estado: "ok", valor: "GPU de prueba (8 GB)" },
+  { id: "disk", estado: "ok", valor: "50 GB" },
+  { id: "network", estado: "ok", valor: "github.com" },
+];
+let health: { id: string; estado: string; valor: string }[];
 
 function fakeServer() {
   vi.stubGlobal("fetch", vi.fn(async (input: string, init?: RequestInit) => {
@@ -15,6 +24,7 @@ function fakeServer() {
     calls.push({ method, path: input, body });
     let out: unknown = { ok: true };
     if (input === "/study/state") out = state;
+    if (input === "/study/health") out = { items: health };
     if (input === "/study/hardware-preview") out = { cpu_modelo: "cpu-prueba", gpus: [] };
     if (input === "/study/ask") {
       (state.preguntas as unknown[]).push({ n: 1, pregunta: body.pregunta, respuesta: "resp", segundos: 2.5,
@@ -33,6 +43,7 @@ const started = (extra: Record<string, unknown> = {}) => ({
 beforeEach(() => {
   calls = [];
   state = { started: false };
+  health = HEALTHY;
   fakeServer();
 });
 afterEach(() => vi.unstubAllGlobals());
@@ -50,6 +61,47 @@ describe("modo estudio", () => {
     await userEvent.click(start);
     await waitFor(() => expect(calls.some((c) => c.path === "/study/consent" && (c.body as { tipo: string }).tipo === "participacion")).toBe(true));
     expect(calls.some((c) => c.path === "/study/start")).toBe(true);
+  });
+
+  it("revisa Ollama, los modelos, la GPU, el disco y la red antes de comenzar y bloquea si falta algo esencial", async () => {
+    health = [
+      { id: "ollama", estado: "ok", valor: "http://localhost:11434" },
+      { id: "model_embedding", estado: "error", valor: "qwen3-embedding:0.6b" },
+      { id: "model_llm", estado: "ok", valor: "llama3:8b" },
+      { id: "gpu", estado: "warn", valor: "" },
+      { id: "disk", estado: "ok", valor: "50 GB" },
+      { id: "network", estado: "ok", valor: "github.com" },
+    ];
+    open();
+    expect(await screen.findByText(/ollama pull qwen3-embedding:0\.6b/)).toBeInTheDocument();
+    expect(screen.getByText(/No se detectó una GPU|No NVIDIA GPU/)).toBeInTheDocument();  // aviso, no bloquea
+    await userEvent.click(screen.getByRole("checkbox"));
+    expect(screen.getByRole("button", { name: /Comenzar|Start/ })).toBeDisabled();
+    health = HEALTHY;  // el participante instala el modelo y reintenta
+    await userEvent.click(screen.getByRole("button", { name: /Reintentar|Retry/ }));
+    await waitFor(() => expect(screen.getByRole("button", { name: /Comenzar|Start/ })).toBeEnabled());
+  });
+
+  it("permite cancelar una pregunta mientras el modelo responde", async () => {
+    state = started({ hardware: { cpu_modelo: "x" }, repo: { url: "https://github.com/u/r", archivos_indexados: 3 },
+      repo_status: { estado: "listo", detalle: null } });
+    let release: () => void = () => undefined;
+    const original = globalThis.fetch;
+    vi.stubGlobal("fetch", vi.fn(async (input: string, init?: RequestInit) => {
+      if (input === "/study/ask") {
+        calls.push({ method: "POST", path: input });
+        await new Promise<void>((resolve) => { release = resolve; });
+        return new Response(JSON.stringify({ detail: "Pregunta cancelada." }), { status: 409, headers: { "Content-Type": "application/json" } });
+      }
+      return original(input, init);
+    }));
+    open();
+    await userEvent.type(await screen.findByRole("textbox"), "una pregunta");
+    await userEvent.click(screen.getByRole("button", { name: /^Preguntar$|^Ask$/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /^Cancelar$|^Cancel$/ }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/study/cancel" && c.method === "POST")).toBe(true));
+    release();
+    expect(await screen.findByRole("alert")).toHaveTextContent(/cancelada/);
   });
 
   it("muestra la barra de avance y permite ir atrás y adelante entre pasos", async () => {

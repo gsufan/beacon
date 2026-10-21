@@ -140,7 +140,8 @@ class DocGenerator:
         return groups
 
     def _llm(self, system: str, user: str) -> str:
-        return chat(self.client_ollama, self.ai_config.llm_model, system, user, self.ai_config.llm_num_ctx).content
+        return chat(self.client_ollama, self.ai_config.llm_model, system, user, self.ai_config.llm_num_ctx,
+                    max_tokens=DOC_ANSWER_RESERVE_TOKENS).content
 
     def generate_doc_for_file(self, file_path: str) -> Optional[str]:
         """Documenta el archivo completo. Si no cabe en una sola llamada, se

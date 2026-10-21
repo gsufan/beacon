@@ -5,7 +5,7 @@ import re
 from dataclasses import dataclass
 
 import numpy as np
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from chromadb.errors import InvalidCollectionException
 
@@ -28,6 +28,10 @@ DEFAULT_TOP_K = 5
 DEFAULT_MAX_CALL_EXPANSIONS = 5
 # Tokens que se dejan libres para la respuesta dentro de la ventana del modelo.
 ANSWER_RESERVE_TOKENS = 1024
+TRUNCATED_NOTES = {
+    "es": "\n\n[La respuesta alcanzó el límite de longitud y se cortó.]",
+    "en": "\n\n[The answer reached the length limit and was cut off.]",
+}
 
 # Los tests repiten literalmente las palabras de la pregunta en sus nombres
 # (test_http_303_changes_post_to_get) y le ganaban a la función que la
@@ -360,7 +364,8 @@ class RAGEngine:
         return kept
 
     def ask(
-        self, question: str, top_k: int = DEFAULT_TOP_K, expand_call_graph: bool = True, language: str = "es"
+        self, question: str, top_k: int = DEFAULT_TOP_K, expand_call_graph: bool = True, language: str = "es",
+        max_seconds: Optional[float] = None, should_stop: Optional[Callable[[], bool]] = None,
     ) -> RAGResponse:
         chunks = self.select_context(question, top_k=top_k)
         if expand_call_graph:
@@ -370,7 +375,10 @@ class RAGEngine:
         # Las fuentes que se devuelven son exactamente las que vio el modelo.
         chunks = self._fit_to_budget(question, system_prompt, chunks)
         prompt = self._build_prompt(question, chunks)
-        result = chat(self.client_ollama, self.ai_config.llm_model, system_prompt, prompt, self.ai_config.llm_num_ctx)
+        result = chat(self.client_ollama, self.ai_config.llm_model, system_prompt, prompt, self.ai_config.llm_num_ctx,
+                      max_tokens=ANSWER_RESERVE_TOKENS, max_seconds=max_seconds, should_stop=should_stop)
         answer = strip_preamble(result.content, heading_marker="\x00")
+        if result.truncated:
+            answer += TRUNCATED_NOTES.get(language, TRUNCATED_NOTES["es"])
         return RAGResponse(answer=answer, sources=chunks,
                            prompt_tokens=result.prompt_tokens, answer_tokens=result.answer_tokens)

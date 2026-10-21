@@ -16,7 +16,9 @@ procesaba 2.060. Este módulo:
 
 import logging
 import math
+import time
 from dataclasses import dataclass
+from typing import Callable, Optional
 
 from core.config import DEFAULT_LLM_NUM_CTX
 
@@ -40,6 +42,22 @@ LLM_SEED = 42
 # se usa 3,5 para dejar margen y no quedarse corto nunca.
 CHARS_PER_TOKEN = 3.5
 
+# Tope de tokens de una respuesta. Sin él, un modelo que cae en un bucle de repetición genera hasta llenar la
+# ventana (minutos con la GPU al 100 %). Coincide con el espacio que se reserva para la respuesta al armar el prompt.
+LLM_MAX_ANSWER_TOKENS = 1024
+
+
+class LLMStoppedError(RuntimeError):
+    """La generación se detuvo antes de terminar."""
+
+
+class LLMTimeoutError(LLMStoppedError):
+    """La respuesta tardó más del tiempo máximo permitido."""
+
+
+class LLMCancelledError(LLMStoppedError):
+    """Quien preguntó (o el cierre del servidor) pidió detener la respuesta."""
+
 
 def estimate_tokens(text: str) -> int:
     return math.ceil(len(text) / CHARS_PER_TOKEN)
@@ -55,17 +73,48 @@ class ChatResult:
     content: str
     prompt_tokens: int
     answer_tokens: int
+    truncated: bool = False  # la respuesta llegó al tope de longitud y quedó cortada
 
 
-def chat(client, model: str, system: str, user: str, num_ctx: int = LLM_NUM_CTX) -> ChatResult:
+def _stream_chat(client, deadline: Optional[float], should_stop: Optional[Callable[[], bool]], **kwargs) -> dict:
+    """Chat en streaming para poder detenerlo: entre fragmentos revisa el tiempo máximo y la cancelación, y cerrar
+    el flujo corta la conexión con Ollama (que deja de generar)."""
+    parts, last = [], {}
+    stream = client.chat(stream=True, **kwargs)
+    try:
+        for chunk in stream:
+            parts.append((chunk.get("message") or {}).get("content", ""))
+            if chunk.get("done"):
+                last = chunk
+            if should_stop is not None and should_stop():
+                raise LLMCancelledError("La respuesta se canceló.")
+            if deadline is not None and time.monotonic() > deadline:
+                raise LLMTimeoutError("La respuesta tardó más del tiempo máximo y se detuvo.")
+    finally:
+        close = getattr(stream, "close", None)
+        if close:
+            close()
+    return {"message": {"content": "".join(parts)}, "prompt_eval_count": last.get("prompt_eval_count"),
+            "eval_count": last.get("eval_count")}
+
+
+def chat(client, model: str, system: str, user: str, num_ctx: int = LLM_NUM_CTX,
+         max_tokens: int = LLM_MAX_ANSWER_TOKENS, max_seconds: Optional[float] = None,
+         should_stop: Optional[Callable[[], bool]] = None) -> ChatResult:
     """Una llamada de chat con `num_ctx` explícito. Advierte si el prompt no entró
     completo (el modelo procesó menos tokens de los que se estiman enviados)
-    o si la respuesta llenó la ventana (pudo quedar cortada)."""
-    response = client.chat(
+    o si la respuesta llenó la ventana (pudo quedar cortada). La respuesta tiene un tope de `max_tokens`;
+    con `max_seconds` o `should_stop` se genera en streaming y se puede detener (LLMStoppedError)."""
+    kwargs = dict(
         model=model,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        options={"num_ctx": num_ctx, "temperature": LLM_TEMPERATURE, "seed": LLM_SEED},
+        options={"num_ctx": num_ctx, "temperature": LLM_TEMPERATURE, "seed": LLM_SEED, "num_predict": max_tokens},
     )
+    if max_seconds is not None or should_stop is not None:
+        deadline = time.monotonic() + max_seconds if max_seconds is not None else None
+        response = _stream_chat(client, deadline, should_stop, **kwargs)
+    else:
+        response = client.chat(**kwargs)
     prompt_tokens = response.get("prompt_eval_count") or 0
     answer_tokens = response.get("eval_count") or 0
     # El estimador es conservador (sobreestima), así que un prompt completo
@@ -78,4 +127,7 @@ def chat(client, model: str, system: str, user: str, num_ctx: int = LLM_NUM_CTX)
     if prompt_tokens + answer_tokens >= num_ctx:
         logger.warning("La respuesta llenó la ventana de contexto (%d tokens): puede haber quedado incompleta.",
                        num_ctx)
-    return ChatResult(response["message"]["content"], prompt_tokens, answer_tokens)
+    truncated = bool(answer_tokens) and answer_tokens >= max_tokens
+    if truncated:
+        logger.warning("La respuesta llegó al tope de %d tokens y se cortó (¿bucle de repetición?).", max_tokens)
+    return ChatResult(response["message"]["content"], prompt_tokens, answer_tokens, truncated)

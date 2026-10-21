@@ -23,12 +23,12 @@ beacon study
 
 El asistente se abre en el navegador (`http://127.0.0.1:8000/study`) y guía cinco pasos:
 
-1. **Participación.** Se acepta explícitamente; sin eso no se guarda nada.
+1. **Participación.** Antes de aceptar, el asistente revisa que todo lo necesario esté en orden: Ollama responde, los dos modelos están descargados (si falta alguno, indica el `ollama pull` exacto), hay GPU y espacio en disco, y hay conexión para clonar. Si algo esencial falta, no deja comenzar hasta que lo resuelvas y pulses «Reintentar». La participación se acepta explícitamente; sin eso no se guarda nada.
 2. **Equipo.** Se muestra tal cual lo que se guardaría (CPU, RAM, GPU y VRAM, sistema operativo, versión de
    Ollama y modelos). Es opcional y se puede omitir.
 3. **Repositorio.** Una dirección https de un repositorio público (hasta 3000 archivos de código).
 4. **Preguntas.** Mínimo 3, sobre cosas que de verdad se quieran saber del código. Cada respuesta se valora
-   (correcta, en parte, incorrecta, no sé). El tiempo lo mide Beacon, no el navegador.
+   (correcta, en parte, incorrecta, no sé). El tiempo lo mide Beacon, no el navegador. Una respuesta tiene un tope de longitud y, si el modelo tarda más de 3 minutos, se detiene sola con un aviso; también puedes pulsar «Cancelar» mientras espera.
 5. **Cierre.** Experiencia, identidad opcional y revisión del archivo. Al generarlo, `beacon-estudio-resultados-<id>.json` (y `beacon-estudio-identidad-<id>.json`, si se dio) quedan en la carpeta raíz del proyecto; también se pueden descargar o copiar.
 
 ### Dónde queda el repositorio clonado

@@ -15,6 +15,7 @@ interface RepoStatus {
   estado: string; detalle: string | null;
   progreso?: { actual: number; total: number; archivo: string; segundos: number };
 }
+interface HealthItem { id: string; estado: "ok" | "warn" | "error" | "skip"; valor: string }
 interface StudyState {
   started: boolean;
   carpeta_repo?: string;
@@ -59,6 +60,17 @@ const T = {
     dl_identity: "Descargar identidad (opcional)", saved: "Se guardaron en la carpeta de Beacon: {f}.",
     review: "Revisa el contenido antes de enviarlo:", sent_note: "Envía el archivo de resultados por el canal indicado en la invitación.",
     discard: "Descartar todo y salir", error: "Error",
+    cancel: "Cancelar", cancelled_hint: "Si tarda demasiado, puedes cancelarla (se detiene sola a los 3 minutos).",
+    health_title: "Revisión previa", health_retry: "Reintentar", health_checking: "Revisando tu equipo...",
+    health_blocked: "Resuelve lo marcado con ✗ y pulsa Reintentar para poder comenzar.",
+    health_ollama_ok: "Ollama responde en {v}", health_ollama_error: "Ollama no responde en {v}. Ábrelo (o ejecuta «ollama serve») y pulsa Reintentar.",
+    health_model_embedding_ok: "Modelo de búsqueda {v} instalado", health_model_embedding_error: "Falta el modelo {v}. Ejecuta: ollama pull {v}",
+    health_model_llm_ok: "Modelo de respuestas {v} instalado", health_model_llm_error: "Falta el modelo {v}. Ejecuta: ollama pull {v}",
+    health_gpu_ok: "GPU: {v}", health_gpu_none: "No se detectó una GPU NVIDIA: las respuestas pueden tardar minutos (el estudio funciona igual).",
+    health_gpu_warn: "GPU con poca memoria ({v}): puede ir lento o fallar.",
+    health_disk_ok: "Espacio libre en disco: {v}", health_disk_warn: "Queda poco espacio ({v}): el repositorio clonado y el índice ocupan lugar.",
+    health_disk_error: "Casi no queda espacio en disco ({v}).",
+    health_network_ok: "Conexión a {v}", health_network_error: "No hay conexión a {v}: sin ella no se puede clonar un repositorio.",
   },
   en: {
     title: "Beacon study", lang: "Language",
@@ -91,6 +103,17 @@ const T = {
     dl_identity: "Download identity (optional)", saved: "Saved in the Beacon folder: {f}.",
     review: "Review the content before sending it:", sent_note: "Send the results file through the channel given in the invitation.",
     discard: "Discard everything and quit", error: "Error",
+    cancel: "Cancel", cancelled_hint: "If it takes too long you can cancel it (it stops by itself after 3 minutes).",
+    health_title: "Pre-check", health_retry: "Retry", health_checking: "Checking your machine...",
+    health_blocked: "Fix what is marked with ✗ and press Retry to be able to start.",
+    health_ollama_ok: "Ollama responds at {v}", health_ollama_error: "Ollama does not respond at {v}. Open it (or run 'ollama serve') and press Retry.",
+    health_model_embedding_ok: "Search model {v} installed", health_model_embedding_error: "Model {v} is missing. Run: ollama pull {v}",
+    health_model_llm_ok: "Answer model {v} installed", health_model_llm_error: "Model {v} is missing. Run: ollama pull {v}",
+    health_gpu_ok: "GPU: {v}", health_gpu_none: "No NVIDIA GPU detected: answers can take minutes (the study works anyway).",
+    health_gpu_warn: "GPU with little memory ({v}): it may be slow or fail.",
+    health_disk_ok: "Free disk space: {v}", health_disk_warn: "Little space left ({v}): the cloned repository and the index take room.",
+    health_disk_error: "Almost no disk space left ({v}).",
+    health_network_ok: "Connection to {v}", health_network_error: "No connection to {v}: without it a repository cannot be cloned.",
   },
 } as const;
 
@@ -153,7 +176,7 @@ function ProgressBar({ value, label, indeterminate = false }: { value: number; l
 export default function Study() {
   const [lang, setLang] = useState<Lang>(navigator.language.startsWith("es") ? "es" : "en");
   const t: Tr = (k, v = {}) =>
-    Object.entries(v).reduce((s: string, [key, val]) => s.replace(`{${key}}`, String(val)), T[lang][k] as string);
+    Object.entries(v).reduce((s: string, [key, val]) => s.split(`{${key}}`).join(String(val)), T[lang][k] as string);
   const [state, setState] = useState<StudyState | null>(null);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -216,6 +239,17 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
 
   // Paso 1
   const [agree, setAgree] = useState(!!consent?.participacion);
+  const [health, setHealth] = useState<HealthItem[] | null>(null);
+  const loadHealth = useCallback(async () => {
+    setHealth(null);
+    try {
+      setHealth((await call<{ items?: HealthItem[] }>("GET", "/health")).items ?? []);
+    } catch {
+      setHealth([]);
+    }
+  }, []);
+  useEffect(() => { if (step === 1) void loadHealth(); }, [step, loadHealth]);
+  const healthBlocked = health === null || health.some((i) => i.estado === "error");
   // Paso 2
   const [hw, setHw] = useState<Record<string, unknown> | null>(null);
   const [hwOk, setHwOk] = useState(!!consent?.hardware);
@@ -259,7 +293,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
 
   if (step === 1) {
     next = {
-      label: t("start"), disabled: !agree || busy,
+      label: t("start"), disabled: !agree || busy || healthBlocked,
       run: () => act(async () => {
         if (!state.started) await call("POST", "/start", { perfil: "abierto", idioma: lang });
         if (!consent?.participacion) await call("POST", "/consent", { tipo: "participacion", aceptado: true });
@@ -270,6 +304,23 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
       <>
         <p className="text-sm text-ink-2">{t("intro")}</p>
         <p className="rounded-lg bg-accent-tint p-3 text-sm text-accent-ink">{t("intro_files")}</p>
+        <div className="flex flex-col gap-2 rounded-lg border border-line p-3" aria-label={t("health_title")}>
+          <p className="text-sm font-semibold">{t("health_title")}</p>
+          {health === null && <p role="status" className="text-xs text-muted">{t("health_checking")}</p>}
+          <ul className="flex flex-col gap-1">
+            {(health ?? []).filter((i) => i.estado !== "skip").map((i) => {
+              const key = (i.id === "gpu" && i.estado === "warn" && !i.valor ? "health_gpu_none" : `health_${i.id}_${i.estado}`) as Key;
+              const mark = i.estado === "ok" ? "✓" : i.estado === "warn" ? "⚠" : "✗";
+              return (
+                <li key={i.id} className={`text-xs ${i.estado === "error" ? "text-danger-ink" : i.estado === "warn" ? "text-ink-2" : "text-muted"}`}>
+                  <span aria-hidden="true">{mark}</span> {t(key, { v: i.valor })}
+                </li>
+              );
+            })}
+          </ul>
+          {health !== null && healthBlocked && <p role="alert" className="text-xs text-danger-ink">{t("health_blocked")}</p>}
+          <button type="button" className={btnGhost + " self-start !px-3 !py-1 text-xs"} disabled={health === null} onClick={() => void loadHealth()}>{t("health_retry")}</button>
+        </div>
         <label className="flex items-start gap-2 text-sm">
           <input type="checkbox" checked={agree} onChange={(e) => setAgree(e.target.checked)} className="mt-1" />
           {t("consent_part")}
@@ -372,6 +423,10 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
             <li className="flex flex-col gap-2 rounded-lg border border-accent p-3" aria-live="polite">
               <p className="text-sm font-semibold">{pending.q}</p>
               <ProgressBar value={0} indeterminate label={t("thinking", { s: Math.max(0, Math.round((now - pending.since) / 1000)) })} />
+              <div className="flex items-center gap-3">
+                <button type="button" className={btnGhost + " !px-3 !py-1 text-xs"} onClick={() => void call("POST", "/cancel").catch(() => undefined)}>{t("cancel")}</button>
+                <span className="text-xs text-muted">{t("cancelled_hint")}</span>
+              </div>
             </li>
           )}
           {[...questions].reverse().map((q) => (

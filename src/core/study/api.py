@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 from core import services
 from core.config import load_config
 from core.engine.indexer import IndexModelMismatchError
+from core.engine.llm import LLMCancelledError, LLMTimeoutError
 from core.projects import DATA_ROOT, InvalidRepoUrlError, ProjectNotFoundError
 from core.study import hardware
 from core.study.session import CORRECT_VALUES, StudyError, StudySession
@@ -26,6 +27,7 @@ from core.study.session import CORRECT_VALUES, StudyError, StudySession
 logger = logging.getLogger("beacon.study")
 
 STUDY_PROJECT_ID = "estudio"
+ASK_TIMEOUT_SECONDS = 180  # una respuesta que tarda más suele ser un bucle del modelo: se corta con un aviso
 MAX_FILES = 3000  # más que esto son horas de indexado: se pide un repositorio más chico
 ALLOWED_HOSTS = ("github.com", "gitlab.com", "bitbucket.org", "codeberg.org")
 
@@ -89,6 +91,46 @@ class IdentityBody(BaseModel):
     presentacion: str = Field(default="", max_length=3000)
 
 
+def run_health_checks() -> list:
+    """Revisión previa al estudio: lo necesario para que no falle a mitad de camino. Cada ítem trae un id (la
+    pantalla lo traduce), un estado ("ok", "warn" o "error") y un valor para mostrar."""
+    items = []
+    try:
+        ai = load_config().ai_provider
+        host, embedding, llm = ai.ollama_host, ai.embedding_model, ai.llm_model
+    except FileNotFoundError:
+        host, embedding, llm = "http://localhost:11434", "qwen3-embedding:0.6b", "llama3:8b"
+
+    installed, ollama_ok = [], False
+    try:
+        import ollama
+        installed = [m["model"] for m in ollama.Client(host=host, timeout=4).list().get("models", [])]
+        ollama_ok = True
+    except Exception:  # noqa: BLE001
+        pass
+    items.append({"id": "ollama", "estado": "ok" if ollama_ok else "error", "valor": host})
+    for item_id, model in (("model_embedding", embedding), ("model_llm", llm)):
+        present = any(model == m or f"{model}:latest" == m for m in installed)
+        items.append({"id": item_id, "estado": "ok" if present else ("error" if ollama_ok else "skip"), "valor": model})
+
+    snapshot = hardware.collect_hardware(str(DATA_ROOT))
+    gpus = snapshot.get("gpus") or []
+    if not gpus:
+        items.append({"id": "gpu", "estado": "warn", "valor": ""})
+    else:
+        vram = max(g["vram_gb"] for g in gpus)
+        items.append({"id": "gpu", "estado": "ok" if vram >= 6 else "warn", "valor": f"{gpus[0]['modelo']} ({vram:g} GB)"})
+    free = snapshot.get("disco_libre_gb")
+    items.append({"id": "disk", "estado": "ok" if free is None or free >= 2 else ("warn" if free >= 0.5 else "error"),
+                  "valor": "" if free is None else f"{free:g} GB"})
+    try:
+        httpx.head("https://github.com", timeout=5, follow_redirects=True)
+        items.append({"id": "network", "estado": "ok", "valor": "github.com"})
+    except Exception:  # noqa: BLE001
+        items.append({"id": "network", "estado": "error", "valor": "github.com"})
+    return items
+
+
 def check_public_repo_url(url: str) -> str:
     """Solo https y servidores de código conocidos: el estudio se hace con repositorios públicos."""
     from urllib.parse import urlparse
@@ -104,6 +146,7 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
     router = APIRouter(prefix="/study")
     status = {"repo": {"estado": "sin_repo", "detalle": None}}
     lock = threading.Lock()
+    cancel = threading.Event()  # detiene la respuesta en curso (botón «Cancelar» o cierre del servidor)
 
     def session() -> StudySession:
         return StudySession(session_path())
@@ -116,6 +159,10 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
 
     def fail(e: StudyError):
         raise HTTPException(status_code=400, detail=str(e))
+
+    @router.get("/health")
+    def health():
+        return {"items": run_health_checks()}
 
     # ---------- sesión ----------
     @router.get("/state")
@@ -251,9 +298,15 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
             raise HTTPException(status_code=409, detail="Todavía no hay un repositorio listo.")
         try:
             engine = get_engine(STUDY_PROJECT_ID)
+            cancel.clear()
             t0 = time.perf_counter()
-            result = engine.ask(body.pregunta, language=body.idioma)
+            result = engine.ask(body.pregunta, language=body.idioma, max_seconds=ASK_TIMEOUT_SECONDS, should_stop=cancel.is_set)
             seconds = time.perf_counter() - t0
+        except LLMCancelledError:
+            raise HTTPException(status_code=409, detail="Pregunta cancelada.")
+        except LLMTimeoutError:
+            raise HTTPException(status_code=504, detail=f"El modelo tardó más de {ASK_TIMEOUT_SECONDS // 60} minutos y se detuvo. "
+                                                        "Prueba con una pregunta más concreta.")
         except IndexModelMismatchError as e:
             raise HTTPException(status_code=409, detail=str(e))
         except (ConnectionError, httpx.TransportError):
@@ -263,6 +316,11 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
         data = result.to_dict()
         n = s.add_question(body.pregunta, data["answer"], seconds, result.prompt_tokens, result.answer_tokens, data["sources"])
         return {"n": n, "respuesta": data["answer"], "segundos": round(seconds, 2), "fuentes": data["sources"]}
+
+    @router.post("/cancel")
+    def cancel_question():
+        cancel.set()
+        return {"ok": True}
 
     @router.post("/rate")
     def rate(body: RateBody):
@@ -325,4 +383,5 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
         threading.Timer(0.7, lambda: os._exit(0)).start()  # da tiempo a que la respuesta llegue al navegador
         return {"ok": True}
 
+    router.shutdown = cancel.set  # lo llama el servidor al cerrarse, para que una respuesta en curso no lo deje colgado
     return router
