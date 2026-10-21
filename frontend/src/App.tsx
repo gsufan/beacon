@@ -6,6 +6,7 @@ import ThemeToggle from "./components/ThemeToggle";
 import Chat from "./routes/Chat";
 import Docs from "./routes/Docs";
 import Settings from "./routes/Settings";
+import Study from "./routes/Study";
 
 function BeaconMark() {
   return (
@@ -91,6 +92,8 @@ function Sidebar() {
 }
 
 export default function App() {
+  // El modo estudio (`beacon study`) es una pantalla independiente, sin barra lateral ni proyectos.
+  if (useLocation().pathname.startsWith("/study")) return <Study />;
   return (
     <LanguageProvider>
       <ProjectProvider>
