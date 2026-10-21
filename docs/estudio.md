@@ -31,6 +31,10 @@ El asistente se abre en el navegador (`http://127.0.0.1:8000/study`) y guía cin
    (correcta, en parte, incorrecta, no sé). El tiempo lo mide Beacon, no el navegador.
 5. **Cierre.** Experiencia, identidad opcional y revisión del archivo. Al generarlo, `beacon-estudio-resultados-<id>.json` (y `beacon-estudio-identidad-<id>.json`, si se dio) quedan en la carpeta raíz del proyecto; también se pueden descargar o copiar.
 
+### Dónde queda el repositorio clonado
+
+El repositorio que eliges se clona en `data/estudio/` dentro de la carpeta de Beacon (el asistente muestra la ruta exacta). Se borra solo al descartar la sesión («Descartar todo y salir», que además detiene el servidor) o al responder que sí cuando cierras `beacon study` con Ctrl+C. Si prefieres borrarlo a mano para recuperar espacio, esa carpeta es la única que ocupa lugar. Para ver y limpiar el espacio de otros proyectos: `beacon space` y `beacon clean`.
+
 ### Qué contiene y qué no el archivo
 
 Contiene las preguntas, las respuestas, los tiempos, las valoraciones, el repositorio elegido (dirección y

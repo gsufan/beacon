@@ -1,6 +1,7 @@
 import { GitBranch, HardDrive } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import DirBrowser from "../components/DirBrowser";
+import StorageSection from "../components/StorageSection";
 import Toggle from "../components/Toggle";
 import { useLanguage } from "../components/LanguageSelector";
 import { useProject } from "../components/ProjectSelector";
@@ -491,6 +492,10 @@ export default function Settings() {
             </button>
           </div>
         )}
+      </Section>
+
+      <Section title={t("settings_storage")} description={t("settings_storage_desc")}>
+        <StorageSection />
       </Section>
 
       <Section title={t("settings_security")}>

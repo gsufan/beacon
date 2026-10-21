@@ -9,6 +9,7 @@ import type {
   ProjectCreatePayload,
   ProjectEntry,
   QueryResponse,
+  StorageResponse,
   SystemProvider,
   SyncStatus,
 } from "./types";
@@ -95,6 +96,11 @@ export const api = {
     request<{ status: string }>(`/projects/${projectId}/sync`, { method: "POST" }),
 
   syncStatus: (projectId: string) => request<SyncStatus>(`/projects/${projectId}/sync-status`),
+
+  storage: () => request<StorageResponse>("/system/storage"),
+
+  cleanProject: (projectId: string, what: { clone?: boolean; index?: boolean; docs?: boolean }) =>
+    request<{ freed_bytes: number }>(`/projects/${projectId}/clean`, { method: "POST", body: JSON.stringify(what) }),
 
   aiStatus: () => request<AIStatus>("/system/ai-status"),
 

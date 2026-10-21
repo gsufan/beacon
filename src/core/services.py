@@ -154,6 +154,20 @@ def _project_entry(project_id: str) -> ProjectEntry:
     return entry
 
 
+def ensure_clone(entry: ProjectEntry) -> bool:
+    """Vuelve a clonar un proyecto por URL cuyo clon se borró para liberar espacio. True si tuvo que clonar."""
+    if entry.source_type != "git" or not entry.repo_url or Path(entry.repo_path).exists():
+        return False
+    token = get_project_token(entry.id)
+    try:
+        cloned = git.Repo.clone_from(build_clone_url(entry.repo_url, token), entry.repo_path)
+    except git.GitCommandError as e:
+        raise CloneError(f"No se pudo volver a clonar '{entry.repo_url}': {e}")
+    if token:
+        cloned.remotes.origin.set_url(entry.repo_url)  # el token no se deja en .git/config
+    return True
+
+
 def pull_from_remote(entry: ProjectEntry) -> None:
     """Trae los cambios del remoto de un proyecto clonado por URL. Si tiene
     token (repo privado), lo usa solo durante el pull y restaura la URL
@@ -197,8 +211,8 @@ def sync_project(project_id: str, *, docs: bool = True, full: bool = False, incl
     entry = _project_entry(project_id)
     ai = load_config().ai_provider
     with project_lock(Path(project.chroma_dir).parent):
-        pulled = False
-        if pull and entry.source_type == "git" and not include_uncommitted:
+        pulled = ensure_clone(entry)  # un clon recién hecho ya está al día
+        if pull and not pulled and entry.source_type == "git" and not include_uncommitted:
             pull_from_remote(entry)
             pulled = True
         indexer = CodebaseIndexer(project, ai)
@@ -215,4 +229,5 @@ def generate_docs(project_id: str, *, full: bool = False, on_progress: ProgressC
     project = get_project(project_id)
     ai = load_config().ai_provider
     with project_lock(Path(project.chroma_dir).parent):
+        ensure_clone(_project_entry(project_id))
         return DocGenerator(project, ai).sync(on_progress=on_progress, full=full)

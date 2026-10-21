@@ -32,6 +32,7 @@ const routes: Record<string, Handler> = {
       projects: [{ id: "demo", name: "Demo", repo_path: "/repos/demo", source_type: "local", auto_watch: false }],
     },
   }),
+  "GET /system/storage": () => ({ body: { projects: [], total_bytes: 0 } }),
   "GET /system/providers": () => ({ body: { providers: [{ id: "ollama", label: "Ollama" }] } }),
   "GET /system/available-models": () => ({ body: { models: ["llama3:8b", "qwen3-embedding:0.6b"] } }),
 };

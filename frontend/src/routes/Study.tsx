@@ -17,6 +17,7 @@ interface RepoStatus {
 }
 interface StudyState {
   started: boolean;
+  carpeta_repo?: string;
   consentimientos?: { participacion: boolean; hardware: boolean; envio: boolean };
   hardware?: Record<string, unknown> | null;
   repo?: { url: string; archivos_indexados: number; fragmentos?: number } | null;
@@ -38,7 +39,7 @@ const T = {
     hw_text: "Para interpretar los tiempos necesitamos saber qué equipo usas. Estos son los datos que Beacon detectó en TU equipo en este momento, y es exactamente lo que se guardaría si lo autorizas (no incluye tu nombre ni rutas):",
     consent_hw: "Autorizo guardar estos datos del equipo (si no lo marcas, se omiten).",
     repo_text: "Elige un repositorio público (GitHub, GitLab, Bitbucket o Codeberg) que conozcas, de hasta 3000 archivos de código.",
-    repo_ph: "https://github.com/usuario/repositorio", prepare: "Preparar repositorio", examples: "O elige un repositorio de ejemplo...",
+    repo_ph: "https://github.com/usuario/repositorio", prepare: "Preparar repositorio", examples: "O elige uno de estos repositorios de ejemplo:", use_repo: "Usar este", chosen: "Elegido", size_s: "pequeño", size_m: "mediano", working_on: "Trabajando en:", storage_note: "Los repositorios clonados se guardan en {dir}. Si quieres recuperar espacio, puedes borrar esa carpeta (se borra sola al descartar la sesión). Para ver y limpiar el espacio de todos tus proyectos: beacon space y beacon clean.", closed: "Sesión descartada y servidor detenido. Ya puedes cerrar esta pestaña.",
     cloning: "Clonando el repositorio...", indexing: "Indexando: {a} de {t} archivos", elapsed: "{s} s",
     repo_ready: "Repositorio listo: {n} archivos indexados.", change_repo: "Elegir otro repositorio",
     repo_locked: "Para cambiar de repositorio hay que descartar la sesión (ya hiciste preguntas).",
@@ -70,7 +71,7 @@ const T = {
     hw_text: "To interpret timings we need to know what machine you use. This is the data Beacon just detected on YOUR machine, and exactly what would be stored if you allow it (no name or paths):",
     consent_hw: "I allow storing this hardware data (if unchecked, it is skipped).",
     repo_text: "Pick a public repository (GitHub, GitLab, Bitbucket or Codeberg) you know, with up to 3000 code files.",
-    repo_ph: "https://github.com/user/repository", prepare: "Prepare repository", examples: "Or pick an example repository...",
+    repo_ph: "https://github.com/user/repository", prepare: "Prepare repository", examples: "Or pick one of these example repositories:", use_repo: "Use this one", chosen: "Chosen", size_s: "small", size_m: "medium", working_on: "Working on:", storage_note: "Cloned repositories are stored in {dir}. To recover space you can delete that folder (it is removed automatically when you discard the session). To see and clean the space of all your projects: beacon space and beacon clean.", closed: "Session discarded and server stopped. You can close this tab now.",
     cloning: "Cloning the repository...", indexing: "Indexing: {a} of {t} files", elapsed: "{s} s",
     repo_ready: "Repository ready: {n} files indexed.", change_repo: "Pick another repository",
     repo_locked: "To change the repository you must discard the session (you already asked questions).",
@@ -97,15 +98,20 @@ type Key = keyof (typeof T)["es"];
 type Tr = (k: Key, v?: Record<string, string | number>) => string;
 
 const MIN_QUESTIONS = 3;
-// Repositorios públicos de tamaño moderado, para quien no tiene uno en mente.
+// Repositorios públicos para quien no tiene uno en mente. `size` es aproximado: "s" = pequeño, "m" = mediano.
 const EXAMPLE_REPOS = [
-  { name: "charmbracelet/glow", lang: "Go", url: "https://github.com/charmbracelet/glow" },
-  { name: "psf/requests", lang: "Python", url: "https://github.com/psf/requests" },
-  { name: "pallets/flask", lang: "Python", url: "https://github.com/pallets/flask" },
-  { name: "expressjs/express", lang: "JavaScript", url: "https://github.com/expressjs/express" },
-  { name: "spring-projects/spring-petclinic", lang: "Java", url: "https://github.com/spring-projects/spring-petclinic" },
-  { name: "GoogleCloudPlatform/microservices-demo", lang: "Go, Python, Java, C#, JS", url: "https://github.com/GoogleCloudPlatform/microservices-demo" },
-];
+  { name: "antirez/kilo", lang: "C", size: "s", es: "Un editor de texto de terminal en un solo archivo. Ideal para una prueba rápida.", en: "A terminal text editor in a single file. Ideal for a quick try." },
+  { name: "charmbracelet/glow", lang: "Go", size: "s", es: "Lector de Markdown para la terminal, con interfaz de navegación.", en: "Markdown reader for the terminal, with a browsing interface." },
+  { name: "psf/requests", lang: "Python", size: "s", es: "La biblioteca de peticiones HTTP más usada de Python: sesiones, cookies, redirecciones.", en: "Python's most used HTTP library: sessions, cookies, redirects." },
+  { name: "pallets/flask", lang: "Python", size: "s", es: "Microframework web: rutas, plantillas, contexto de petición y extensiones.", en: "Web microframework: routing, templates, request context and extensions." },
+  { name: "encode/httpx", lang: "Python", size: "s", es: "Cliente HTTP moderno con soporte síncrono y asíncrono.", en: "Modern HTTP client with sync and async support." },
+  { name: "expressjs/express", lang: "JavaScript", size: "s", es: "Framework web minimalista para Node.js: enrutado y middleware.", en: "Minimalist web framework for Node.js: routing and middleware." },
+  { name: "spring-projects/spring-petclinic", lang: "Java", size: "s", es: "Aplicación de ejemplo oficial de Spring: una clínica veterinaria con dueños, mascotas y visitas.", en: "Official Spring sample application: a vet clinic with owners, pets and visits." },
+  { name: "sharkdp/bat", lang: "Rust", size: "m", es: "Un «cat» con resaltado de sintaxis, paginación e integración con git.", en: "A cat clone with syntax highlighting, paging and git integration." },
+  { name: "junegunn/fzf", lang: "Go", size: "m", es: "Buscador difuso interactivo de línea de comandos.", en: "Interactive fuzzy finder for the command line." },
+  { name: "BurntSushi/ripgrep", lang: "Rust", size: "m", es: "Buscador de texto recursivo muy rápido; buen ejemplo de proyecto con varios módulos.", en: "Very fast recursive text search; a good multi-crate example." },
+  { name: "GoogleCloudPlatform/microservices-demo", lang: "Go, Python, Java, C#, JS", size: "m", es: "Tienda en línea de ejemplo con 11 microservicios en distintos lenguajes.", en: "Sample online shop made of 11 microservices in different languages." },
+] as const;
 const STEPS: Key[] = ["s1", "s2", "s3", "s4", "s5"];
 const btn = "rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-on disabled:opacity-50";
 const btnGhost = "rounded-lg border border-line px-4 py-2 text-sm text-ink-2 hover:bg-surface-2 disabled:opacity-50";
@@ -216,6 +222,8 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
   // Paso 3
   const [url, setUrl] = useState("");
   const [changing, setChanging] = useState(false);
+  const [workingOn, setWorkingOn] = useState("");
+  const [closed, setClosed] = useState(false);
   // Paso 4
   const [question, setQuestion] = useState("");
   const [pending, setPending] = useState<{ q: string; since: number } | null>(null);
@@ -301,12 +309,27 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
           <>
             <p className="text-sm text-ink-2">{t("repo_text")}</p>
             <input aria-label="URL" className={input} placeholder={t("repo_ph")} value={url} onChange={(e) => setUrl(e.target.value)} disabled={preparing} />
-            <select aria-label={t("examples")} className={input} value="" disabled={preparing} onChange={(e) => setUrl(e.target.value)}>
-              <option value="">{t("examples")}</option>
-              {EXAMPLE_REPOS.map((r) => <option key={r.url} value={r.url}>{r.name} ({r.lang})</option>)}
-            </select>
+            <p className="text-sm font-semibold">{t("examples")}</p>
+            <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto pr-1" aria-label={t("examples")}>
+              {EXAMPLE_REPOS.map((r) => {
+                const repoUrl = `https://github.com/${r.name}`;
+                return (
+                  <li key={r.name} className={`flex items-start justify-between gap-3 rounded-lg border p-3 ${url === repoUrl ? "border-accent bg-accent-tint" : "border-line"}`}>
+                    <div className="flex flex-col gap-1">
+                      <p className="text-sm">
+                        <a href={repoUrl} target="_blank" rel="noreferrer" className="font-semibold text-accent-ink underline">{r.name}</a>
+                        <span className="ml-2 text-xs text-muted">{r.lang} · {t(`size_${r.size}` as Key)}</span>
+                      </p>
+                      <p className="text-xs text-ink-2">{lang === "es" ? r.es : r.en}</p>
+                    </div>
+                    <button className={btnGhost + " shrink-0 !px-3 !py-1 text-xs"} disabled={preparing} aria-label={`${t("use_repo")} ${r.name}`}
+                      onClick={() => setUrl(repoUrl)}>{url === repoUrl ? t("chosen") : t("use_repo")}</button>
+                  </li>
+                );
+              })}
+            </ul>
             <button className={btn + " self-start"} disabled={!url.trim() || busy || preparing}
-              onClick={() => act(() => call("POST", "/repo", { url: url.trim() }))}>{t("prepare")}</button>
+              onClick={() => { setWorkingOn(url.trim()); void act(() => call("POST", "/repo", { url: url.trim() })); }}>{t("prepare")}</button>
           </>
         ) : (
           <>
@@ -322,6 +345,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
             label={`${t("indexing", { a: progress.actual, t: progress.total })} · ${t("elapsed", { s: progress.segundos })}${progress.archivo ? ` · ${progress.archivo}` : ""}`} />
         )}
         {status?.estado === "error" && <p role="alert" className="text-sm text-danger-ink">{status.detalle}</p>}
+        {state.carpeta_repo && <p className="text-xs text-muted">{t("storage_note", { dir: state.carpeta_repo })}</p>}
       </>
     );
   } else if (step === 4) {
@@ -419,10 +443,20 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
             <p className="text-sm text-muted">{t("sent_note")}</p>
           </div>
         )}
-        <button className={btnGhost + " self-start"} disabled={busy} onClick={() => act(() => call("POST", "/discard"))}>{t("discard")}</button>
+        {state.carpeta_repo && <p className="text-xs text-muted">{t("storage_note", { dir: state.carpeta_repo })}</p>}
+        <button className={btnGhost + " self-start"} disabled={busy} onClick={() => act(async () => {
+          await call("POST", "/quit");  // descarta la sesión y detiene el servidor
+          setClosed(true);
+        })}>{t("discard")}</button>
       </>
     );
   }
+
+  if (closed) return <p role="status" className="rounded-xl border border-line bg-surface p-5 text-sm">{t("closed")}</p>;
+
+  // El repositorio con el que se trabaja: el ya listo o el que se está preparando.
+  const preparingUrl = preparing && status?.detalle?.startsWith("http") ? status.detalle : "";
+  const shownUrl = state.repo?.url || preparingUrl || workingOn;
 
   return (
     <>
@@ -437,6 +471,9 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
           ))}
         </ol>
       </nav>
+      {step >= 3 && shownUrl && (
+        <p className="text-sm text-ink-2">{t("working_on")} <a href={shownUrl} target="_blank" rel="noreferrer" className="font-mono text-xs text-accent-ink underline">{shownUrl}</a></p>
+      )}
       <section className={section}>
         <h2 className="font-semibold">{t(STEPS[step - 1])}</h2>
         {content}

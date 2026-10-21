@@ -150,6 +150,12 @@ class AutoWatchUpdate(BaseModel):
     enabled: bool
 
 
+class CleanRequest(BaseModel):
+    clone: bool = False
+    index: bool = False
+    docs: bool = False
+
+
 @app.get("/projects")
 def get_projects():
     return [{"id": p.id, "name": p.name} for p in list_projects()]
@@ -358,6 +364,36 @@ def delete_project(project_id: str, purge_data: bool = False):
     finally:
         _get_engine.cache_clear()
     return {"status": "eliminado", "purge_data": purge_data}
+
+
+@app.get("/system/storage")
+def system_storage():
+    """Espacio en disco por proyecto: clon (solo si Beacon lo clonó), índice y documentación."""
+    from core import storage
+    projects = [dict(id=u.id, name=u.name, source_type=u.source_type, clone_bytes=u.clone_bytes, index_bytes=u.index_bytes,
+                     docs_bytes=u.docs_bytes, total_bytes=u.total_bytes, managed_clone=bool(u.clone_path))
+                for u in storage.list_usage()]
+    return {"projects": projects, "total_bytes": sum(p["total_bytes"] for p in projects)}
+
+
+@app.post("/projects/{project_id}/clean")
+def clean_project_storage(project_id: str, body: CleanRequest):
+    """Libera espacio sin quitar el proyecto: lo borrado se vuelve a crear en el siguiente sync."""
+    from core import storage
+    if not (body.clone or body.index or body.docs):
+        raise HTTPException(status_code=400, detail="Indica qué borrar: clone, index y/o docs.")
+    _get_engine.cache_clear()  # las instancias en caché tienen abierto el índice
+    try:
+        freed = storage.clean_project(project_id, clone=body.clone, index=body.index, docs=body.docs)
+    except ProjectBusyError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except ProjectNotFoundError:
+        raise HTTPException(status_code=404, detail=f"Proyecto '{project_id}' no encontrado.")
+    except OSError as e:
+        raise HTTPException(status_code=409, detail=f"No se pudo borrar (¿está en uso por otro proceso?): {e}")
+    finally:
+        _get_engine.cache_clear()
+    return {"freed_bytes": freed}
 
 
 def _run_sync(project_id: str):

@@ -38,6 +38,18 @@ beacon serve                         # levanta la API + UI en http://127.0.0.1:8
 
 **Idioma de la consola**: la ayuda y los mensajes salen en español si el sistema operativo está en español (cualquier variante) y en inglés en cualquier otro caso. Para forzar uno, define `BEACON_LANG=es` o `BEACON_LANG=en`. Los nombres de los comandos y de las opciones son siempre en inglés.
 
+## Espacio en disco
+
+Cada proyecto guarda en `data/<id>/` tres cosas que se pueden borrar por separado: el **clon** del repositorio (solo si Beacon lo clonó por URL; tu carpeta local nunca se toca), el **índice** y la **documentación** generada.
+
+```bash
+beacon space                              # cuánto usa cada proyecto
+beacon clean <id> --clone                 # borra el clon (se vuelve a descargar solo en el siguiente sync)
+beacon clean <id> --index --docs          # borra el índice y la documentación (se reconstruyen con sync)
+```
+
+El proyecto sigue registrado: lo borrado se recrea al sincronizar. La misma información y los mismos botones están en **Configuración → Almacenamiento** de la interfaz web. Para quitar un proyecto por completo, `beacon remove <id> --purge-data`.
+
 ## Interfaz web
 
 Con `beacon serve` corriendo (y la UI ya compilada, ver [instalacion-manual.md](instalacion-manual.md)), abre `http://127.0.0.1:8000`:

@@ -515,6 +515,51 @@ def cmd_serve(host: str = "127.0.0.1", port: int = 8000):
     uvicorn.run("core.api:app", host=host, port=port, reload=False)
 
 
+@app.command("space", help=tr("Muestra cuánto espacio en disco usa cada proyecto (clon, índice y documentación).",
+                              "Show how much disk space each project uses (clone, index and documentation)."))
+def cmd_space():
+    from core import storage
+    usage = storage.list_usage()
+    if not usage:
+        console.print(tr("[yellow]No hay proyectos registrados.[/yellow]", "[yellow]No projects are registered.[/yellow]"))
+        raise typer.Exit()
+    table = Table(title=tr("Espacio en disco por proyecto", "Disk space per project"))
+    table.add_column("id")
+    for col in (tr("clon", "clone"), tr("índice", "index"), tr("documentación", "documentation"), "total"):
+        table.add_column(col, justify="right")
+    for u in usage:
+        clone = storage.human_size(u.clone_bytes) if u.clone_path else tr("(carpeta tuya)", "(your folder)")
+        table.add_row(u.id, clone, storage.human_size(u.index_bytes), storage.human_size(u.docs_bytes), storage.human_size(u.total_bytes))
+    console.print(table)
+    console.print(tr("[dim]Para liberar espacio: beacon clean <id> --clone --index --docs (el proyecto sigue registrado; "
+                     "lo borrado se vuelve a crear con 'beacon sync').[/dim]",
+                     "[dim]To free space: beacon clean <id> --clone --index --docs (the project stays registered; "
+                     "what is deleted is recreated by 'beacon sync').[/dim]"))
+
+
+@app.command("clean", help=tr("Libera espacio de un proyecto sin quitarlo: borra su clon, su índice y/o su documentación.",
+                              "Free space for a project without removing it: delete its clone, index and/or documentation."))
+def cmd_clean(
+    project_id: str,
+    clone: bool = typer.Option(False, "--clone", help=tr("Borra el clon del repositorio (solo si Beacon lo clonó por URL).",
+                                                          "Delete the repository clone (only if Beacon cloned it by URL).")),
+    index: bool = typer.Option(False, "--index", help=tr("Borra el índice vectorial.", "Delete the vector index.")),
+    docs: bool = typer.Option(False, "--docs", help=tr("Borra la documentación generada.", "Delete the generated documentation.")),
+    yes: bool = typer.Option(False, "--yes", "-y", help=tr("No pedir confirmación.", "Do not ask for confirmation.")),
+):
+    from core import storage
+    if not (clone or index or docs):
+        console.print(tr("[yellow]Indica qué borrar: --clone, --index y/o --docs (mira 'beacon space').[/yellow]",
+                         "[yellow]Say what to delete: --clone, --index and/or --docs (see 'beacon space').[/yellow]"))
+        raise typer.Exit(code=1)
+    _resolve_or_exit(project_id)
+    if not yes and not typer.confirm(tr(f"¿Borrar los datos pedidos de '{project_id}'? Se pueden volver a crear con 'beacon sync'.",
+                                        f"Delete the requested data of '{project_id}'? It can be recreated with 'beacon sync'."), default=False):
+        raise typer.Exit()
+    freed = _run_safely(lambda: storage.clean_project(project_id, clone=clone, index=index, docs=docs))
+    console.print(tr(f"[green]OK[/green] Liberados {storage.human_size(freed)}.", f"[green]OK[/green] Freed {storage.human_size(freed)}."))
+
+
 @app.command("study", help=tr("Modo estudio: una sesión guiada, con tu aprobación en cada paso, que genera dos archivos locales que puedes "
                               "revisar antes de subirlos. No toca tu configuración ni tus proyectos.",
                               "Study mode: a guided session, with your approval at every step, that generates two local files you can "
@@ -577,6 +622,12 @@ def cmd_study(
     except KeyboardInterrupt:
         pass
     finally:
+        if not StudySession(study_dir / "sesion.json").started:
+            # Ya se descartó desde la pantalla ("Descartar todo y salir"): no hay nada que preguntar.
+            shutil.rmtree(DATA_ROOT / "estudio", ignore_errors=True)
+            console.print(tr("[dim]Sesión descartada: la próxima vez el estudio parte desde cero.[/dim]",
+                             "[dim]Session discarded: next time the study starts from scratch.[/dim]"))
+            return
         # Al cerrar se pregunta si se descarta la sesión (y el repositorio clonado). Los archivos ya generados en la
         # raíz del proyecto no se tocan. Sin respuesta (Ctrl+C otra vez, entrada cerrada) se conserva la sesión.
         try:

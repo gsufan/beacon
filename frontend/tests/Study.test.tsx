@@ -72,14 +72,29 @@ describe("modo estudio", () => {
     expect(calls.some((c) => c.path === "/study/hardware" && c.method === "POST")).toBe(false);
   });
 
-  it("permite elegir un repositorio de ejemplo de la lista y lo copia al campo de dirección", async () => {
-    state = started({ hardware: { cpu_modelo: "x" } });
+  it("muestra una lista de repositorios de ejemplo con descripción y copia el elegido al campo de dirección", async () => {
+    state = started({ hardware: { cpu_modelo: "x" }, carpeta_repo: "/datos/estudio" });
     open();
-    const list = await screen.findByRole("combobox", { name: /ejemplo|example/ });
-    await userEvent.selectOptions(list, "https://github.com/charmbracelet/glow");
+    const list = await screen.findByRole("list", { name: /ejemplo|example/ });
+    expect(list.querySelectorAll("li").length).toBeGreaterThanOrEqual(10);
+    expect(screen.getByRole("link", { name: "charmbracelet/glow" })).toHaveAttribute("href", "https://github.com/charmbracelet/glow");
+    expect(screen.getByText(/Lector de Markdown|Markdown reader/)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: /charmbracelet\/glow/ }));
     expect(screen.getByRole("textbox", { name: "URL" })).toHaveValue("https://github.com/charmbracelet/glow");
+    expect(screen.getByText(/\/datos\/estudio/)).toBeInTheDocument();  // dónde se guardan los repos clonados
     await userEvent.click(screen.getByRole("button", { name: /Preparar repositorio|Prepare repository/ }));
     await waitFor(() => expect(calls.some((c) => c.path === "/study/repo" && (c.body as { url: string }).url.endsWith("/glow"))).toBe(true));
+    expect(await screen.findByRole("link", { name: "https://github.com/charmbracelet/glow" })).toBeInTheDocument();  // «Trabajando en»
+  });
+
+  it("descartar y salir detiene el servidor y avisa que ya se puede cerrar la pestaña", async () => {
+    state = started({ hardware: { cpu_modelo: "x" }, repo: { url: "https://github.com/u/r", archivos_indexados: 3 },
+      repo_status: { estado: "listo", detalle: null }, puede_terminar: true });
+    open();
+    await userEvent.click(await screen.findByRole("button", { name: /Terminar|Finish/ }));
+    await userEvent.click(await screen.findByRole("button", { name: /Descartar todo y salir|Discard everything and quit/ }));
+    expect(await screen.findByText(/Ya puedes cerrar esta pestaña|You can close this tab now/)).toBeInTheDocument();
+    expect(calls.some((c) => c.path === "/study/quit" && c.method === "POST")).toBe(true);
   });
 
   it("muestra el avance del indexado archivo por archivo", async () => {

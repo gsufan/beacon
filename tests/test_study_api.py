@@ -140,3 +140,23 @@ def test_experience_is_stored(client):
     client.post("/study/start", json={})
     assert client.post("/study/experience", json={"datos": {"anios": 4, "likert": {"util": 5}}}).status_code == 200
     assert client.get("/study/state").json()["experiencia"]["anios"] == 4
+
+
+def test_discard_also_removes_the_cloned_repository_folder(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(study_api.services, "unregister_project", lambda *a, **k: None)
+    monkeypatch.setattr(study_api, "DATA_ROOT", tmp_path)
+    (tmp_path / "estudio" / "repo").mkdir(parents=True)
+    _ready(client, tmp_path)
+    assert client.get("/study/state").json()["carpeta_repo"] == str(tmp_path / "estudio")
+    client.post("/study/discard")
+    assert not (tmp_path / "estudio").exists()
+
+
+def test_quit_discards_and_schedules_the_shutdown(client, tmp_path, monkeypatch):
+    monkeypatch.setattr(study_api.services, "unregister_project", lambda *a, **k: None)
+    monkeypatch.setattr(study_api, "DATA_ROOT", tmp_path)
+    timers = []
+    monkeypatch.setattr(study_api.threading, "Timer", lambda delay, fn: type("T", (), {"start": lambda self: timers.append(delay)})())
+    _ready(client, tmp_path)
+    assert client.post("/study/quit").json() == {"ok": True}
+    assert client.get("/study/state").json() == {"started": False} and timers == [0.7]

@@ -73,6 +73,22 @@ export interface AppConfigResponse {
   projects: ProjectEntry[];
 }
 
+export interface StorageProject {
+  id: string;
+  name: string;
+  source_type: string;
+  clone_bytes: number;
+  index_bytes: number;
+  docs_bytes: number;
+  total_bytes: number;
+  managed_clone: boolean;
+}
+
+export interface StorageResponse {
+  projects: StorageProject[];
+  total_bytes: number;
+}
+
 export interface SyncStatus {
   status: "idle" | "running" | "done" | "error";
   detail: unknown;

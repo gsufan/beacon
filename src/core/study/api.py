@@ -5,6 +5,7 @@ El participante aprueba cada paso; los tiempos de las preguntas los mide el serv
 
 import json
 import logging
+import os
 import shutil
 import threading
 import time
@@ -123,7 +124,7 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
         if not s.started:
             return {"started": False}
         st = s.state
-        return {"started": True, "meta": st["meta"], "consentimientos": {k: s.has_consent(k) for k in ("participacion", "hardware", "envio")},
+        return {"started": True, "carpeta_repo": str(DATA_ROOT / STUDY_PROJECT_ID), "meta": st["meta"], "consentimientos": {k: s.has_consent(k) for k in ("participacion", "hardware", "envio")},
                 "hardware": st["hardware"], "repo": st["repo"], "repo_status": status["repo"],
                 "preguntas": [{"n": q["n"], "pregunta": q["pregunta"], "respuesta": q["respuesta"], "segundos": q["segundos_respuesta"],
                                "fuentes": q["fuentes"], "valoracion": q["valoracion"]} for q in st["preguntas"]],
@@ -301,8 +302,7 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
             files.append(identity_file(study_id))
         return {"resultado": result, "identidad": identity, "archivos": files, "carpeta": str(out)}
 
-    @router.post("/discard")
-    def discard():
+    def _discard_all():
         session().discard()
         with lock:
             status["repo"] = {"estado": "sin_repo", "detalle": None}
@@ -311,6 +311,18 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
             services.unregister_project(STUDY_PROJECT_ID, purge_data=True)
         except Exception:  # noqa: BLE001
             pass
+        shutil.rmtree(DATA_ROOT / STUDY_PROJECT_ID, ignore_errors=True)  # el clon, aunque el proyecto no estuviera registrado
+
+    @router.post("/discard")
+    def discard():
+        _discard_all()
+        return {"ok": True}
+
+    @router.post("/quit")
+    def quit_study():
+        """Descarta todo y apaga el servidor del estudio (la consola que lo lanzó lo nota y termina)."""
+        _discard_all()
+        threading.Timer(0.7, lambda: os._exit(0)).start()  # da tiempo a que la respuesta llegue al navegador
         return {"ok": True}
 
     return router
