@@ -38,7 +38,7 @@ const T = {
     hw_text: "Para interpretar los tiempos necesitamos saber qué equipo usas. Esto es lo que se guardaría (no incluye tu nombre ni rutas):",
     consent_hw: "Autorizo guardar estos datos del equipo (si no lo marcas, se omiten).",
     repo_text: "Elige un repositorio público (GitHub, GitLab, Bitbucket o Codeberg) que conozcas, de hasta 3000 archivos de código.",
-    repo_ph: "https://github.com/usuario/repositorio", prepare: "Preparar repositorio",
+    repo_ph: "https://github.com/usuario/repositorio", prepare: "Preparar repositorio", examples: "O elige un repositorio de ejemplo...",
     cloning: "Clonando el repositorio...", indexing: "Indexando: {a} de {t} archivos", elapsed: "{s} s",
     repo_ready: "Repositorio listo: {n} archivos indexados.", change_repo: "Elegir otro repositorio",
     repo_locked: "Para cambiar de repositorio hay que descartar la sesión (ya hiciste preguntas).",
@@ -69,7 +69,7 @@ const T = {
     hw_text: "To interpret timings we need to know what machine you use. This is what would be stored (no name or paths):",
     consent_hw: "I allow storing this hardware data (if unchecked, it is skipped).",
     repo_text: "Pick a public repository (GitHub, GitLab, Bitbucket or Codeberg) you know, with up to 3000 code files.",
-    repo_ph: "https://github.com/user/repository", prepare: "Prepare repository",
+    repo_ph: "https://github.com/user/repository", prepare: "Prepare repository", examples: "Or pick an example repository...",
     cloning: "Cloning the repository...", indexing: "Indexing: {a} of {t} files", elapsed: "{s} s",
     repo_ready: "Repository ready: {n} files indexed.", change_repo: "Pick another repository",
     repo_locked: "To change the repository you must discard the session (you already asked questions).",
@@ -95,6 +95,15 @@ type Key = keyof (typeof T)["es"];
 type Tr = (k: Key, v?: Record<string, string | number>) => string;
 
 const MIN_QUESTIONS = 3;
+// Repositorios públicos de tamaño moderado, para quien no tiene uno en mente.
+const EXAMPLE_REPOS = [
+  { name: "charmbracelet/glow", lang: "Go", url: "https://github.com/charmbracelet/glow" },
+  { name: "psf/requests", lang: "Python", url: "https://github.com/psf/requests" },
+  { name: "pallets/flask", lang: "Python", url: "https://github.com/pallets/flask" },
+  { name: "expressjs/express", lang: "JavaScript", url: "https://github.com/expressjs/express" },
+  { name: "spring-projects/spring-petclinic", lang: "Java", url: "https://github.com/spring-projects/spring-petclinic" },
+  { name: "GoogleCloudPlatform/microservices-demo", lang: "Go, Python, Java, C#, JS", url: "https://github.com/GoogleCloudPlatform/microservices-demo" },
+];
 const STEPS: Key[] = ["s1", "s2", "s3", "s4", "s5"];
 const btn = "rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-on disabled:opacity-50";
 const btnGhost = "rounded-lg border border-line px-4 py-2 text-sm text-ink-2 hover:bg-surface-2 disabled:opacity-50";
@@ -290,6 +299,10 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
           <>
             <p className="text-sm text-ink-2">{t("repo_text")}</p>
             <input aria-label="URL" className={input} placeholder={t("repo_ph")} value={url} onChange={(e) => setUrl(e.target.value)} disabled={preparing} />
+            <select aria-label={t("examples")} className={input} value="" disabled={preparing} onChange={(e) => setUrl(e.target.value)}>
+              <option value="">{t("examples")}</option>
+              {EXAMPLE_REPOS.map((r) => <option key={r.url} value={r.url}>{r.name} ({r.lang})</option>)}
+            </select>
             <button className={btn + " self-start"} disabled={!url.trim() || busy || preparing}
               onClick={() => act(() => call("POST", "/repo", { url: url.trim() }))}>{t("prepare")}</button>
           </>

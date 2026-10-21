@@ -72,6 +72,16 @@ describe("modo estudio", () => {
     expect(calls.some((c) => c.path === "/study/hardware" && c.method === "POST")).toBe(false);
   });
 
+  it("permite elegir un repositorio de ejemplo de la lista y lo copia al campo de dirección", async () => {
+    state = started({ hardware: { cpu_modelo: "x" } });
+    open();
+    const list = await screen.findByRole("combobox", { name: /ejemplo|example/ });
+    await userEvent.selectOptions(list, "https://github.com/charmbracelet/glow");
+    expect(screen.getByRole("textbox", { name: "URL" })).toHaveValue("https://github.com/charmbracelet/glow");
+    await userEvent.click(screen.getByRole("button", { name: /Preparar repositorio|Prepare repository/ }));
+    await waitFor(() => expect(calls.some((c) => c.path === "/study/repo" && (c.body as { url: string }).url.endsWith("/glow"))).toBe(true));
+  });
+
   it("muestra el avance del indexado archivo por archivo", async () => {
     state = started({ hardware: { cpu_modelo: "x" }, repo_status: { estado: "indexando", detalle: "33 archivos de código",
       progreso: { actual: 11, total: 33, archivo: "ui/pager.go", segundos: 4 } } });
