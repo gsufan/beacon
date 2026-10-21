@@ -56,8 +56,49 @@ from core.engine.indexer import CodebaseIndexer, IndexModelMismatchError
 from core.engine.doc_generator import DocGenerator, IndexOutOfDateError
 from core.engine.rag_engine import RAGEngine
 
-app = typer.Typer(help="Beacon — plataforma de mitigación de deuda técnica")
+app = typer.Typer(help="Beacon — plataforma de mitigación de deuda técnica", invoke_without_command=True)
 console = Console()
+
+
+def _version() -> str:
+    from importlib.metadata import PackageNotFoundError, version
+    try:
+        return version("beacon")
+    except PackageNotFoundError:
+        return "desarrollo"
+
+
+def _version_callback(show: bool):
+    if show:
+        console.print(f"Beacon {_version()}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    ctx: typer.Context,
+    version: bool = typer.Option(False, "--version", "-v", callback=_version_callback, is_eager=True,
+                                 help="Muestra la versión y sale."),
+):
+    """Sin comando, muestra un resumen con los comandos más útiles."""
+    if ctx.invoked_subcommand is not None:
+        return
+    console.print()
+    console.print(f"[bold]Beacon[/bold] {_version()} · preguntas sobre tu código, todo en tu equipo")
+    console.print()
+    console.print("Para empezar:")
+    for cmd, desc in (
+        ("beacon add", "registrar un repositorio"),
+        ("beacon sync <id>", "indexarlo"),
+        ("beacon ask <id> \"¿qué hace...?\"", "hacer una pregunta"),
+        ("beacon serve", "abrir la interfaz web"),
+        ("beacon doctor", "revisar que todo esté bien configurado"),
+        ("beacon study", "participar en el estudio de evaluación"),
+    ):
+        console.print(f"  [cyan]{cmd:<34}[/cyan] {desc}")
+    console.print()
+    console.print("Todos los comandos: [cyan]beacon --help[/cyan]. ¡Happy hacking!")
+    console.print()
 
 
 def _progress_bar(description: str):

@@ -45,3 +45,10 @@ def test_configure_beacon_logging_formats_records_with_timestamp_and_level(capsy
     assert "beacon.api" in err
 
     beacon_logger.handlers.clear()  # limpiar para no afectar otros tests
+
+
+def test_bare_command_shows_a_friendly_summary_and_version_flag():
+    out = runner.invoke(cli_module.app, [])
+    assert out.exit_code == 0 and "Happy hacking" in out.output and "beacon sync" in out.output
+    out = runner.invoke(cli_module.app, ["--version"])
+    assert out.exit_code == 0 and out.output.startswith("Beacon ")
