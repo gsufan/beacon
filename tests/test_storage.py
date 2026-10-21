@@ -83,6 +83,8 @@ def test_cli_space_and_clean(env, monkeypatch):
     out = runner.invoke(cli_module.app, ["space"])
     assert out.exit_code == 0 and "clonado" in out.output and "local" in out.output
     assert runner.invoke(cli_module.app, ["clean", "clonado"]).exit_code == 1  # sin indicar qué borrar
+    out = runner.invoke(cli_module.app, ["clean", "clonado", "--index"], input="n" + chr(10))  # avisa y no borra si se dice que no
+    assert out.exit_code == 0 and ("sigue registrado" in out.output or "stays registered" in out.output) and (env / "data" / "clonado" / "chroma_db" / "i.bin").exists()
     out = runner.invoke(cli_module.app, ["clean", "clonado", "--docs", "--yes"])
     assert out.exit_code == 0 and not (env / "data" / "clonado" / "docs" / "d.md").exists()
 

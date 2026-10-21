@@ -82,9 +82,12 @@ export default function StorageSection() {
                     <div key={kind} className="flex flex-col gap-1 text-xs">
                       <span className="text-muted">{label}: {available(p) ? formatBytes(bytes(p)) : t("storage_yours")}</span>
                       {available(p) && pending?.id === p.id && pending.kind === kind ? (
-                        <span className="flex gap-1.5">
-                          <button type="button" className={button} disabled={busy} onClick={confirmClean}>{t("storage_confirm")}</button>
-                          <button type="button" className={button} disabled={busy} onClick={() => setPending(null)}>{t("settings_cancel")}</button>
+                        <span className="flex max-w-xs flex-col gap-1.5">
+                          <span role="note" className="text-ink-2">{t(`storage_warn_${kind}` as "storage_warn_clone")}</span>
+                          <span className="flex gap-1.5">
+                            <button type="button" className={button} disabled={busy} onClick={confirmClean}>{t("storage_confirm")}</button>
+                            <button type="button" className={button} disabled={busy} onClick={() => setPending(null)}>{t("settings_cancel")}</button>
+                          </span>
                         </span>
                       ) : available(p) && (
                         <button type="button" className={button} disabled={busy || bytes(p) === 0} aria-label={`${t("storage_delete")} ${label} ${p.id}`}

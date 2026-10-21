@@ -553,9 +553,22 @@ def cmd_clean(
                          "[yellow]Say what to delete: --clone, --index and/or --docs (see 'beacon space').[/yellow]"))
         raise typer.Exit(code=1)
     _resolve_or_exit(project_id)
-    if not yes and not typer.confirm(tr(f"¿Borrar los datos pedidos de '{project_id}'? Se pueden volver a crear con 'beacon sync'.",
-                                        f"Delete the requested data of '{project_id}'? It can be recreated with 'beacon sync'."), default=False):
-        raise typer.Exit()
+    if not yes:
+        console.print(tr(f"Se va a borrar de '{project_id}':", f"This will delete from '{project_id}':"))
+        if clone:
+            console.print(tr("  • el clon del repositorio: se vuelve a descargar solo en el siguiente 'beacon sync' (necesita conexión). "
+                             "Si el proyecto es una carpeta tuya, esa carpeta no se toca.",
+                             "  • the repository clone: it is downloaded again on the next 'beacon sync' (needs a connection). "
+                             "If the project is your own folder, that folder is not touched."))
+        if index:
+            console.print(tr("  • el índice: hasta el siguiente 'beacon sync' no se podrán hacer preguntas, y reconstruirlo puede tardar.",
+                             "  • the index: until the next 'beacon sync' questions cannot be asked, and rebuilding it can take a while."))
+        if docs:
+            console.print(tr("  • la documentación generada: se regenera con 'beacon docs'.",
+                             "  • the generated documentation: it is regenerated with 'beacon docs'."))
+        console.print(tr("El proyecto sigue registrado.", "The project stays registered."))
+        if not typer.confirm(tr("¿Continuar?", "Continue?"), default=False):
+            raise typer.Exit()
     freed = _run_safely(lambda: storage.clean_project(project_id, clone=clone, index=index, docs=docs))
     console.print(tr(f"[green]OK[/green] Liberados {storage.human_size(freed)}.", f"[green]OK[/green] Freed {storage.human_size(freed)}."))
 

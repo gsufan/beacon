@@ -40,6 +40,7 @@ describe("almacenamiento", () => {
     expect(await screen.findByText(/Clonado/)).toBeInTheDocument();
     expect(screen.getAllByText(/tu carpeta|your own folder/).length).toBe(1);  // el proyecto local no tiene clon administrado
     await userEvent.click(screen.getByRole("button", { name: /(Borrar|Delete) (Clon del repositorio|Repository clone) clonado/ }));
+    expect(screen.getByRole("note")).toHaveTextContent(/se vuelve a descargar|downloaded again/i);  // avisa qué pasará
     expect(calls.some((c) => c.method === "POST")).toBe(false);  // todavía no se borró nada
     await userEvent.click(screen.getByRole("button", { name: /Confirmar|Confirm/ }));
     await waitFor(() => expect(calls.some((c) => c.path === "/projects/clonado/clean" && JSON.stringify(c.body) === JSON.stringify({ clone: true }))).toBe(true));
