@@ -6,6 +6,7 @@ El participante aprueba cada paso; los tiempos de las preguntas los mide el serv
 import json
 import logging
 import os
+import secrets
 import shutil
 import threading
 import time
@@ -47,6 +48,34 @@ def result_file(study_id: str) -> str:
 
 def identity_file(study_id: str) -> str:
     return f"beacon-estudio-identidad-{study_id}.json"
+
+
+def study_project_ids() -> list:
+    """Ids de los repositorios del estudio registrados en su configuración propia (el más reciente al final)."""
+    import yaml
+    try:
+        raw = yaml.safe_load((study_dir() / "config.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return []
+    return [p["id"] for p in raw.get("projects") or [] if str(p.get("id", "")).startswith(STUDY_PROJECT_ID)]
+
+
+def current_project_id() -> str:
+    ids = study_project_ids()
+    return ids[-1] if ids else STUDY_PROJECT_ID
+
+
+def remove_study_repos(keep: Optional[str] = None):
+    """Borra los repositorios del estudio (todos menos `keep`). Lo que otro proceso o Windows tenga abierto se deja
+    para después: sigue registrado y la siguiente limpieza lo reintenta."""
+    for project_id in study_project_ids():
+        if project_id == keep:
+            continue
+        try:
+            services.unregister_project(project_id, purge_data=True)
+        except Exception:  # noqa: BLE001
+            pass
+        shutil.rmtree(DATA_ROOT / project_id, ignore_errors=True)
 
 
 def session_path() -> Path:
@@ -171,7 +200,7 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
         if not s.started:
             return {"started": False}
         st = s.state
-        return {"started": True, "carpeta_repo": str(DATA_ROOT / STUDY_PROJECT_ID), "meta": st["meta"], "consentimientos": {k: s.has_consent(k) for k in ("participacion", "hardware", "envio")},
+        return {"started": True, "carpeta_repo": str(DATA_ROOT / current_project_id()), "meta": st["meta"], "consentimientos": {k: s.has_consent(k) for k in ("participacion", "hardware", "envio")},
                 "hardware": st["hardware"], "repo": st["repo"], "repo_status": status["repo"],
                 "preguntas": [{"n": q["n"], "pregunta": q["pregunta"], "respuesta": q["respuesta"], "segundos": q["segundos_respuesta"],
                                "fuentes": q["fuentes"], "valoracion": q["valoracion"]} for q in st["preguntas"]],
@@ -221,22 +250,18 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
     # ---------- repositorio ----------
     def _prepare_repo(url: str):
         started = time.time()
+        # Cada repositorio va a una carpeta nueva: reemplazar la anterior en el mismo lugar falla en Windows si el
+        # índice (o una respuesta en curso) la tiene abierta. La anterior se borra al final, sin que importe si falla.
+        project_id = f"{STUDY_PROJECT_ID}-{secrets.token_hex(2)}"
         try:
-            try:
-                clear_engines()
-                services.unregister_project(STUDY_PROJECT_ID, purge_data=True)
-            except (ProjectNotFoundError, services.InvalidRequestError):
-                pass
-            repo_dir = DATA_ROOT / STUDY_PROJECT_ID
-            if repo_dir.exists():
-                shutil.rmtree(repo_dir, ignore_errors=True)
-            services.register_project(STUDY_PROJECT_ID, name="Repositorio del estudio", repo_url=url)
+            clear_engines()
+            services.register_project(project_id, name="Repositorio del estudio", repo_url=url)
             from core.projects import get_project
             from core.engine.chunker import detect_language
-            repo_path = Path(get_project(STUDY_PROJECT_ID).repo_path)
+            repo_path = Path(get_project(project_id).repo_path)
             files = [p for p in repo_path.rglob("*") if p.is_file() and ".git" not in p.parts and detect_language(str(p))]
             if len(files) > MAX_FILES:
-                services.unregister_project(STUDY_PROJECT_ID, purge_data=True)
+                services.unregister_project(project_id, purge_data=True)
                 with lock:
                     status["repo"] = {"estado": "error", "detalle": f"El repositorio tiene {len(files)} archivos de código (el máximo es {MAX_FILES}). Elige uno más chico."}
                 return
@@ -250,9 +275,9 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
                                       "progreso": {"actual": i, "total": total, "archivo": str(file_path),
                                                    "segundos": round(time.time() - started)}}
 
-            result = services.sync_project(STUDY_PROJECT_ID, docs=False, pull=False, on_index_progress=on_progress)
+            result = services.sync_project(project_id, docs=False, pull=False, on_index_progress=on_progress)
             clear_engines()
-            engine = get_engine(STUDY_PROJECT_ID)
+            engine = get_engine(project_id)
             import git
             commit = git.Repo(repo_path).head.commit.hexsha[:10]
             langs = sorted({detect_language(str(p)) for p in files})
@@ -260,6 +285,8 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
                                langs, time.time() - started)
             with lock:
                 status["repo"] = {"estado": "listo", "detalle": None}
+            clear_engines()
+            remove_study_repos(keep=project_id)  # el repositorio anterior, si lo había
         except services.CloneError:
             with lock:
                 status["repo"] = {"estado": "error", "detalle": "No se pudo clonar el repositorio. ¿Es público y la dirección es correcta?"}
@@ -297,7 +324,7 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
         if s.state["repo"] is None:
             raise HTTPException(status_code=409, detail="Todavía no hay un repositorio listo.")
         try:
-            engine = get_engine(STUDY_PROJECT_ID)
+            engine = get_engine(current_project_id())
             cancel.clear()
             t0 = time.perf_counter()
             result = engine.ask(body.pregunta, language=body.idioma, max_seconds=ASK_TIMEOUT_SECONDS, should_stop=cancel.is_set)
@@ -364,12 +391,9 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
         session().discard()
         with lock:
             status["repo"] = {"estado": "sin_repo", "detalle": None}
-        try:
-            clear_engines()
-            services.unregister_project(STUDY_PROJECT_ID, purge_data=True)
-        except Exception:  # noqa: BLE001
-            pass
-        shutil.rmtree(DATA_ROOT / STUDY_PROJECT_ID, ignore_errors=True)  # el clon, aunque el proyecto no estuviera registrado
+        clear_engines()
+        remove_study_repos()
+        shutil.rmtree(DATA_ROOT / STUDY_PROJECT_ID, ignore_errors=True)  # el clon de la versión anterior, si quedó
 
     @router.post("/discard")
     def discard():

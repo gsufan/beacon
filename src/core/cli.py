@@ -573,6 +573,14 @@ def cmd_clean(
     console.print(tr(f"[green]OK[/green] Liberados {storage.human_size(freed)}.", f"[green]OK[/green] Freed {storage.human_size(freed)}."))
 
 
+def _remove_study_data():
+    """Borra los repositorios clonados por el estudio (lo que la configuración del estudio tiene registrado)."""
+    import shutil
+    from core.study.api import study_project_ids
+    for project_id in study_project_ids() + ["estudio"]:
+        shutil.rmtree(DATA_ROOT / project_id, ignore_errors=True)
+
+
 @app.command("study", help=tr("Modo estudio: una sesión guiada, con tu aprobación en cada paso, que genera dos archivos locales que puedes "
                               "revisar antes de subirlos. No toca tu configuración ni tus proyectos.",
                               "Study mode: a guided session, with your approval at every step, that generates two local files you can "
@@ -606,6 +614,7 @@ def cmd_study(
     session = StudySession(study_dir / "sesion.json")
     if new:
         session.discard()
+        _remove_study_data()
     if not session.started:
         try:
             session.start(profile={"open": "abierto", "pilot": "piloto"}.get(profile, profile), code=code, order=order,
@@ -622,7 +631,13 @@ def cmd_study(
         ai_cfg = {"provider": "ollama", "ollama_host": "http://localhost:11434", "embedding_model": "qwen3-embedding:0.6b",
                   "llm_model": "llama3:8b"}
     study_config = study_dir / "config.yaml"
-    study_config.write_text(yaml.safe_dump({"ai_provider": ai_cfg, "projects": []}, allow_unicode=True), encoding="utf-8")
+    projects = []
+    if study_config.exists() and session.started:  # sesión retomada: sigue registrado el repositorio ya preparado
+        try:
+            projects = (yaml.safe_load(study_config.read_text(encoding="utf-8")) or {}).get("projects") or []
+        except yaml.YAMLError:
+            projects = []
+    study_config.write_text(yaml.safe_dump({"ai_provider": ai_cfg, "projects": projects}, allow_unicode=True), encoding="utf-8")
     env = dict(os.environ, BEACON_STUDY="1", DEUDA_TECNICA_CONFIG=str(study_config))
     url = f"http://127.0.0.1:{port}/study"
     console.print(tr(f"[bold]Modo estudio[/bold] en {url}", f"[bold]Study mode[/bold] at {url}"))
@@ -638,7 +653,7 @@ def cmd_study(
     finally:
         if not StudySession(study_dir / "sesion.json").started:
             # Ya se descartó desde la pantalla ("Descartar todo y salir"): no hay nada que preguntar.
-            shutil.rmtree(DATA_ROOT / "estudio", ignore_errors=True)
+            _remove_study_data()
             console.print(tr("[dim]Sesión descartada: la próxima vez el estudio parte desde cero.[/dim]",
                              "[dim]Session discarded: next time the study starts from scratch.[/dim]"))
             return
@@ -651,7 +666,7 @@ def cmd_study(
             discard = False
         if discard:
             session.discard()
-            shutil.rmtree(DATA_ROOT / "estudio", ignore_errors=True)
+            _remove_study_data()
             console.print(tr("[dim]Sesión descartada: la próxima vez el estudio parte desde cero.[/dim]",
                              "[dim]Session discarded: next time the study starts from scratch.[/dim]"))
         else:

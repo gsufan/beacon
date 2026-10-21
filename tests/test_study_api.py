@@ -160,3 +160,18 @@ def test_quit_discards_and_schedules_the_shutdown(client, tmp_path, monkeypatch)
     _ready(client, tmp_path)
     assert client.post("/study/quit").json() == {"ok": True}
     assert client.get("/study/state").json() == {"started": False} and timers == [0.7]
+
+
+def test_each_repository_gets_its_own_folder_and_the_previous_ones_are_removed(client, tmp_path, monkeypatch):
+    import yaml
+    monkeypatch.setattr(study_api, "DATA_ROOT", tmp_path)
+    (tmp_path / "_study").mkdir(exist_ok=True)
+    (tmp_path / "_study" / "config.yaml").write_text(yaml.safe_dump({"projects": [
+        {"id": "estudio-aaaa"}, {"id": "otro-proyecto"}, {"id": "estudio-bbbb"}]}), encoding="utf-8")
+    for name in ("estudio-aaaa", "estudio-bbbb", "otro-proyecto"):
+        (tmp_path / name).mkdir()
+    monkeypatch.setattr(study_api.services, "unregister_project", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("en uso")))
+    assert study_api.study_project_ids() == ["estudio-aaaa", "estudio-bbbb"]  # solo los del estudio
+    assert study_api.current_project_id() == "estudio-bbbb"  # el más reciente
+    study_api.remove_study_repos(keep="estudio-bbbb")  # aunque unregister falle, no se cae y se limpia lo que se puede
+    assert not (tmp_path / "estudio-aaaa").exists() and (tmp_path / "estudio-bbbb").exists() and (tmp_path / "otro-proyecto").exists()
