@@ -57,7 +57,7 @@ Si te invitaron a probar Beacon para el estudio de evaluación, necesitas Python
 git clone https://github.com/gsufan/beacon.git
 cd beacon
 python -m venv .venv
-# Windows: .venv\Scriptsctivate     Linux/macOS: source .venv/bin/activate
+# Windows: .venv\Scripts\activate     Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
 ollama pull qwen3-embedding:0.6b

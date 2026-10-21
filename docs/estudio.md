@@ -14,7 +14,7 @@ Requisitos: Python 3.10, 3.11 o 3.12 (el 3.13 o superior todavía no funciona), 
 git clone https://github.com/gsufan/beacon.git
 cd beacon
 python -m venv .venv
-# Windows: .venv\Scriptsctivate     Linux/macOS: source .venv/bin/activate
+# Windows: .venv\Scripts\activate     Linux/macOS: source .venv/bin/activate
 pip install -r requirements.txt
 pip install -e .
 cd frontend && npm install && npm run build && cd ..
