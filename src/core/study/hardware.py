@@ -9,6 +9,16 @@ import sys
 from typing import List, Optional
 
 
+def _os_name() -> str:
+    """platform.release() dice 'Windows 10' también en Windows 11: se distingue por el número de compilación."""
+    if sys.platform == "win32":
+        try:
+            return "Windows 11" if sys.getwindowsversion().build >= 22000 else "Windows 10"
+        except Exception:
+            pass
+    return f"{platform.system()} {platform.release()}"
+
+
 def _cpu_name() -> str:
     try:
         if sys.platform == "win32":
@@ -92,5 +102,15 @@ def collect_hardware(disk_path: str = ".") -> dict:
         "ram_gb": _ram_gb(),
         "disco_libre_gb": free_gb,
         "gpus": _gpus(),
-        "so": f"{platform.system()} {platform.release()}",
+        "so": _os_name(),
     }
+
+
+def beacon_commit() -> str:
+    """Commit de Beacon que se está ejecutando (vacío si no es una copia de git)."""
+    try:
+        import git
+        from pathlib import Path
+        return git.Repo(Path(__file__).resolve().parents[3]).head.commit.hexsha[:10]
+    except Exception:
+        return ""

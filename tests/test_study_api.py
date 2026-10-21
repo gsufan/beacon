@@ -130,6 +130,12 @@ def test_only_public_https_repositories_are_accepted(client):
         study_api.check_public_repo_url("https://file.example/u/r")
 
 
+def test_repository_cannot_change_once_questions_were_asked(client, tmp_path):
+    _ready(client, tmp_path)
+    client.post("/study/ask", json={"pregunta": "una pregunta"})
+    assert client.post("/study/repo", json={"url": "https://github.com/u/otro"}).status_code == 409
+
+
 def test_experience_is_stored(client):
     client.post("/study/start", json={})
     assert client.post("/study/experience", json={"datos": {"anios": 4, "likert": {"util": 5}}}).status_code == 200

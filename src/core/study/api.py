@@ -133,7 +133,8 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
     def start(body: StartBody):
         s = session()
         try:
-            s.start(profile=body.perfil, code=body.codigo, order=body.orden, language=body.idioma, beacon_version="0.3.0")
+            s.start(profile=body.perfil, code=body.codigo, order=body.orden, language=body.idioma, beacon_version="0.3.0",
+                    beacon_commit=hardware.beacon_commit())
         except StudyError as e:
             fail(e)
         return {"started": True}
@@ -192,8 +193,16 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
                     status["repo"] = {"estado": "error", "detalle": f"El repositorio tiene {len(files)} archivos de código (el máximo es {MAX_FILES}). Elige uno más chico."}
                 return
             with lock:
-                status["repo"] = {"estado": "indexando", "detalle": f"{len(files)} archivos de código"}
-            result = services.sync_project(STUDY_PROJECT_ID, docs=False, pull=False)
+                status["repo"] = {"estado": "indexando", "detalle": f"{len(files)} archivos de código",
+                                  "progreso": {"actual": 0, "total": len(files), "archivo": "", "segundos": 0}}
+
+            def on_progress(i, total, file_path):
+                with lock:
+                    status["repo"] = {"estado": "indexando", "detalle": f"{len(files)} archivos de código",
+                                      "progreso": {"actual": i, "total": total, "archivo": str(file_path),
+                                                   "segundos": round(time.time() - started)}}
+
+            result = services.sync_project(STUDY_PROJECT_ID, docs=False, pull=False, on_index_progress=on_progress)
             clear_engines()
             engine = get_engine(STUDY_PROJECT_ID)
             import git
@@ -213,7 +222,8 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
 
     @router.post("/repo", status_code=202)
     def set_repo(body: RepoBody):
-        need_started()
+        if need_started().state["preguntas"]:
+            raise HTTPException(status_code=409, detail="Ya hay preguntas hechas: para cambiar de repositorio hay que descartar la sesión.")
         try:
             url = check_public_repo_url(body.url)
         except InvalidRepoUrlError as e:

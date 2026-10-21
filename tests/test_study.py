@@ -157,10 +157,10 @@ def test_validation_reports_problems_and_suspicious_files(session):
 # ---- datos del equipo ----------------------------------------------------------
 
 def test_nvidia_smi_output_is_parsed():
-    out = "NVIDIA GeForce RTX 5070 Laptop GPU, 8151\nNVIDIA GeForce GTX 1660 Ti, 6144\nlinea rara"
+    out = "NVIDIA GeForce RTX 3060, 12288\nNVIDIA GeForce GTX 1650, 4096\nlinea rara"
     assert hardware.parse_nvidia_smi(out) == [
-        {"modelo": "NVIDIA GeForce RTX 5070 Laptop GPU", "vram_gb": 8.0},
-        {"modelo": "NVIDIA GeForce GTX 1660 Ti", "vram_gb": 6.0}]
+        {"modelo": "NVIDIA GeForce RTX 3060", "vram_gb": 12.0},
+        {"modelo": "NVIDIA GeForce GTX 1650", "vram_gb": 4.0}]
 
 
 def test_hardware_snapshot_has_only_the_expected_fields(tmp_path, monkeypatch):
@@ -169,3 +169,10 @@ def test_hardware_snapshot_has_only_the_expected_fields(tmp_path, monkeypatch):
     assert set(snapshot) == {"cpu_modelo", "cpu_nucleos", "ram_gb", "disco_libre_gb", "gpus", "so"}
     assert snapshot["gpus"] == [] and snapshot["cpu_nucleos"]
     assert str(tmp_path) not in json.dumps(snapshot)  # la ruta no se guarda
+
+
+def test_windows_11_is_told_apart_from_windows_10(monkeypatch):
+    monkeypatch.setattr(sys, "platform", "win32")
+    for build, expected in ((19045, "Windows 10"), (22631, "Windows 11"), (26200, "Windows 11")):
+        monkeypatch.setattr(sys, "getwindowsversion", lambda b=build: type("V", (), {"build": b})(), raising=False)
+        assert hardware._os_name() == expected

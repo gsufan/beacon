@@ -540,6 +540,7 @@ def cmd_study(
 
     import yaml
 
+    from core.study import hardware
     from core.study.session import StudyError, StudySession
 
     study_dir = DATA_ROOT / "_study"
@@ -550,7 +551,7 @@ def cmd_study(
     if not session.started:
         try:
             session.start(profile={"open": "abierto", "pilot": "piloto"}.get(profile, profile), code=code, order=order,
-                          language=language, beacon_version=_version())
+                          language=language, beacon_version=_version(), beacon_commit=hardware.beacon_commit())
         except StudyError as e:
             console.print(f"[red]{e}[/red]")
             raise typer.Exit(code=1)
