@@ -468,13 +468,13 @@ def cmd_serve(host: str = "127.0.0.1", port: int = 8000):
 
 @app.command("study")
 def cmd_study(
-    perfil: str = typer.Option("abierto", help="'abierto' (elige su propio repositorio) o 'piloto' (tareas asignadas)."),
-    codigo: Optional[str] = typer.Option(None, help="Código de participante (obligatorio en el perfil piloto)."),
-    orden: int = typer.Option(1, help="Orden de las condiciones del piloto (1 o 2)."),
-    idioma: str = typer.Option("es", help="Idioma de las respuestas: es o en."),
-    port: int = typer.Option(8000, help="Puerto local."),
-    nueva: bool = typer.Option(False, "--nueva", help="Descarta una sesión anterior sin terminar y empieza de cero."),
-    sin_navegador: bool = typer.Option(False, "--sin-navegador", help="No abrir el navegador automáticamente."),
+    profile: str = typer.Option("open", "--profile", help="'open' (elige su propio repositorio) o 'pilot' (tareas asignadas)."),
+    code: Optional[str] = typer.Option(None, "--code", help="Código de participante (obligatorio en el perfil pilot)."),
+    order: int = typer.Option(1, "--order", help="Orden de las condiciones del piloto (1 o 2)."),
+    language: str = typer.Option("es", "--language", help="Idioma de las respuestas: es o en."),
+    port: int = typer.Option(8000, "--port", help="Puerto local."),
+    new: bool = typer.Option(False, "--new", help="Descarta una sesión anterior sin terminar y empieza de cero."),
+    no_browser: bool = typer.Option(False, "--no-browser", help="No abrir el navegador automáticamente."),
 ):
     """Modo estudio: una sesión guiada, con su aprobación en cada paso, que genera un archivo local que usted revisa
     antes de enviarlo. No toca su configuración ni sus proyectos."""
@@ -491,11 +491,12 @@ def cmd_study(
     study_dir = DATA_ROOT / "_study"
     study_dir.mkdir(parents=True, exist_ok=True)
     session = StudySession(study_dir / "sesion.json")
-    if nueva:
+    if new:
         session.discard()
     if not session.started:
         try:
-            session.start(profile=perfil, code=codigo, order=orden, language=idioma, beacon_version="0.3.0")
+            session.start(profile={"open": "abierto", "pilot": "piloto"}.get(profile, profile), code=code, order=order,
+                          language=language, beacon_version=_version())
         except StudyError as e:
             console.print(f"[red]{e}[/red]")
             raise typer.Exit(code=1)
@@ -513,7 +514,7 @@ def cmd_study(
     url = f"http://127.0.0.1:{port}/study"
     console.print(f"[bold]Modo estudio[/bold] en {url}")
     console.print("[dim]Todo queda en este equipo hasta que usted descargue y envíe el archivo. Ctrl+C para salir.[/dim]")
-    if not sin_navegador:
+    if not no_browser:
         threading.Timer(4.0, lambda: webbrowser.open(url)).start()
     try:
         subprocess.run([sys.executable, "-m", "uvicorn", "core.api:app", "--host", "127.0.0.1", "--port", str(port)], env=env)

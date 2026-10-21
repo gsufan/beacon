@@ -38,7 +38,7 @@ commit) y, si se autorizó, los datos del equipo. **No** contiene código fuente
 usuario, nombre del equipo ni IP. La identidad (perfil de GitHub o presentación) va en un archivo aparte y
 es opcional. Se puede abandonar en cualquier momento con «Descartar todo y salir», que borra la sesión.
 
-`beacon study --nueva` descarta una sesión anterior y empieza de cero; `--port` cambia el puerto.
+`beacon study --new` descarta una sesión anterior y empieza de cero; `--port` cambia el puerto y `--no-browser` evita que se abra el navegador.
 
 ## Para quien recibe los resultados
 
