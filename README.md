@@ -51,11 +51,14 @@ Más detalles (GPU en Windows, rutas locales, healthcheck) en [docs/docker.md](d
 
 ## Participar en el estudio (modo estudio)
 
-Si te invitaron a probar Beacon para el estudio de evaluación, necesitas Python 3.11+, Git, Node 20+ y [Ollama](https://ollama.com) con los modelos instalados.
+Si te invitaron a probar Beacon para el estudio de evaluación, necesitas Python 3.10, 3.11 o 3.12 (el 3.13 o superior todavía no funciona), Git, Node 20+ y [Ollama](https://ollama.com) con los modelos instalados.
 
 ```bash
 git clone https://github.com/gsufan/beacon.git
 cd beacon
+python -m venv .venv
+# Windows: .venv\Scriptsctivate     Linux/macOS: source .venv/bin/activate
+pip install -r requirements.txt
 pip install -e .
 ollama pull qwen3-embedding:0.6b
 ollama pull llama3:8b

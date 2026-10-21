@@ -6,13 +6,16 @@ resultado es un archivo que esa persona revisa y envía por su cuenta.
 
 ## Para participantes
 
-Requisitos: Python 3.11 o superior, Git, Node 20 o superior (para compilar la interfaz una vez) y
+Requisitos: Python 3.10, 3.11 o 3.12 (el 3.13 o superior todavía no funciona), Git, Node 20 o superior (para compilar la interfaz una vez) y
 [Ollama](https://ollama.com) con los modelos que usa Beacon (`ollama pull llama3:8b` y
 `ollama pull qwen3-embedding:0.6b`). Una GPU acelera mucho las respuestas, pero no es obligatoria.
 
 ```bash
 git clone https://github.com/gsufan/beacon.git
 cd beacon
+python -m venv .venv
+# Windows: .venv\Scriptsctivate     Linux/macOS: source .venv/bin/activate
+pip install -r requirements.txt
 pip install -e .
 cd frontend && npm install && npm run build && cd ..
 beacon study
