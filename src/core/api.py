@@ -99,6 +99,12 @@ def _get_engine(project_id: str) -> RAGEngine:
 
 _get_engine.cache_clear = _engines.clear  # para config/proyecto modificados
 
+# Modo estudio (`beacon study`): los endpoints /study/* solo existen en ese modo.
+if os.environ.get("BEACON_STUDY") == "1":
+    from core.study.api import build_router
+
+    app.include_router(build_router(_get_engine, _get_engine.cache_clear))
+
 
 class QueryRequest(BaseModel):
     question: str = Field(..., min_length=3)

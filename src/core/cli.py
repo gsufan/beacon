@@ -425,6 +425,61 @@ def cmd_serve(host: str = "127.0.0.1", port: int = 8000):
     uvicorn.run("core.api:app", host=host, port=port, reload=False)
 
 
+@app.command("study")
+def cmd_study(
+    perfil: str = typer.Option("abierto", help="'abierto' (elige su propio repositorio) o 'piloto' (tareas asignadas)."),
+    codigo: Optional[str] = typer.Option(None, help="Código de participante (obligatorio en el perfil piloto)."),
+    orden: int = typer.Option(1, help="Orden de las condiciones del piloto (1 o 2)."),
+    idioma: str = typer.Option("es", help="Idioma de las respuestas: es o en."),
+    port: int = typer.Option(8000, help="Puerto local."),
+    nueva: bool = typer.Option(False, "--nueva", help="Descarta una sesión anterior sin terminar y empieza de cero."),
+    sin_navegador: bool = typer.Option(False, "--sin-navegador", help="No abrir el navegador automáticamente."),
+):
+    """Modo estudio: una sesión guiada, con su aprobación en cada paso, que genera un archivo local que usted revisa
+    antes de enviarlo. No toca su configuración ni sus proyectos."""
+    import os
+    import subprocess
+    import sys
+    import threading
+    import webbrowser
+
+    import yaml
+
+    from core.study.session import StudyError, StudySession
+
+    study_dir = DATA_ROOT / "_study"
+    study_dir.mkdir(parents=True, exist_ok=True)
+    session = StudySession(study_dir / "sesion.json")
+    if nueva:
+        session.discard()
+    if not session.started:
+        try:
+            session.start(profile=perfil, code=codigo, order=orden, language=idioma, beacon_version="0.3.0")
+        except StudyError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(code=1)
+    # Configuración propia del estudio: usa el mismo Ollama y los mismos modelos que el participante ya tiene.
+    try:
+        ai = load_config().ai_provider
+        ai_cfg = {"provider": ai.provider, "ollama_host": ai.ollama_host, "embedding_model": ai.embedding_model,
+                  "llm_model": ai.llm_model}
+    except FileNotFoundError:
+        ai_cfg = {"provider": "ollama", "ollama_host": "http://localhost:11434", "embedding_model": "qwen3-embedding:0.6b",
+                  "llm_model": "llama3:8b"}
+    study_config = study_dir / "config.yaml"
+    study_config.write_text(yaml.safe_dump({"ai_provider": ai_cfg, "projects": []}, allow_unicode=True), encoding="utf-8")
+    env = dict(os.environ, BEACON_STUDY="1", DEUDA_TECNICA_CONFIG=str(study_config))
+    url = f"http://127.0.0.1:{port}/study"
+    console.print(f"[bold]Modo estudio[/bold] en {url}")
+    console.print("[dim]Todo queda en este equipo hasta que usted descargue y envíe el archivo. Ctrl+C para salir.[/dim]")
+    if not sin_navegador:
+        threading.Timer(4.0, lambda: webbrowser.open(url)).start()
+    try:
+        subprocess.run([sys.executable, "-m", "uvicorn", "core.api:app", "--host", "127.0.0.1", "--port", str(port)], env=env)
+    except KeyboardInterrupt:
+        pass
+
+
 def _validate_id_or_exit(project_id: str):
     try:
         validate_project_id(project_id)
