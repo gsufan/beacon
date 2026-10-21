@@ -261,12 +261,12 @@ function StudyBody({ state, t, lang, busy, act, stage }: BodyProps) {
             <p className="text-sm">{t("review")}</p>
             <pre className="max-h-64 overflow-auto rounded-lg bg-code-bg p-3 font-mono text-xs text-code-ink">{JSON.stringify(files.resultado, null, 2)}</pre>
             <div className="flex flex-wrap gap-3">
-              <button className={btn} onClick={() => download("beacon-estudio-resultados.json", files.resultado)}>{t("dl_results")}</button>
+              <button className={btn} onClick={() => download(files.archivos?.[0] ?? "beacon-estudio-resultados.json", files.resultado)}>{t("dl_results")}</button>
               <button className={btnGhost} onClick={() => {
                 void navigator.clipboard?.writeText(JSON.stringify(files.resultado)).then(() => setCopied(true));
               }}>{copied ? t("copied") : t("copy")}</button>
               {files.identidad !== null && (
-                <button className={btnGhost} onClick={() => download("beacon-estudio-identidad.json", files.identidad)}>{t("dl_identity")}</button>
+                <button className={btnGhost} onClick={() => download(files.archivos?.[1] ?? "beacon-estudio-identidad.json", files.identidad)}>{t("dl_identity")}</button>
               )}
             </div>
             <p className="text-sm text-muted">{t("sent_note")}</p>

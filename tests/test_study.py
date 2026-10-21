@@ -86,6 +86,15 @@ def test_identity_is_kept_out_of_the_results_file(session):
     assert session.build_identity()["github"] == "https://github.com/alguien"
 
 
+def test_each_session_has_its_own_short_id_shared_by_both_files(tmp_path, session):
+    other = StudySession(tmp_path / "otra.json")
+    other.start()
+    assert len(session.state["meta"]["id"]) == 6 and session.state["meta"]["id"] != other.state["meta"]["id"]
+    _complete(session)
+    session.set_identity(github="g")
+    assert session.build_result()["meta"]["id"] == session.build_identity()["id"]
+
+
 def test_rating_validation(session):
     session.consent("participacion", True)
     n = session.add_question("p", "r", 2.0)

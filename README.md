@@ -66,7 +66,7 @@ cd frontend && npm install && npm run build && cd ..
 beacon study
 ```
 
-El asistente se abre en el navegador y te guía: aceptas la participación, eliges (o no) compartir los datos de tu equipo, pegas la dirección de un repositorio público, haces al menos 3 preguntas valorando cada respuesta y revisas el resultado. Al terminar, `beacon-estudio-resultados.json` queda en la carpeta del proyecto (sin código, rutas ni tu nombre); envíalo por el canal de la invitación. Detalle en [docs/estudio.md](docs/estudio.md).
+El asistente se abre en el navegador y te guía: aceptas la participación, eliges (o no) compartir los datos de tu equipo, pegas la dirección de un repositorio público, haces al menos 3 preguntas valorando cada respuesta y revisas el resultado. Al terminar, `beacon-estudio-resultados-<id>.json` queda en la carpeta del proyecto (sin código, rutas ni tu nombre); envíalo por el canal de la invitación. Detalle en [docs/estudio.md](docs/estudio.md).
 
 ## Documentación
 

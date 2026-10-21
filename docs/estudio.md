@@ -29,7 +29,7 @@ El asistente se abre en el navegador (`http://127.0.0.1:8000/study`) y guía cin
 3. **Repositorio.** Una dirección https de un repositorio público (hasta 3000 archivos de código).
 4. **Preguntas.** Mínimo 3, sobre cosas que de verdad se quieran saber del código. Cada respuesta se valora
    (correcta, en parte, incorrecta, no sé). El tiempo lo mide Beacon, no el navegador.
-5. **Cierre.** Experiencia, identidad opcional y revisión del archivo. Al generarlo, `beacon-estudio-resultados.json` (y `beacon-estudio-identidad.json`, si se dio) quedan en la carpeta raíz del proyecto; también se pueden descargar o copiar.
+5. **Cierre.** Experiencia, identidad opcional y revisión del archivo. Al generarlo, `beacon-estudio-resultados-<id>.json` (y `beacon-estudio-identidad-<id>.json`, si se dio) quedan en la carpeta raíz del proyecto; también se pueden descargar o copiar.
 
 ### Qué contiene y qué no el archivo
 

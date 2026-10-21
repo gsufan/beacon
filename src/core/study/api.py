@@ -38,8 +38,12 @@ def output_dir() -> Path:
     return Path(__file__).resolve().parents[3]
 
 
-RESULT_FILE = "beacon-estudio-resultados.json"
-IDENTITY_FILE = "beacon-estudio-identidad.json"
+def result_file(study_id: str) -> str:
+    return f"beacon-estudio-resultados-{study_id}.json"
+
+
+def identity_file(study_id: str) -> str:
+    return f"beacon-estudio-identidad-{study_id}.json"
 
 
 def session_path() -> Path:
@@ -279,11 +283,12 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
         except StudyError as e:
             raise HTTPException(status_code=409, detail=str(e))
         out = output_dir()
-        (out / RESULT_FILE).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-        files = [RESULT_FILE]
+        study_id = result["meta"]["id"]
+        (out / result_file(study_id)).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        files = [result_file(study_id)]
         if identity:
-            (out / IDENTITY_FILE).write_text(json.dumps(identity, ensure_ascii=False, indent=2), encoding="utf-8")
-            files.append(IDENTITY_FILE)
+            (out / identity_file(study_id)).write_text(json.dumps(identity, ensure_ascii=False, indent=2), encoding="utf-8")
+            files.append(identity_file(study_id))
         return {"resultado": result, "identidad": identity, "archivos": files, "carpeta": str(out)}
 
     @router.post("/discard")

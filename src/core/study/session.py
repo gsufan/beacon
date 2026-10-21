@@ -7,6 +7,7 @@ equipo. La identidad opcional va en un archivo aparte."""
 import hashlib
 import json
 import os
+import secrets
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -67,7 +68,7 @@ class StudySession:
         if profile == "piloto" and not code:
             raise StudyError("el perfil piloto requiere un código de participante")
         self.state = {
-            "meta": {"perfil": profile, "codigo": code, "orden": int(order), "beacon_version": beacon_version,
+            "meta": {"id": secrets.token_hex(3), "perfil": profile, "codigo": code, "orden": int(order), "beacon_version": beacon_version,
                      "beacon_commit": beacon_commit, "idioma": language, "inicio": _now(), "fin": None},
             "consentimientos": [], "hardware": None, "instalacion": None, "repo": None, "preguntas": [],
             "mini_tarea": None, "tareas_piloto": [], "experiencia": None, "identidad": None,
@@ -177,7 +178,9 @@ class StudySession:
                 "integridad": {"sha256_de_preguntas": digest}}
 
     def build_identity(self) -> Optional[dict]:
-        return self.state.get("identidad")
+        """Lleva el mismo id corto que el archivo de resultados: es lo único que los enlaza."""
+        identity = self.state.get("identidad")
+        return dict(identity, id=self.state["meta"]["id"]) if identity else None
 
     def discard(self):
         """El participante abandona y borra todo."""

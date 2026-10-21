@@ -98,9 +98,12 @@ def test_rating_and_final_file_flow(client, tmp_path):
     out = client.get("/study/result").json()
     assert out["resultado"]["esquema"] == 1 and len(out["resultado"]["preguntas"]) == 3
     assert "alguien" not in json.dumps(out["resultado"]) and out["identidad"]["github"].endswith("alguien")
-    assert out["archivos"] == [study_api.RESULT_FILE, study_api.IDENTITY_FILE]
-    assert json.loads((tmp_path / study_api.RESULT_FILE).read_text(encoding="utf-8"))["esquema"] == 1
-    assert "alguien" not in (tmp_path / study_api.RESULT_FILE).read_text(encoding="utf-8")
+    sid = out["resultado"]["meta"]["id"]
+    assert len(sid) == 6 and out["identidad"]["id"] == sid  # el id corto enlaza los dos archivos
+    assert out["archivos"] == [study_api.result_file(sid), study_api.identity_file(sid)]
+    text = (tmp_path / study_api.result_file(sid)).read_text(encoding="utf-8")
+    assert json.loads(text)["esquema"] == 1 and "alguien" not in text
+    assert json.loads((tmp_path / study_api.identity_file(sid)).read_text(encoding="utf-8"))["id"] == sid
 
 
 def test_result_needs_the_minimum_number_of_questions(client, tmp_path):
