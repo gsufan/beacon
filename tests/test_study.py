@@ -95,6 +95,15 @@ def test_each_session_has_its_own_short_id_shared_by_both_files(tmp_path, sessio
     assert session.build_result()["meta"]["id"] == session.build_identity()["id"]
 
 
+def test_duration_counts_from_the_acceptance_not_from_launching_the_program(session):
+    import time
+    launched = session.state["meta"]["inicio"]
+    time.sleep(1.1)
+    _complete(session)
+    meta = session.build_result()["meta"]
+    assert meta["inicio"] > launched and "participacion_desde" not in meta
+
+
 def test_rating_validation(session):
     session.consent("participacion", True)
     n = session.add_question("p", "r", 2.0)

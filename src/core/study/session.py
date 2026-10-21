@@ -84,6 +84,9 @@ class StudySession:
         if kind not in CONSENT_KINDS:
             raise StudyError(f"tipo de consentimiento inválido: {kind}")
         self.state["consentimientos"].append({"tipo": kind, "aceptado": bool(accepted), "ts": _now()})
+        if kind == "participacion" and accepted and not self.state["meta"].get("participacion_desde"):
+            # La duración cuenta desde que la persona acepta participar, no desde que se lanzó el programa.
+            self.state["meta"]["participacion_desde"] = _now()
         if kind == "hardware" and not accepted:
             self.state["hardware"] = None  # si lo retira, se borra
         self._save()
@@ -170,6 +173,8 @@ class StudySession:
             raise StudyError(f"hacen falta el consentimiento de participación y al menos {MIN_QUESTIONS} preguntas")
         s = self.state
         meta = dict(s["meta"], fin=_now())
+        if meta.get("participacion_desde"):
+            meta["inicio"] = meta.pop("participacion_desde")
         questions = s["preguntas"]
         digest = hashlib.sha256(json.dumps([q["pregunta"] for q in questions], ensure_ascii=False).encode("utf-8")).hexdigest()
         return {"esquema": SCHEMA_VERSION, "meta": meta, "consentimientos": s["consentimientos"], "hardware": s["hardware"],

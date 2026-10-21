@@ -43,6 +43,7 @@ const T = {
     repo_ready: "Repositorio listo: {n} archivos indexados.", change_repo: "Elegir otro repositorio",
     repo_locked: "Para cambiar de repositorio hay que descartar la sesión (ya hiciste preguntas).",
     q_text: "Haz al menos {min} preguntas reales sobre el repositorio y valora cada respuesta.",
+    q_hint: "Evita preguntas demasiado generales como «¿qué hace este programa?»: funcionan mejor las concretas, por ejemplo «¿dónde se carga la configuración?» o «¿qué función formatea la salida?».",
     q_ph: "Pregunta sobre el código...", ask: "Preguntar", asking: "Consultando...",
     thinking: "Buscando en el código y generando la respuesta... {s} s",
     secs: "{s} s", sources: "Fuentes", correct: "¿La respuesta es correcta?",
@@ -74,6 +75,7 @@ const T = {
     repo_ready: "Repository ready: {n} files indexed.", change_repo: "Pick another repository",
     repo_locked: "To change the repository you must discard the session (you already asked questions).",
     q_text: "Ask at least {min} real questions about the repository and rate each answer.",
+    q_hint: "Avoid overly general questions such as \"what does this program do?\": specific ones work better, for example \"where is the configuration loaded?\" or \"which function formats the output?\".",
     q_ph: "Question about the code...", ask: "Ask", asking: "Querying...",
     thinking: "Searching the code and generating the answer... {s} s",
     secs: "{s} s", sources: "Sources", correct: "Is the answer correct?",
@@ -329,6 +331,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
     content = (
       <>
         <p className="text-sm text-ink-2">{t("q_text", { min: MIN_QUESTIONS })}</p>
+        <p className="rounded-lg bg-accent-tint p-3 text-sm text-accent-ink">{t("q_hint")}</p>
         <form className="flex gap-2" onSubmit={(e) => {
           e.preventDefault();
           const q = question.trim();
