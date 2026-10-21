@@ -576,12 +576,21 @@ def cmd_study(
     except KeyboardInterrupt:
         pass
     finally:
-        # Al cerrar, la sesión y el repositorio del estudio se borran: la próxima vez parte desde cero.
-        # Los archivos ya generados en la raíz del proyecto no se tocan.
-        session.discard()
-        shutil.rmtree(DATA_ROOT / "estudio", ignore_errors=True)
-        console.print(tr("[dim]Sesión cerrada: la próxima vez el estudio parte desde cero.[/dim]",
-                         "[dim]Session closed: next time the study starts from scratch.[/dim]"))
+        # Al cerrar se pregunta si se descarta la sesión (y el repositorio clonado). Los archivos ya generados en la
+        # raíz del proyecto no se tocan. Sin respuesta (Ctrl+C otra vez, entrada cerrada) se conserva la sesión.
+        try:
+            discard = typer.confirm(tr("¿Descartar la sesión del estudio? Si dices que no, la próxima vez continúa donde quedó",
+                                       "Discard the study session? If you say no, next time it continues where it left off"), default=True)
+        except (typer.Abort, EOFError):
+            discard = False
+        if discard:
+            session.discard()
+            shutil.rmtree(DATA_ROOT / "estudio", ignore_errors=True)
+            console.print(tr("[dim]Sesión descartada: la próxima vez el estudio parte desde cero.[/dim]",
+                             "[dim]Session discarded: next time the study starts from scratch.[/dim]"))
+        else:
+            console.print(tr("[dim]Sesión conservada: la próxima vez continúa donde quedó (o usa --new para empezar de cero).[/dim]",
+                             "[dim]Session kept: next time it continues where it left off (or use --new to start over).[/dim]"))
 
 
 def _validate_id_or_exit(project_id: str):

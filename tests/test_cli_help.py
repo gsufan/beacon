@@ -65,17 +65,28 @@ def test_console_language_follows_the_os_locale_with_english_as_default(monkeypa
     assert cli_lang.detect_language() == "es"
 
 
-def test_study_session_is_discarded_when_the_server_is_closed(tmp_path, monkeypatch):
+def _close_study(tmp_path, monkeypatch, answer):
     import subprocess
     monkeypatch.setattr(cli_module, "DATA_ROOT", tmp_path)
     (tmp_path / "estudio").mkdir()
-    (tmp_path / "estudio" / "repo.txt").write_text("x")
 
     def fake_run(*args, **kwargs):
         assert (tmp_path / "_study" / "sesion.json").exists()  # la sesión existía mientras corría
         raise KeyboardInterrupt
 
     monkeypatch.setattr(subprocess, "run", fake_run)
-    result = runner.invoke(cli_module.app, ["study", "--no-browser"])
+    result = runner.invoke(cli_module.app, ["study", "--no-browser"], input=answer)
     assert result.exit_code == 0
-    assert not (tmp_path / "_study" / "sesion.json").exists() and not (tmp_path / "estudio").exists()
+    return (tmp_path / "_study" / "sesion.json").exists(), (tmp_path / "estudio").exists()
+
+
+def test_closing_the_study_asks_and_discards_when_told_to(tmp_path, monkeypatch):
+    assert _close_study(tmp_path, monkeypatch, "y" + chr(10)) == (False, False)
+
+
+def test_closing_the_study_keeps_the_session_when_told_not_to(tmp_path, monkeypatch):
+    assert _close_study(tmp_path, monkeypatch, "n" + chr(10)) == (True, True)
+
+
+def test_closing_the_study_keeps_the_session_when_there_is_no_answer(tmp_path, monkeypatch):
+    assert _close_study(tmp_path, monkeypatch, "") == (True, True)
