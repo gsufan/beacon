@@ -48,6 +48,22 @@ El tema claro u oscuro se elige en la barra lateral, y las tipografías vienen e
 
 Soporta español e inglés (selector en la barra lateral).
 
+## Cambiar el modelo de lenguaje y su ventana de contexto
+
+El modelo que redacta las respuestas y la documentación se elige en `config/config.yaml` (o en Configuración, en la interfaz) con `llm_model`, y puede ser cualquiera que Ollama tenga instalado. La ventana de contexto que se le pide es `llm_num_ctx` y vale 8.192 tokens si no se indica, que es el máximo de `llama3:8b`. Con un modelo que admita más contexto, y la memoria de video para sostenerlo, se puede subir:
+
+```yaml
+ai_provider:
+  llm_model: llama3.1:8b
+  llm_num_ctx: 16384
+```
+
+Beacon arma el prompt con el presupuesto de la ventana configurada, así que una ventana mayor deja entrar más fragmentos en cada consulta. Tener en cuenta:
+
+- **La memoria de video crece con la ventana y con el tamaño del modelo.** En una GPU de 8 GB, `llama3.1:8b` con 16.384 tokens ocupó 7,3 GB y Ollama lo repartió entre GPU (84 %) y CPU (16 %); la misma consulta tardó unos 23 s con el modelo cargado, frente a unos 6 s con `llama3:8b` y 8.192 tokens. Un modelo de 32B o más necesita una GPU de mayor capacidad.
+- **Las mediciones de calidad de este proyecto corresponden a `llama3:8b` con 8.192 tokens.** Con otro modelo o ventana conviene repetir `tools/eval_answers.py` y `tools/eval_retrieval.py`.
+- Si la ventana no se indica o el valor no es válido (un entero de al menos 2.048), se usa 8.192. Guardar la configuración desde la interfaz conserva el valor.
+
 ## Watcher automático: cuándo corre
 
 El watcher no es un proceso aparte ni un cron job: es un **hilo en segundo

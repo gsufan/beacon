@@ -127,6 +127,7 @@ class AIProviderUpdate(BaseModel):
     ollama_host: str
     embedding_model: str
     llm_model: str
+    llm_num_ctx: Optional[int] = Field(default=None, ge=2048, le=1_000_000)  # None conserva la ventana configurada
 
 
 class ProjectCreate(BaseModel):
@@ -231,6 +232,7 @@ def put_ai_provider(body: AIProviderUpdate):
     updated = update_ai_provider(
         provider=body.provider, ollama_host=body.ollama_host,
         embedding_model=body.embedding_model, llm_model=body.llm_model,
+        llm_num_ctx=body.llm_num_ctx,
     )
     _get_engine.cache_clear()
     return updated.__dict__

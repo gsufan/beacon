@@ -22,12 +22,18 @@ CREDENTIALS_PATH = Path(os.getenv("DEUDA_TECNICA_CREDENTIALS", _DEFAULT_CREDENTI
 DEFAULT_EMBEDDING_MODEL = "qwen3-embedding:0.6b"
 
 
+# Ventana de contexto por defecto: el máximo de llama3:8b (ver core/engine/llm.py).
+DEFAULT_LLM_NUM_CTX = 8192
+MIN_LLM_NUM_CTX = 2048
+
+
 @dataclass
 class AIProviderConfig:
     provider: str
     ollama_host: str
     embedding_model: str
     llm_model: str
+    llm_num_ctx: int = DEFAULT_LLM_NUM_CTX  # ventana de contexto que se pide al modelo de lenguaje
 
 
 @dataclass
@@ -46,6 +52,13 @@ class AppConfig:
     projects: List[ProjectEntry]
 
 
+def _valid_num_ctx(value) -> int:
+    """Ventana de contexto del config.yaml; si falta o no es un entero razonable, la por defecto."""
+    if isinstance(value, int) and not isinstance(value, bool) and value >= MIN_LLM_NUM_CTX:
+        return value
+    return DEFAULT_LLM_NUM_CTX
+
+
 def load_config(path: Path = CONFIG_PATH) -> AppConfig:
     if not path.exists():
         raise FileNotFoundError(
@@ -60,6 +73,7 @@ def load_config(path: Path = CONFIG_PATH) -> AppConfig:
         ollama_host=ai.get("ollama_host", "http://localhost:11434"),
         embedding_model=ai.get("embedding_model", DEFAULT_EMBEDDING_MODEL),
         llm_model=ai.get("llm_model", "llama3:8b"),
+        llm_num_ctx=_valid_num_ctx(ai.get("llm_num_ctx")),
     )
 
     projects = [
@@ -85,15 +99,23 @@ def _write_raw(raw: dict, path: Path = CONFIG_PATH):
 
 
 def update_ai_provider(
-    provider: str, ollama_host: str, embedding_model: str, llm_model: str, path: Path = CONFIG_PATH
+    provider: str, ollama_host: str, embedding_model: str, llm_model: str,
+    path: Path = CONFIG_PATH, llm_num_ctx: Optional[int] = None,
 ) -> AIProviderConfig:
+    """Guarda el proveedor y los modelos. `llm_num_ctx=None` conserva la ventana ya configurada."""
     raw = _read_raw(path)
-    raw["ai_provider"] = {
+    if llm_num_ctx is None:
+        llm_num_ctx = _valid_num_ctx(raw.get("ai_provider", {}).get("llm_num_ctx"))
+    llm_num_ctx = _valid_num_ctx(llm_num_ctx)
+    ai = {
         "provider": provider, "ollama_host": ollama_host,
         "embedding_model": embedding_model, "llm_model": llm_model,
     }
+    if llm_num_ctx != DEFAULT_LLM_NUM_CTX:
+        ai["llm_num_ctx"] = llm_num_ctx  # solo se escribe si difiere del valor por defecto
+    raw["ai_provider"] = ai
     _write_raw(raw, path)
-    return AIProviderConfig(provider, ollama_host, embedding_model, llm_model)
+    return AIProviderConfig(provider, ollama_host, embedding_model, llm_model, llm_num_ctx)
 
 
 class ProjectAlreadyExistsError(Exception):

@@ -108,6 +108,19 @@ def test_put_ai_provider_wiring(monkeypatch):
     })
     assert resp.status_code == 200
     assert calls["provider"] == "ollama"
+    assert calls["llm_num_ctx"] is None  # la pantalla de configuración no la envía: se conserva la configurada
+
+
+def test_put_ai_provider_accepts_context_window(monkeypatch):
+    calls = {}
+    monkeypatch.setattr(api, "update_ai_provider",
+                        lambda **kw: calls.update(kw) or type("Cfg", (), kw)())
+    api._get_engine.cache_clear()
+    body = {"provider": "ollama", "ollama_host": "http://h:11434", "embedding_model": "e", "llm_model": "m"}
+
+    assert client.put("/config/ai-provider", json={**body, "llm_num_ctx": 32768}).status_code == 200
+    assert calls["llm_num_ctx"] == 32768
+    assert client.put("/config/ai-provider", json={**body, "llm_num_ctx": 100}).status_code == 422  # demasiado chica
 
 
 def test_query_unknown_project_404():

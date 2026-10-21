@@ -115,11 +115,10 @@ class DocGenerator:
         label = f"{c.get('chunk_type','raw')} '{c.get('name','')}'" if c.get("name") else c.get("chunk_type", "raw")
         return f"--- {label} (líneas {c.get('start_line')}-{c.get('end_line')}) ---\n{c['code']}\n"
 
-    @staticmethod
-    def _content_budget_chars(system_prompt: str) -> int:
+    def _content_budget_chars(self, system_prompt: str) -> int:
         """Caracteres de contenido que caben en un prompt, descontando el
         prompt de sistema, el encabezado y la reserva para la respuesta."""
-        tokens = prompt_budget_tokens(DOC_ANSWER_RESERVE_TOKENS) - estimate_tokens(system_prompt) - 100
+        tokens = prompt_budget_tokens(DOC_ANSWER_RESERVE_TOKENS, self.ai_config.llm_num_ctx) - estimate_tokens(system_prompt) - 100
         return int(tokens * CHARS_PER_TOKEN)
 
     @staticmethod
@@ -141,7 +140,7 @@ class DocGenerator:
         return groups
 
     def _llm(self, system: str, user: str) -> str:
-        return chat(self.client_ollama, self.ai_config.llm_model, system, user).content
+        return chat(self.client_ollama, self.ai_config.llm_model, system, user, self.ai_config.llm_num_ctx).content
 
     def generate_doc_for_file(self, file_path: str) -> Optional[str]:
         """Documenta el archivo completo. Si no cabe en una sola llamada, se

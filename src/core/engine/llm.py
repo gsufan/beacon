@@ -18,11 +18,14 @@ import logging
 import math
 from dataclasses import dataclass
 
+from core.config import DEFAULT_LLM_NUM_CTX
+
 logger = logging.getLogger("beacon.llm")
 
-# Ventana máxima de llama3:8b. Si se cambia a un modelo con más contexto
-# (ej. llama3.1), se puede subir; con uno de menos, bajar.
-LLM_NUM_CTX = 8192
+# Ventana por defecto: el máximo de llama3:8b. Con un modelo de más contexto
+# (ej. llama3.1 o uno de 32B) se sube con `llm_num_ctx` en config.yaml; con uno
+# de menos, se baja. La memoria de video que pide la ventana crece con su tamaño.
+LLM_NUM_CTX = DEFAULT_LLM_NUM_CTX
 
 # Respuestas sobre código: se prefieren precisas y repetibles antes que
 # variadas. Con la temperatura por defecto de Ollama (0,8) la misma pregunta
@@ -42,9 +45,9 @@ def estimate_tokens(text: str) -> int:
     return math.ceil(len(text) / CHARS_PER_TOKEN)
 
 
-def prompt_budget_tokens(reserve_for_answer: int) -> int:
+def prompt_budget_tokens(reserve_for_answer: int, num_ctx: int = LLM_NUM_CTX) -> int:
     """Tokens disponibles para el prompt completo (sistema + usuario)."""
-    return LLM_NUM_CTX - reserve_for_answer
+    return num_ctx - reserve_for_answer
 
 
 @dataclass
@@ -54,14 +57,14 @@ class ChatResult:
     answer_tokens: int
 
 
-def chat(client, model: str, system: str, user: str) -> ChatResult:
-    """Una llamada de chat con `num_ctx` fijo. Advierte si el prompt no entró
+def chat(client, model: str, system: str, user: str, num_ctx: int = LLM_NUM_CTX) -> ChatResult:
+    """Una llamada de chat con `num_ctx` explícito. Advierte si el prompt no entró
     completo (el modelo procesó menos tokens de los que se estiman enviados)
     o si la respuesta llenó la ventana (pudo quedar cortada)."""
     response = client.chat(
         model=model,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        options={"num_ctx": LLM_NUM_CTX, "temperature": LLM_TEMPERATURE, "seed": LLM_SEED},
+        options={"num_ctx": num_ctx, "temperature": LLM_TEMPERATURE, "seed": LLM_SEED},
     )
     prompt_tokens = response.get("prompt_eval_count") or 0
     answer_tokens = response.get("eval_count") or 0
@@ -72,7 +75,7 @@ def chat(client, model: str, system: str, user: str) -> ChatResult:
     if prompt_tokens and prompt_tokens < expected * 0.5:
         logger.warning("El modelo procesó %d tokens de un prompt estimado en %d: probablemente se truncó.",
                        prompt_tokens, expected)
-    if prompt_tokens + answer_tokens >= LLM_NUM_CTX:
+    if prompt_tokens + answer_tokens >= num_ctx:
         logger.warning("La respuesta llenó la ventana de contexto (%d tokens): puede haber quedado incompleta.",
-                       LLM_NUM_CTX)
+                       num_ctx)
     return ChatResult(response["message"]["content"], prompt_tokens, answer_tokens)

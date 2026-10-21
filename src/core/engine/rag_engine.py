@@ -348,7 +348,7 @@ class RAGEngine:
         de prioridad (primero los recuperados por similitud, luego los del grafo
         de llamadas). Mejor entregar menos contexto completo que un prompt que
         Ollama trunque por el comienzo, perdiendo las reglas del sistema."""
-        budget = prompt_budget_tokens(ANSWER_RESERVE_TOKENS)
+        budget = prompt_budget_tokens(ANSWER_RESERVE_TOKENS, self.ai_config.llm_num_ctx)
         used = estimate_tokens(system_prompt) + estimate_tokens(self._build_prompt(question, []))
         kept: List[RetrievedChunk] = []
         for chunk in chunks:
@@ -370,7 +370,7 @@ class RAGEngine:
         # Las fuentes que se devuelven son exactamente las que vio el modelo.
         chunks = self._fit_to_budget(question, system_prompt, chunks)
         prompt = self._build_prompt(question, chunks)
-        result = chat(self.client_ollama, self.ai_config.llm_model, system_prompt, prompt)
+        result = chat(self.client_ollama, self.ai_config.llm_model, system_prompt, prompt, self.ai_config.llm_num_ctx)
         answer = strip_preamble(result.content, heading_marker="\x00")
         return RAGResponse(answer=answer, sources=chunks,
                            prompt_tokens=result.prompt_tokens, answer_tokens=result.answer_tokens)
