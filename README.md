@@ -49,6 +49,22 @@ persisten entre reinicios del contenedor.
 
 Más detalles (GPU en Windows, rutas locales, healthcheck) en [docs/docker.md](docs/docker.md).
 
+## Participar en el estudio (modo estudio)
+
+Si te invitaron a probar Beacon para el estudio de evaluación, necesitas Python 3.11+, Git, Node 20+ y [Ollama](https://ollama.com) con los modelos instalados.
+
+```bash
+git clone https://github.com/gsufan/beacon.git
+cd beacon
+pip install -e .
+ollama pull qwen3-embedding:0.6b
+ollama pull llama3:8b
+cd frontend && npm install && npm run build && cd ..
+beacon study
+```
+
+El asistente se abre en el navegador y te guía: aceptas la participación, eliges (o no) compartir los datos de tu equipo, pegas la dirección de un repositorio público, haces al menos 3 preguntas valorando cada respuesta y revisas el resultado. Al terminar, `beacon-estudio-resultados.json` queda en la carpeta del proyecto (sin código, rutas ni tu nombre); envíalo por el canal de la invitación. Detalle en [docs/estudio.md](docs/estudio.md).
+
 ## Documentación
 
 | Documento | Contenido |
@@ -58,6 +74,7 @@ Más detalles (GPU en Windows, rutas locales, healthcheck) en [docs/docker.md](d
 | [Docker](docs/docker.md) | Detalles y casos particulares del despliegue con contenedores |
 | [Calidad medida](docs/calidad-medida.md) | Resultados de la búsqueda, de las respuestas y de las pruebas de carga |
 | [Seguridad](docs/seguridad.md) | Limitaciones conocidas y clave de API |
+| [Modo estudio](docs/estudio.md) | Participar en el estudio y analizar los resultados recibidos |
 | [Desarrollo](docs/desarrollo.md) | Estructura del código, frontend y pruebas |
 
 ## Resultados en breve

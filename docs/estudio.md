@@ -11,7 +11,7 @@ Requisitos: Python 3.11 o superior, Git, Node 20 o superior (para compilar la in
 `ollama pull qwen3-embedding:0.6b`). Una GPU acelera mucho las respuestas, pero no es obligatoria.
 
 ```bash
-git clone https://github.com/<organización>/beacon.git
+git clone https://github.com/gsufan/beacon.git
 cd beacon
 pip install -e .
 cd frontend && npm install && npm run build && cd ..
@@ -26,7 +26,7 @@ El asistente se abre en el navegador (`http://127.0.0.1:8000/study`) y guía cin
 3. **Repositorio.** Una dirección https de un repositorio público (hasta 3000 archivos de código).
 4. **Preguntas.** Mínimo 3, sobre cosas que de verdad se quieran saber del código. Cada respuesta se valora
    (correcta, en parte, incorrecta, no sé). El tiempo lo mide Beacon, no el navegador.
-5. **Cierre.** Experiencia, identidad opcional y revisión del archivo antes de descargarlo o copiarlo.
+5. **Cierre.** Experiencia, identidad opcional y revisión del archivo. Al generarlo, `beacon-estudio-resultados.json` (y `beacon-estudio-identidad.json`, si se dio) quedan en la carpeta raíz del proyecto; también se pueden descargar o copiar.
 
 ### Qué contiene y qué no el archivo
 

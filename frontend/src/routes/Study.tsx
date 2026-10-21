@@ -43,7 +43,7 @@ const T = {
     identity: "Opcional: tu perfil de GitHub o una presentación breve (se descarga en un archivo aparte).",
     github: "Perfil de GitHub", intro_me: "Presentación",
     generate: "Generar archivos", dl_results: "Descargar resultados", copy: "Copiar resultados", copied: "Copiado", dl_identity: "Descargar identidad (opcional)",
-    review: "Revisa el contenido antes de enviarlo:", sent_note: "Envía el archivo de resultados por el canal indicado en la invitación.",
+    review: "Revisa el contenido antes de enviarlo:", saved: "Se guardaron en la carpeta de Beacon: {f}.", sent_note: "Envía el archivo de resultados por el canal indicado en la invitación.",
     discard: "Descartar todo y salir", error: "Error",
   },
   en: {
@@ -67,7 +67,7 @@ const T = {
     identity: "Optional: your GitHub profile or a short introduction (downloaded as a separate file).",
     github: "GitHub profile", intro_me: "Introduction",
     generate: "Generate files", dl_results: "Download results", copy: "Copy results", copied: "Copied", dl_identity: "Download identity (optional)",
-    review: "Review the content before sending it:", sent_note: "Send the results file through the channel given in the invitation.",
+    review: "Review the content before sending it:", saved: "Saved in the Beacon folder: {f}.", sent_note: "Send the results file through the channel given in the invitation.",
     discard: "Discard everything and quit", error: "Error",
   },
 } as const;
@@ -166,7 +166,7 @@ function StudyBody({ state, t, lang, busy, act, stage }: BodyProps) {
   const [copied, setCopied] = useState(false);
   const [github, setGithub] = useState("");
   const [intro, setIntro] = useState("");
-  const [files, setFiles] = useState<{ resultado: unknown; identidad: unknown } | null>(null);
+  const [files, setFiles] = useState<{ resultado: unknown; identidad: unknown; archivos?: string[] } | null>(null);
 
   useEffect(() => {
     if (stage === 2 && !hw && !hwDone) void call<Record<string, unknown>>("GET", "/hardware-preview").then(setHw).catch(() => undefined);
@@ -257,6 +257,7 @@ function StudyBody({ state, t, lang, busy, act, stage }: BodyProps) {
         })}>{t("generate")}</button>
         {files && (
           <div className="flex flex-col gap-3">
+            {files.archivos && <p className="text-sm">{t("saved", { f: files.archivos.join(", ") })}</p>}
             <p className="text-sm">{t("review")}</p>
             <pre className="max-h-64 overflow-auto rounded-lg bg-code-bg p-3 font-mono text-xs text-code-ink">{JSON.stringify(files.resultado, null, 2)}</pre>
             <div className="flex flex-wrap gap-3">

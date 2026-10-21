@@ -3,6 +3,7 @@
 
 El participante aprueba cada paso; los tiempos de las preguntas los mide el servidor, no el navegador."""
 
+import json
 import logging
 import shutil
 import threading
@@ -30,6 +31,15 @@ ALLOWED_HOSTS = ("github.com", "gitlab.com", "bitbucket.org", "codeberg.org")
 
 def study_dir() -> Path:
     return DATA_ROOT / "_study"
+
+
+def output_dir() -> Path:
+    """Raíz del proyecto: ahí quedan los archivos finales, para que el participante los encuentre y los revise."""
+    return Path(__file__).resolve().parents[3]
+
+
+RESULT_FILE = "beacon-estudio-resultados.json"
+IDENTITY_FILE = "beacon-estudio-identidad.json"
 
 
 def session_path() -> Path:
@@ -265,9 +275,16 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
         if not s.has_consent("envio"):
             raise HTTPException(status_code=409, detail="Falta autorizar la generación del archivo.")
         try:
-            return {"resultado": s.build_result(), "identidad": s.build_identity()}
+            result, identity = s.build_result(), s.build_identity()
         except StudyError as e:
             raise HTTPException(status_code=409, detail=str(e))
+        out = output_dir()
+        (out / RESULT_FILE).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+        files = [RESULT_FILE]
+        if identity:
+            (out / IDENTITY_FILE).write_text(json.dumps(identity, ensure_ascii=False, indent=2), encoding="utf-8")
+            files.append(IDENTITY_FILE)
+        return {"resultado": result, "identidad": identity, "archivos": files, "carpeta": str(out)}
 
     @router.post("/discard")
     def discard():

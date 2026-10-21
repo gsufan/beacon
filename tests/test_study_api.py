@@ -31,6 +31,7 @@ class FakeEngine:
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(study_api, "session_path", lambda: tmp_path / "_study" / "sesion.json")
     monkeypatch.setattr(study_api, "STUDY_PROJECT_ID", "estudio")
+    monkeypatch.setattr(study_api, "output_dir", lambda: tmp_path)
     monkeypatch.setattr(study_api.hardware, "collect_hardware", lambda path=".": {
         "cpu_modelo": "cpu", "cpu_nucleos": 4, "ram_gb": 16.0, "disco_libre_gb": 50.0, "gpus": [], "so": "Test"})
     app = FastAPI()
@@ -97,6 +98,9 @@ def test_rating_and_final_file_flow(client, tmp_path):
     out = client.get("/study/result").json()
     assert out["resultado"]["esquema"] == 1 and len(out["resultado"]["preguntas"]) == 3
     assert "alguien" not in json.dumps(out["resultado"]) and out["identidad"]["github"].endswith("alguien")
+    assert out["archivos"] == [study_api.RESULT_FILE, study_api.IDENTITY_FILE]
+    assert json.loads((tmp_path / study_api.RESULT_FILE).read_text(encoding="utf-8"))["esquema"] == 1
+    assert "alguien" not in (tmp_path / study_api.RESULT_FILE).read_text(encoding="utf-8")
 
 
 def test_result_needs_the_minimum_number_of_questions(client, tmp_path):
