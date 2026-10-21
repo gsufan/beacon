@@ -256,6 +256,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
   // Paso 3
   const [url, setUrl] = useState("");
   const [changing, setChanging] = useState(false);
+  const [sawPreparing, setSawPreparing] = useState(false);
   const [workingOn, setWorkingOn] = useState("");
   const [closed, setClosed] = useState(false);
   // Paso 4
@@ -284,8 +285,15 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
   const status = state.repo_status;
   const preparing = status?.estado === "clonando" || status?.estado === "indexando";
   useEffect(() => {
-    if (changing && status?.estado === "listo") setChanging(false);
-  }, [changing, status?.estado]);
+    // El formulario de «elegir otro» se cierra cuando termina de prepararse el repositorio nuevo: no antes, porque el
+    // estado del anterior también dice «listo».
+    if (!changing) return;
+    if (preparing) setSawPreparing(true);
+    else if (status?.estado === "listo" && (sawPreparing || (workingOn !== "" && state.repo?.url === workingOn))) {
+      setChanging(false);
+      setSawPreparing(false);
+    }
+  }, [changing, preparing, sawPreparing, status?.estado, workingOn, state.repo?.url]);
 
   // Cada paso define su acción principal (la que lo completa y avanza).
   let next: { label: string; disabled: boolean; run: () => Promise<void> | void } | null = null;
@@ -386,7 +394,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
           <>
             <p className="text-sm text-ink-2">{t("repo_ready", { n: state.repo?.archivos_indexados ?? 0 })} <span className="font-mono text-xs">{state.repo?.url}</span></p>
             {questions.length === 0
-              ? <button className={btnGhost + " self-start"} onClick={() => setChanging(true)}>{t("change_repo")}</button>
+              ? <button className={btnGhost + " self-start"} onClick={() => { setSawPreparing(false); setWorkingOn(""); setChanging(true); }}>{t("change_repo")}</button>
               : <p className="text-xs text-muted">{t("repo_locked")}</p>}
           </>
         )}

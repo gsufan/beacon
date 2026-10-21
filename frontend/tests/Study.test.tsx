@@ -149,6 +149,18 @@ describe("modo estudio", () => {
     expect(calls.some((c) => c.path === "/study/quit" && c.method === "POST")).toBe(true);
   });
 
+  it("«elegir otro repositorio» abre el formulario y se mantiene abierto hasta que el nuevo está listo", async () => {
+    state = started({ hardware: { cpu_modelo: "x" }, repo: { url: "https://github.com/u/r", archivos_indexados: 3 },
+      repo_status: { estado: "listo", detalle: null }, carpeta_repo: "/datos/estudio" });
+    open();
+    await userEvent.click(await screen.findByRole("button", { name: /Atrás|Back/ }));  // del paso 4 al 3
+    await userEvent.click(await screen.findByRole("button", { name: /Elegir otro repositorio|Pick another repository/ }));
+    expect(await screen.findByRole("textbox", { name: "URL" })).toBeInTheDocument();
+    await new Promise((r) => setTimeout(r, 50));  // el efecto que cerraba el formulario corría justo después
+    expect(screen.getByRole("textbox", { name: "URL" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /^Siguiente$|^Next$/ })).toBeDisabled();  // hasta que el nuevo esté listo
+  });
+
   it("muestra el avance del indexado archivo por archivo", async () => {
     state = started({ hardware: { cpu_modelo: "x" }, repo_status: { estado: "indexando", detalle: "33 archivos de código",
       progreso: { actual: 11, total: 33, archivo: "ui/pager.go", segundos: 4 } } });
