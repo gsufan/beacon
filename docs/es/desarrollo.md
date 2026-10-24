@@ -1,3 +1,5 @@
+[English](../en/development.md) | **Español**
+
 # Desarrollo
 
 ## Estructura del código

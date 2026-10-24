@@ -1,3 +1,5 @@
+[English](../en/security.md) | **Español**
+
 # Seguridad — limitaciones conocidas
 
 Beacon está pensado para uso local o en red interna, por un desarrollador o equipo — **no** para exponerse directamente a internet:

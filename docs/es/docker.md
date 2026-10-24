@@ -1,6 +1,8 @@
+[English](../en/docker.md) | **Español**
+
 # Docker: detalles y casos particulares
 
-Complementa el inicio rápido del [README](../README.md).
+Complementa el inicio rápido del [README](../../README.es.md).
 
 **Nota sobre `repo_path` local**: si registras un proyecto con `source_type: local` apuntando a una ruta de tu máquina, esa ruta tiene que estar además montada como volumen en `docker-compose.yml` para que el contenedor la vea — el modo **"Clonar desde URL"** (ver Configuración en la UI) no tiene este problema, porque el clonado ocurre dentro del contenedor.
 

@@ -1,3 +1,5 @@
+[English](../en/measured-quality.md) | **Español**
+
 # Calidad medida
 
 Mediciones de la búsqueda, de las respuestas y de la carga. Las herramientas están en `tools/` y los conjuntos de preguntas en `eval/`.

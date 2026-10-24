@@ -17,7 +17,7 @@ Uso:
     beacon export <id>                     # empaqueta el índice+docs en un .zip portable
     beacon import <archivo.zip>            # registra un proyecto desde un .zip exportado
     beacon serve                           # levanta la API + UI
-    beacon study                           # modo estudio (ver docs/estudio.md)
+    beacon study                           # modo estudio (ver docs/en/study-mode.md)
 """
 
 import json

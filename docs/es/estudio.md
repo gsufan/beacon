@@ -1,3 +1,5 @@
+[English](../en/study-mode.md) | **Español**
+
 # Modo estudio
 
 `beacon study` abre un asistente para participar en el estudio de Beacon: se elige un repositorio público,

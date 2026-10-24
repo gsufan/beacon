@@ -49,7 +49,7 @@ async def _lifespan(_app):
 app = FastAPI(title="Beacon API", version="0.3.0", docs_url="/api/docs", redoc_url="/api/redoc", lifespan=_lifespan)
 # Beacon se sirve same-origin en producción (la UI compilada vive en el mismo
 # host:puerto que la API); el único caso legítimo de origen cruzado es el dev
-# server de Vite. No usar "*" — sin auth en la API (ver docs/seguridad.md),
+# server de Vite. No usar "*" — sin auth en la API (ver docs/es/seguridad.md),
 # un CORS abierto ampliaría la superficie de ataque sin necesidad real.
 app.add_middleware(
     CORSMiddleware,
@@ -61,7 +61,7 @@ app.add_middleware(
 # API key opcional: si BEACON_API_KEY está seteada, se exige en el header
 # X-API-Key para los endpoints de datos/config (no para servir la SPA ni
 # para /healthz). Sin la env var (default), la API queda abierta — igual
-# que hoy — pensada para uso local/interno; ver README para exponerla
+# que hoy — pensada para uso local/interno; ver el README para exponerla
 # de forma más segura.
 API_KEY = os.environ.get("BEACON_API_KEY")
 _PROTECTED_PREFIXES = ("/projects", "/config", "/system")

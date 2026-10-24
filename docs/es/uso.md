@@ -1,3 +1,5 @@
+[English](../en/usage.md) | **Español**
+
 # Uso
 
 ## CLI
