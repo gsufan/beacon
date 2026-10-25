@@ -40,6 +40,10 @@ beacon serve                         # levanta la API + UI en http://127.0.0.1:8
 
 **Idioma de la consola**: la ayuda y los mensajes salen en español si el sistema operativo está en español (cualquier variante) y en inglés en cualquier otro caso. Para forzar uno, define `BEACON_LANG=es` o `BEACON_LANG=en`. Los nombres de los comandos y de las opciones son siempre en inglés.
 
+## Preguntas abiertas sobre todo el repositorio
+
+Preguntas como «¿qué hace este proyecto?» o «¿cómo está organizado?» no se parecen a ningún trozo de código, así que la búsqueda por similitud no puede responderlas. Cuando hay documentación, Beacon construye a partir de ella un **resumen del repositorio** (`OVERVIEW.md`): un resumen por carpeta, armado de abajo hacia arriba a partir del propósito de cada archivo, y un resumen del proyecto. Se actualiza junto con la documentación (`beacon docs`, `beacon sync --docs`) y solo se vuelven a resumir las carpetas cuyo contenido cambió. Las preguntas abiertas se responden con el resumen más unos pocos fragmentos de código, y el resumen aparece como un grupo propio en las fuentes. Sin documentación, se responden como cualquier otra pregunta.
+
 ## Espacio en disco
 
 Cada proyecto guarda en `data/<id>/` tres cosas que se pueden borrar por separado: el **clon** del repositorio (solo si Beacon lo clonó por URL; tu carpeta local nunca se toca), el **índice** y la **documentación** generada.
@@ -57,7 +61,7 @@ El proyecto sigue registrado: lo borrado se recrea al sincronizar. La misma info
 Con `beacon serve` corriendo (y la UI ya compilada, ver [instalacion-manual.md](instalacion-manual.md)), abre `http://127.0.0.1:8000`:
 
 - **Chat**: preguntas en lenguaje natural sobre el código indexado. Conserva el historial de preguntas de la sesión (se reinicia al cambiar de proyecto) y muestra, junto a cada respuesta, sus fuentes separadas en coincidencia semántica y grafo de llamadas, con la similitud, las líneas y el código de cada una. La cabecera indica el modelo en uso y si Ollama responde; si una consulta falla, la pregunta se conserva y se puede reintentar.
-- **Docs**: árbol de la documentación generada por archivo, con carpetas plegables y filtro de texto.
+- **Docs**: árbol de la documentación generada por archivo, con carpetas plegables y filtro de texto. `OVERVIEW.md` es el resumen del repositorio: uno por carpeta y uno de todo el proyecto.
 - **Configuración**: proyectos (registro por ruta local o clonado por URL desde GitHub/GitLab/Bitbucket, sincronización de varios a la vez, watcher automático opcional y eliminación con confirmación), proveedor y modelos de IA (detectados desde Ollama, con aviso si un modelo configurado no está instalado) y clave de API.
 
 El tema claro u oscuro se elige en la barra lateral, y las tipografías vienen empaquetadas: la interfaz no hace peticiones a servicios externos.

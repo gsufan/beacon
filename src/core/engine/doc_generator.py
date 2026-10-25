@@ -10,6 +10,7 @@ from core.config import AIProviderConfig
 from core.projects import ProjectContext
 from core.engine.git_watcher import GitWatcher, ChangeSet
 from core.engine.indexer import COLLECTION_NAME, CONTROL_COLLECTION_NAME, CONTROL_KEY_ID
+from core.engine.overview import FOLDER_SYSTEM_PROMPT, OVERVIEW_MD, build_overview
 from core.engine.text_sanitize import strip_preamble
 from core.engine.llm import CHARS_PER_TOKEN, chat, estimate_tokens, prompt_budget_tokens
 
@@ -214,7 +215,12 @@ class DocGenerator:
         docs_dir = Path(self.project.docs_dir)
         if not docs_dir.exists():
             return []
-        return [p.relative_to(docs_dir).as_posix()[: -len(".md")] for p in docs_dir.rglob("*.md")]
+        return [p.relative_to(docs_dir).as_posix()[: -len(".md")] for p in docs_dir.rglob("*.md") if p.name != OVERVIEW_MD or p.parent != docs_dir]
+
+    def update_overview(self, on_progress: ProgressCallback = None) -> dict:
+        """Builds or updates the repository overview from the per-file documentation."""
+        step = (lambda folder: on_progress(1, 1, "overview: " + (folder or "."))) if on_progress else None
+        return build_overview(Path(self.project.docs_dir), self._llm, self._content_budget_chars(FOLDER_SYSTEM_PROMPT), step)
 
     def stats(self) -> dict:
         return {
@@ -232,7 +238,10 @@ class DocGenerator:
         last_commit = None if full else self._get_last_documented_commit()
         changes: ChangeSet = self.watcher.get_changes_since(last_commit, target=head)
         if changes.is_empty():
-            return {"status": "sin_cambios", "detalle": changes.summary()}
+            result = {"status": "sin_cambios", "detalle": changes.summary()}
+            if self._existing_doc_sources():  # no model calls if nothing changed; builds it for projects documented earlier
+                result["resumen_proyecto"] = self.update_overview(on_progress)
+            return result
 
         files = changes.files_to_reindex()
         deleted = 0
@@ -256,8 +265,10 @@ class DocGenerator:
             if on_progress:
                 on_progress(i, total, fp)
 
+        overview = self.update_overview(on_progress)
         self._save_last_documented_commit(head)
         return {
             "status": "ok", "detalle": changes.summary(),
             "docs_generados": generated, "docs_eliminados": deleted, "sin_chunks_indexados": skipped,
+            "resumen_proyecto": overview,
         }

@@ -117,6 +117,17 @@ modelo de 8B parámetros que conviene conocer (la interfaz muestra igual las
 fuentes de cada respuesta). Una respuesta tarda unos 5 segundos con GPU de
 8 GB.
 
+## Preguntas abiertas sobre todo el repositorio (medidas)
+
+`eval/answers-general-requests.yaml` y `eval/answers-general-microservices-demo.yaml` tienen seis preguntas abiertas cada uno («¿qué hace este proyecto?», «¿cómo está organizado el código?», «¿qué servicios hay?»), evaluadas con `tools/eval_answers.py`. Se responden con el resumen del repositorio (ver [uso](uso.md)).
+
+| Repositorio | Contenido, sin resumen | Contenido, con resumen | Rechazos indebidos, antes → después |
+|---|---|---|---|
+| psf/requests | 17% | 50–67% | 50% → 0–33% |
+| microservices-demo | 33% | 83% | 33% → 0–17% |
+
+Los rangos son resultados de corridas repetidas: con seis preguntas cada una vale 17 puntos y `llama3:8b` varía entre corridas, así que las cifras muestran la dirección y no un valor preciso. Las respuestas son correctas a grandes rasgos pero a menudo omiten los nombres de módulos concretos; un modelo mayor aprovecharía mejor el resumen.
+
 ## Pruebas de estrés (medidas)
 
 `tools/stress_test.py` genera un repositorio sintético de miles de archivos

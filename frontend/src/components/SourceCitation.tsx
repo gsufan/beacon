@@ -13,6 +13,7 @@ export default function SourceCitation({
   const [open, setOpen] = useState(defaultOpen);
   // Cosine distance: 0 = identical, so similarity is its complement.
   const similarity = Math.min(1, Math.max(0, 1 - source.distance));
+  const isOverview = source.chunk_type === "overview";
 
   return (
     <div
@@ -33,15 +34,17 @@ export default function SourceCitation({
             source.expanded ? "bg-graph-chip text-graph-ink" : "bg-surface-2 text-ink-2"
           }`}
         >
-          {source.chunk_type}
+          {isOverview ? t("sources_overview_badge") : source.chunk_type}
         </span>
       </div>
 
       <div className="flex flex-wrap gap-x-1.5 font-mono text-xs text-muted">
         <span className="break-all">{source.file_path}</span>
-        <span>
-          ({source.start_line}-{source.end_line})
-        </span>
+        {!isOverview && (
+          <span>
+            ({source.start_line}-{source.end_line})
+          </span>
+        )}
       </div>
 
       {open && source.code && (
@@ -53,7 +56,7 @@ export default function SourceCitation({
       <div className="flex items-center gap-2">
         {source.expanded ? (
           <span className="whitespace-nowrap text-xs font-medium text-graph-ink">{t("chat_call_graph_badge")}</span>
-        ) : (
+        ) : isOverview ? null : (
           <>
             <div className="h-1 flex-1 rounded-full bg-accent-tint" aria-hidden="true">
               <div className="h-1 rounded-full bg-accent" style={{ width: `${similarity * 100}%` }} />

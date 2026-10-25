@@ -1,0 +1,19 @@
+# Evaluation set for OPEN questions about the whole repository (psf/requests): what it does, how it is
+# organized, which are its main parts. They resemble no single code chunk, so they are answered from the
+# repository overview. Same format as answers-requests.yaml (`cites` is omitted: there is no single file).
+#
+# Usage: python tools/eval_answers.py <project_id> eval/answers-general-requests.yaml
+
+questions:
+  - q: "¿Qué hace este proyecto?"
+    must: [["HTTP"], ["petici", "solicitud", "request"]]
+  - q: "Dame un resumen general del proyecto"
+    must: [["HTTP"], ["biblioteca", "librería", "library"]]
+  - q: "¿Cómo está organizado el código?"
+    must: [["sessions"], ["adapters"], ["models"]]
+  - q: "¿Cuáles son los principales componentes?"
+    must: [["Session"], ["HTTPAdapter", "adapters"], ["Response", "PreparedRequest"]]
+  - q: "¿Qué tecnologías usa?"
+    must: [["Python"], ["urllib3"]]
+  - q: "¿Para qué sirve este repositorio?"
+    must: [["HTTP"], ["Python"]]

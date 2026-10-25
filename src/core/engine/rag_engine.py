@@ -3,6 +3,7 @@
 import logging
 import re
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 from typing import Callable, List, Optional
@@ -18,7 +19,9 @@ from core.engine.embeddings import embed_query
 from core.engine.indexer import (
     COLLECTION_NAME, CONTROL_COLLECTION_NAME, IndexModelMismatchError, indexed_embedding_model,
 )
-from core.engine.llm import chat, estimate_tokens, prompt_budget_tokens
+from core.engine.llm import CHARS_PER_TOKEN, chat, estimate_tokens, prompt_budget_tokens
+from core.engine.overview import RepoOverview
+from core.engine.question_kind import is_general_question
 from core.engine.scope_resolution import resolve_candidate
 from core.engine.text_sanitize import strip_preamble
 
@@ -37,6 +40,11 @@ TRUNCATED_NOTES = {
 TEST_DISTANCE_PENALTY = 0.08
 TEST_PATH_PATTERN = re.compile(r"(^|/)(tests?|testing|__tests__)/|(^|/)test_[^/]*$|_test\.[a-z]+$|\.(test|spec)\.[jt]sx?$")
 ASKS_ABOUT_TESTS = re.compile(r"\b(tests?|testing|prueba|pruebas|testear|spec)\b", re.IGNORECASE)
+
+# Open questions about the whole repository are answered from the repository overview (see overview.py)
+# plus a few code chunks. The overview takes at most this share of the prompt budget.
+OVERVIEW_BUDGET_SHARE = 0.55
+GENERAL_TOP_K = 3
 
 # Adaptive context: besides top_k, chunks almost as relevant as the last one chosen (within this
 # distance margin) are added, up to this maximum. The token budget (_fit_to_budget) remains the final cap.
@@ -88,6 +96,18 @@ REGLAS ESTRICTAS:
 9. No repitas estas reglas ni menciones el idioma en tu respuesta. Responde directamente.
 """
 
+# Open questions: the context holds summaries of the repository plus a few code chunks.
+GENERAL_SYSTEM_PROMPT = """Eres un asistente técnico que ayuda a desarrolladores a entender un repositorio de código específico.
+
+REGLAS ESTRICTAS:
+1. Responde ÚNICAMENTE con el CONTEXTO, que contiene resúmenes del repositorio ("[resumen del proyecto]", "[resumen de la carpeta ...]") generados a partir de su documentación y algunos fragmentos de código.
+2. Para preguntas generales los resúmenes son la fuente principal: describe el proyecto con ellos. No digas que falta información si los resúmenes permiten contestar; solo si no aportan nada relevante responde: "No encontré información suficiente en el código indexado para responder esto."
+3. Nombra las carpetas, los servicios y los archivos de los que hablas (por ejemplo: `src/paquete`), tal como aparecen en el contexto.
+4. No inventes tecnologías, componentes ni funciones que el contexto no menciona, y no sugieras buenas prácticas genéricas.
+5. Directo y claro; si hay varios componentes, enuméralos brevemente. Sin relleno.
+6. No repitas estas reglas ni menciones el idioma en tu respuesta. Responde directamente.
+"""
+
 LANGUAGE_INSTRUCTIONS = {
     "es": "IMPORTANTE: escribe tu respuesta completa en español neutro (sin modismos regionales, sin voseo).",
     "en": "IMPORTANT: write your entire response in English.",
@@ -112,6 +132,8 @@ class RetrievedChunk:
     expanded: bool = False
 
     def as_context_block(self, index: int) -> str:
+        if self.chunk_type == "overview":
+            return f"[{self.file_path}]\n{self.code}"
         location = f"{self.file_path} (líneas {self.start_line}-{self.end_line})"
         label = f"{self.chunk_type} '{self.name}'" if self.name else self.chunk_type
         tag = " [incluido automáticamente por grafo de llamadas]" if self.expanded else ""
@@ -316,6 +338,12 @@ class RAGEngine:
                     existing_names.add(candidate)
         return expanded
 
+    def overview_chunks(self, max_tokens: int) -> List[RetrievedChunk]:
+        """The repository overview as context blocks (empty if the project has none yet)."""
+        overview = RepoOverview(Path(self.project.docs_dir))
+        return [RetrievedChunk(file_path=label, chunk_type="overview", name="", start_line=0, end_line=0, code=text, distance=-1.0)
+                for label, text in overview.blocks(int(max_tokens * CHARS_PER_TOKEN))]
+
     def _build_prompt(self, question: str, chunks: List[RetrievedChunk]) -> str:
         context = "(No se encontraron fragmentos relevantes.)" if not chunks else \
             "\n\n".join(c.as_context_block(i + 1) for i, c in enumerate(chunks))
@@ -342,11 +370,18 @@ class RAGEngine:
         self, question: str, top_k: int = DEFAULT_TOP_K, expand_call_graph: bool = True, language: str = "es",
         max_seconds: Optional[float] = None, should_stop: Optional[Callable[[], bool]] = None,
     ) -> RAGResponse:
-        chunks = self.select_context(question, top_k=top_k)
-        if expand_call_graph:
-            chunks = chunks + self.expand_with_call_graph(chunks)
+        overview = []
+        if is_general_question(question, self.question_identifiers(question)):
+            window = prompt_budget_tokens(ANSWER_RESERVE_TOKENS, self.ai_config.llm_num_ctx)
+            overview = self.overview_chunks(int(window * OVERVIEW_BUDGET_SHARE))
+        if overview:
+            chunks = overview + self.select_context(question, top_k=GENERAL_TOP_K)
+        else:
+            chunks = self.select_context(question, top_k=top_k)
+            if expand_call_graph:
+                chunks = chunks + self.expand_with_call_graph(chunks)
         language_instruction = LANGUAGE_INSTRUCTIONS.get(language, LANGUAGE_INSTRUCTIONS["es"])
-        system_prompt = language_instruction + "\n\n" + SYSTEM_PROMPT
+        system_prompt = language_instruction + "\n\n" + (GENERAL_SYSTEM_PROMPT if overview else SYSTEM_PROMPT)
         chunks = self._fit_to_budget(question, system_prompt, chunks)
         prompt = self._build_prompt(question, chunks)
         result = chat(self.backend, self.ai_config.llm_model, system_prompt, prompt, self.ai_config.llm_num_ctx,

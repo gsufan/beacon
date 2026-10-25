@@ -13,7 +13,7 @@ Proyecto de título — INACAP, 2026.
 1. Indexa un repositorio de código con un **chunker políglota basado en AST** (tree-sitter), que entiende la estructura real de funciones, clases y métodos en 8+ lenguajes.
 2. Genera embeddings locales (Ollama + `qwen3-embedding:0.6b`, multilingüe) y los guarda en **ChromaDB**.
 3. Responde preguntas sobre el código vía un motor RAG con **expansión por grafo de llamadas** (si el código citado llama a otra función indexada, se agrega automáticamente al contexto) y reglas explícitas anti-alucinación.
-4. Genera documentación `.md` por archivo, incremental — solo regenera lo que cambió desde el último commit indexado.
+4. Genera documentación `.md` por archivo, incremental — solo regenera lo que cambió desde el último commit indexado. Con esa documentación arma un resumen del repositorio (uno por carpeta y uno del proyecto) que responde preguntas abiertas como «¿qué hace este proyecto?».
 5. Todo esto disponible por **CLI** y por una **interfaz web** (chat, navegador de documentación, configuración) servida por el mismo backend.
 
 ## Modos de uso

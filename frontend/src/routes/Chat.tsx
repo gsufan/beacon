@@ -61,7 +61,8 @@ function SourcesPanel({ turn, index }: { turn: Turn | null; index: number }) {
   }
 
   const sources = turn.result?.sources ?? [];
-  const semantic = sources.filter((s) => !s.expanded);
+  const overview = sources.filter((s) => s.chunk_type === "overview");
+  const semantic = sources.filter((s) => !s.expanded && s.chunk_type !== "overview");
   const graph = sources.filter((s) => s.expanded);
   const summary =
     turn.status === "loading"
@@ -100,6 +101,20 @@ function SourcesPanel({ turn, index }: { turn: Turn | null; index: number }) {
           <div className="text-[13px] font-semibold">{t("sources_failed_title")}</div>
           <p className="text-[13px] text-ink-2">{t("sources_failed_body")}</p>
         </div>
+      )}
+
+      {overview.length > 0 && (
+        <>
+          <div className="flex flex-col gap-0.5">
+            <div className="text-xs font-semibold text-muted">
+              {t("sources_overview")} · {overview.length}
+            </div>
+            <p className="text-xs text-muted">{t("sources_overview_hint")}</p>
+          </div>
+          {overview.map((s, i) => (
+            <SourceCitation key={`${s.file_path}-${i}`} source={s} defaultOpen={i === 0} />
+          ))}
+        </>
       )}
 
       {semantic.length > 0 && (

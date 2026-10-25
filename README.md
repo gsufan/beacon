@@ -13,7 +13,7 @@ Degree project — INACAP, 2026.
 1. Indexes a code repository with a **polyglot, AST-based chunker** (tree-sitter) that understands the real structure of functions, classes and methods in 8+ languages.
 2. Generates local embeddings (Ollama + `qwen3-embedding:0.6b`, multilingual) and stores them in **ChromaDB**.
 3. Answers questions through a RAG engine with **call-graph expansion** (if the cited code calls another indexed function, it is added to the context automatically) and explicit anti-hallucination rules.
-4. Generates one `.md` documentation file per source file, incrementally: it only regenerates what changed since the last indexed commit.
+4. Generates one `.md` documentation file per source file, incrementally: it only regenerates what changed since the last indexed commit. From that documentation it builds a repository overview (one summary per folder and one for the project) that answers open questions such as "what does this project do?".
 5. All of this is available through a **CLI** and a **web interface** (chat, documentation browser, settings) served by the same backend.
 
 ## Ways to use it

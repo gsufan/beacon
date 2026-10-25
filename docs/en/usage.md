@@ -40,6 +40,10 @@ beacon serve                         # starts the API + UI at http://127.0.0.1:8
 
 **Console language**: help and messages are shown in Spanish if the operating system is in Spanish (any variant) and in English otherwise. To force one, set `BEACON_LANG=es` or `BEACON_LANG=en`. Command and option names are always in English.
 
+## Open questions about the whole repository
+
+Questions such as "what does this project do?" or "how is it organized?" do not resemble any single piece of code, so similarity search cannot answer them. When documentation exists, Beacon builds a **repository overview** from it (`OVERVIEW.md`): a summary per folder, built bottom-up from the purpose of each file, and a summary of the project. It is updated together with the documentation (`beacon docs`, `beacon sync --docs`) and only the folders whose content changed are summarized again. Open questions are answered from the overview plus a few code chunks, and the overview appears as its own group in the sources. Without documentation, they are answered like any other question.
+
 ## Disk space
 
 Each project keeps three things in `data/<id>/` that can be deleted separately: the **clone** of the repository (only if Beacon cloned it from a URL; your local folder is never touched), the **index** and the generated **documentation**.
@@ -57,7 +61,7 @@ The project stays registered: whatever was deleted is recreated on sync. The sam
 With `beacon serve` running (and the UI already built, see [manual-installation.md](manual-installation.md)), open `http://127.0.0.1:8000`:
 
 - **Chat**: natural-language questions about the indexed code. It keeps the session's question history (reset when you change project) and shows, next to each answer, its sources split into semantic match and call graph, with the similarity, the lines and the code of each one. The header shows the model in use and whether Ollama responds; if a query fails, the question is kept and can be retried.
-- **Docs**: tree of the documentation generated per file, with collapsible folders and a text filter.
+- **Docs**: tree of the documentation generated per file, with collapsible folders and a text filter. `OVERVIEW.md` is the repository overview: one summary per folder and one for the whole project.
 - **Settings**: projects (registration by local path or cloning by URL from GitHub/GitLab/Bitbucket, syncing several at once, optional automatic watcher and deletion with confirmation), AI provider and models (detected from Ollama, with a warning if a configured model is not installed) and API key.
 
 The light or dark theme is chosen in the sidebar, and the typefaces are bundled: the interface makes no requests to external services.

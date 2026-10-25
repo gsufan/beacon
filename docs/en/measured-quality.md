@@ -116,6 +116,17 @@ right but are short and often do not cite the file; this is a limit of the
 8B-parameter model that is worth knowing (the interface still shows the
 sources of each answer). An answer takes about 5 seconds with an 8 GB GPU.
 
+## Open questions about the whole repository (measured)
+
+`eval/answers-general-requests.yaml` and `eval/answers-general-microservices-demo.yaml` have six open questions each ("what does this project do?", "how is the code organized?", "which services are there?"), evaluated with `tools/eval_answers.py`. They are answered from the repository overview (see [usage](usage.md)).
+
+| Repository | Content, without overview | Content, with overview | Undue refusals, before → after |
+|---|---|---|---|
+| psf/requests | 17% | 50–67% | 50% → 0–33% |
+| microservices-demo | 33% | 83% | 33% → 0–17% |
+
+The ranges are the results of repeated runs: with six questions each one is worth 17 points and `llama3:8b` varies between runs, so the numbers show the direction, not a precise figure. Answers are correct in outline but often omit the names of specific modules; a larger model would use the overview better.
+
 ## Stress tests (measured)
 
 `tools/stress_test.py` generates a synthetic repository of thousands of files

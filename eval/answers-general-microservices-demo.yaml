@@ -1,0 +1,18 @@
+# Evaluation set for OPEN questions about the whole repository (Online Boutique, microservices-demo).
+# Same format and purpose as answers-general-requests.yaml.
+#
+# Usage: python tools/eval_answers.py <project_id> eval/answers-general-microservices-demo.yaml
+
+questions:
+  - q: "¿Qué hace este proyecto?"
+    must: [["tienda", "e-commerce", "comercio", "compra"], ["microservicios", "microservices"]]
+  - q: "¿Qué servicios hay?"
+    must: [["cartservice"], ["checkoutservice"], ["frontend"], ["paymentservice"]]
+  - q: "¿Cómo está organizado el proyecto?"
+    must: [["src"], ["frontend"], ["kustomize"]]
+  - q: "¿Qué lenguajes usa?"
+    must: [["Go"], ["Java", "C#"], ["Python"]]
+  - q: "¿Cuáles son los principales componentes?"
+    must: [["cartservice"], ["checkoutservice"]]
+  - q: "Dame un resumen general del proyecto"
+    must: [["microservicios", "tienda", "e-commerce"]]
