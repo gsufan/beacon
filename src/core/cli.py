@@ -32,7 +32,10 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from core.cli_lang import tr
-from core.engine.backends import BackendError, BackendUnavailableError, ModelNotFoundError, create_backend
+from core.engine.backends import (
+    BackendAuthError, BackendError, BackendUnavailableError, BudgetExceededError, CloudNotConfiguredError, ModelNotFoundError,
+    UsageLedger, available_providers, create_backend, is_local_host,
+)
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -40,7 +43,12 @@ from core.config import (
     add_project,
     set_auto_watch,
     update_project,
+    consent_today,
+    get_api_key,
     load_config,
+    resolve_ai_config,
+    set_api_key,
+    set_project_ai,
     validate_project_id,
 )
 from core.projects import (
@@ -269,8 +277,7 @@ def cmd_docs(
                             "Ask a natural-language question about an already indexed project."))
 def cmd_ask(project_id: str, question: str, top_k: int = 5):
     project = _resolve_or_exit(project_id)
-    cfg = load_config()
-    engine = RAGEngine(project, cfg.ai_provider)
+    engine = RAGEngine(project, resolve_ai_config(project_id))
 
     if engine.collection.count() == 0:
         console.print(tr(f"[red]El índice de '{project_id}' está vacío. Corre 'beacon sync {project_id}' primero.[/red]",
@@ -397,11 +404,11 @@ def cmd_import(
                                "Show the state of a project's index and documentation."))
 def cmd_status(project_id: str):
     project = _resolve_or_exit(project_id)
-    cfg = load_config()
+    ai = resolve_ai_config(project_id)
 
     def _do_status():
-        indexer = CodebaseIndexer(project, cfg.ai_provider)
-        generator = DocGenerator(project, cfg.ai_provider)
+        indexer = CodebaseIndexer(project, ai)
+        generator = DocGenerator(project, ai)
         return indexer.stats(), generator.stats()
 
     index_stats, doc_stats = _run_safely(_do_status, repo_path=project.repo_path)
@@ -497,6 +504,108 @@ def _configure_beacon_logging():
     beacon_logger.addHandler(handler)
     beacon_logger.setLevel(logging.WARNING)
     beacon_logger.propagate = False
+
+
+cloud_app = typer.Typer(
+    help=tr("Modelos externos opcionales por proyecto (el código sale de tu red; exige consentimiento y un límite de gasto).",
+            "Optional external models per project (the code leaves your network; requires consent and a spending limit)."),
+    no_args_is_help=True,
+)
+app.add_typer(cloud_app, name="cloud")
+
+CLOUD_NOTICE = tr(
+    "[bold yellow]Antes de continuar:[/bold yellow] con un servidor externo, Beacon enviará a ese proveedor [bold]todo el código[/bold] del proyecto "
+    "(para calcular los embeddings al indexar), los fragmentos recuperados con cada pregunta y archivos completos al generar la documentación. "
+    "Eso puede incumplir políticas de confidencialidad o de protección de datos de tu organización. El modo local (Ollama) no envía nada afuera "
+    "y es el recomendado. El proveedor cobra por uso: Beacon se detiene al llegar al límite que fijes, pero la fuente de verdad del gasto es tu cuenta del proveedor.",
+    "[bold yellow]Before you continue:[/bold yellow] with an external server, Beacon will send that provider [bold]all of the project's code[/bold] "
+    "(to compute embeddings when indexing), the chunks retrieved for each question and whole files when generating documentation. "
+    "That may break your organization's confidentiality or data protection policies. Local mode (Ollama) sends nothing out and is the recommended one. "
+    "The provider charges per use: Beacon stops at the limit you set, but the source of truth for spending is your provider account.",
+)
+
+
+@cloud_app.command("enable", help=tr("Usa un servidor de modelos externo (o local compatible con OpenAI) en un proyecto.",
+                                     "Use an external model server (or a local OpenAI-compatible one) in a project."))
+def cloud_enable(
+    project_id: str,
+    host: str = typer.Option(..., "--host", help=tr("Dirección de la API (por ejemplo https://api.openai.com/v1).", "API address (for example https://api.openai.com/v1).")),
+    embedding_model: str = typer.Option(..., "--embedding-model", help=tr("Modelo de embeddings.", "Embedding model.")),
+    llm_model: str = typer.Option(..., "--llm-model", help=tr("Modelo de lenguaje.", "Language model.")),
+    budget_usd: float = typer.Option(0.0, "--budget-usd", help=tr("Límite de gasto del proyecto en dólares (obligatorio para servidores externos).",
+                                                                   "Spending limit for the project in dollars (required for external servers).")),
+    price_input: float = typer.Option(0.0, "--price-input", help=tr("Precio por millón de tokens de entrada, según tu proveedor.", "Price per million input tokens, from your provider.")),
+    price_output: float = typer.Option(0.0, "--price-output", help=tr("Precio por millón de tokens de salida.", "Price per million output tokens.")),
+    price_embedding: float = typer.Option(0.0, "--price-embedding", help=tr("Precio por millón de tokens de embeddings.", "Price per million embedding tokens.")),
+    provider: str = typer.Option("openai", "--provider", help=tr("Tipo de API.", "API type.")),
+    context_window: Optional[int] = typer.Option(None, "--context-window", help=tr("Ventana de contexto del modelo, en tokens.", "Model context window, in tokens.")),
+    accept_risks: bool = typer.Option(False, "--accept-risks", help=tr("Acepta el aviso sin preguntar (para scripts).", "Accept the notice without asking (for scripts).")),
+):
+    _resolve_or_exit(project_id)
+    if provider not in {p["id"] for p in available_providers()}:
+        console.print(tr(f"[red]Proveedor desconocido:[/red] {provider}", f"[red]Unknown provider:[/red] {provider}"))
+        raise typer.Exit(code=1)
+    ai = {"provider": provider, "host": host, "embedding_model": embedding_model, "llm_model": llm_model}
+    if context_window:
+        ai["llm_num_ctx"] = context_window
+    if is_local_host(host):
+        console.print(tr("[dim]Servidor local o de red privada: no hace falta consentimiento ni límite de gasto.[/dim]",
+                         "[dim]Local or private-network server: no consent or spending limit needed.[/dim]"))
+    else:
+        if not host.lower().startswith("https://"):
+            console.print(tr("[red]Un servidor externo debe usar https://[/red]", "[red]An external server must use https://[/red]"))
+            raise typer.Exit(code=1)
+        if min(budget_usd, price_input, price_output, price_embedding) <= 0:
+            console.print(tr("[red]Un servidor externo exige --budget-usd y los tres precios (--price-input, --price-output, --price-embedding), mayores que cero. "
+                             "No hay valores por defecto: los fijas tú con los precios de tu proveedor.[/red]",
+                             "[red]An external server requires --budget-usd and the three prices (--price-input, --price-output, --price-embedding), above zero. "
+                             "There are no defaults: you set them from your provider's prices.[/red]"))
+            raise typer.Exit(code=1)
+        console.print(CLOUD_NOTICE)
+        if not accept_risks and not typer.confirm(tr("¿Aceptas y quieres activarlo para este proyecto?", "Do you accept and want to enable it for this project?"), default=False):
+            console.print(tr("No se cambió nada.", "Nothing was changed."))
+            raise typer.Exit(code=1)
+        ai["cloud"] = {"consent": True, "consent_date": consent_today(), "budget_usd": budget_usd, "price_input_per_million": price_input,
+                       "price_output_per_million": price_output, "price_embedding_per_million": price_embedding}
+        if not get_api_key(project_id):
+            key = typer.prompt(tr("Clave de API (no se muestra)", "API key (hidden)"), hide_input=True)
+            set_api_key(project_id, key.strip())
+    set_project_ai(project_id, ai)
+    console.print(tr(f"[green]OK[/green] '{project_id}' usará {provider} en {host}. Cambió el modelo de embeddings: corre 'beacon sync {project_id} --docs' para reconstruir el índice.",
+                     f"[green]OK[/green] '{project_id}' will use {provider} at {host}. The embedding model changed: run 'beacon sync {project_id} --docs' to rebuild the index."))
+
+
+@cloud_app.command("disable", help=tr("Vuelve a usar la configuración global (local) en un proyecto y borra su clave.",
+                                      "Go back to the global (local) configuration for a project and delete its key."))
+def cloud_disable(project_id: str):
+    _resolve_or_exit(project_id)
+    set_project_ai(project_id, None)
+    set_api_key(project_id, None)
+    console.print(tr(f"[green]OK[/green] '{project_id}' vuelve a la configuración global. Corre 'beacon sync {project_id} --docs' para reconstruir el índice con sus modelos.",
+                     f"[green]OK[/green] '{project_id}' is back on the global configuration. Run 'beacon sync {project_id} --docs' to rebuild the index with its models."))
+
+
+@cloud_app.command("status", help=tr("Muestra qué proyectos usan un servidor distinto del global y cuánto han gastado.",
+                                     "Show which projects use a server other than the global one and how much they have spent."))
+def cloud_status():
+    cfg = load_config()
+    table = Table(show_header=True, header_style="bold")
+    for col in (tr("Proyecto", "Project"), tr("Servidor", "Server"), tr("Tipo", "Kind"), tr("Gastado / límite", "Spent / limit")):
+        table.add_column(col)
+    shown = 0
+    for entry in cfg.projects:
+        if not entry.ai:
+            continue
+        ai = resolve_ai_config(entry.id, cfg)
+        external = not is_local_host(ai.host)
+        spent = UsageLedger(DATA_ROOT / entry.id).spent_usd if external else 0.0
+        limit = f"${spent:.4f} / ${ai.cloud.budget_usd:.2f}" if external and ai.cloud else "-"
+        table.add_row(entry.id, f"{ai.provider} · {ai.host}", tr("externo", "external") if external else tr("local", "local"), limit)
+        shown += 1
+    if not shown:
+        console.print(tr("Ningún proyecto usa un servidor distinto del global.", "No project uses a server other than the global one."))
+        return
+    console.print(table)
 
 
 @app.command("serve", help=tr("Levanta la API + UI web.", "Start the API + web UI."))
@@ -716,6 +825,9 @@ def _run_safely(fn, *, repo_path: str = ""):
         console.print(tr("[red]El servidor de modelos no tiene el modelo pedido:[/red] ", "[red]The model server does not have the requested model:[/red] ") + f"{e.model}")
         console.print(tr("[dim]Revisa 'llm_model' y 'embedding_model' en config.yaml y descarga el modelo que falte.[/dim]",
                          "[dim]Check 'llm_model' and 'embedding_model' in config.yaml and download the missing model.[/dim]"))
+        raise typer.Exit(code=1)
+    except (BudgetExceededError, CloudNotConfiguredError, BackendAuthError) as e:
+        console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1)
     except BackendUnavailableError as e:
         console.print(tr("[red]No se pudo conectar con el servidor de modelos.[/red]", "[red]Could not connect to the model server.[/red]"))

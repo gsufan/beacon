@@ -21,6 +21,7 @@ from core.config import (
     get_project_token,
     load_config,
     remove_project,
+    resolve_ai_config,
     set_project_token,
     validate_project_id,
 )
@@ -192,7 +193,7 @@ def sync_project(project_id: str, *, docs: bool = True, full: bool = False, incl
     """
     project = get_project(project_id)
     entry = _project_entry(project_id)
-    ai = load_config().ai_provider
+    ai = resolve_ai_config(project_id)
     with project_lock(Path(project.chroma_dir).parent):
         pulled = ensure_clone(entry)  # a fresh clone is already up to date
         if pull and not pulled and entry.source_type == "git" and not include_uncommitted:
@@ -209,7 +210,7 @@ def sync_project(project_id: str, *, docs: bool = True, full: bool = False, incl
 
 def generate_docs(project_id: str, *, full: bool = False, on_progress: ProgressCallback = None) -> dict:
     project = get_project(project_id)
-    ai = load_config().ai_provider
+    ai = resolve_ai_config(project_id)
     with project_lock(Path(project.chroma_dir).parent):
         ensure_clone(_project_entry(project_id))
         return DocGenerator(project, ai).sync(on_progress=on_progress, full=full)

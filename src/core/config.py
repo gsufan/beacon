@@ -2,13 +2,14 @@
 
 import os
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date
 from pathlib import Path
 from typing import List, Optional
 
 import yaml
 
-from core.engine.backends import DEFAULT_HOSTS
+from core.engine.backends import DEFAULT_HOSTS, create_backend
 
 # Looked up relative to the project root, not the user's cwd
 _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.yaml"
@@ -28,12 +29,35 @@ MIN_LLM_NUM_CTX = 2048
 
 
 @dataclass
+class CloudSettings:
+    """What Beacon requires before using a server outside the local network (set by the user, no defaults)."""
+    consent: bool = False
+    consent_date: str = ""
+    budget_usd: float = 0.0
+    price_input_per_million: float = 0.0
+    price_output_per_million: float = 0.0
+    price_embedding_per_million: float = 0.0
+
+
+@dataclass
 class AIProviderConfig:
     provider: str
     host: str
     embedding_model: str
     llm_model: str
     llm_num_ctx: int = DEFAULT_LLM_NUM_CTX
+    cloud: Optional[CloudSettings] = None
+    api_key: str = field(default="", repr=False)  # read from credentials.yaml; never serialized
+
+    def public_dict(self) -> dict:
+        d = {"provider": self.provider, "host": self.host, "embedding_model": self.embedding_model,
+             "llm_model": self.llm_model, "llm_num_ctx": self.llm_num_ctx}
+        if self.cloud is not None:
+            d["cloud"] = dict(self.cloud.__dict__)
+        return d
+
+    def backend(self, data_dir=None):
+        return create_backend(self.provider, self.host, api_key=self.api_key, cloud=self.cloud, data_dir=data_dir)
 
 
 @dataclass
@@ -44,6 +68,7 @@ class ProjectEntry:
     source_type: str = "local"
     repo_url: Optional[str] = None
     auto_watch: bool = False
+    ai: Optional[dict] = None  # optional override of ai_provider for this project (no secrets)
 
 
 @dataclass
@@ -80,12 +105,59 @@ def load_config(path: Path = CONFIG_PATH) -> AppConfig:
         ProjectEntry(
             id=p["id"], name=p.get("name", p["id"]), repo_path=p["repo_path"],
             source_type=p.get("source_type", "local"), repo_url=p.get("repo_url"),
-            auto_watch=p.get("auto_watch", False),
+            auto_watch=p.get("auto_watch", False), ai=p.get("ai"),
         )
         for p in raw.get("projects", [])
     ]
 
     return AppConfig(ai_provider=provider, projects=projects)
+
+
+def _cloud_from(raw: Optional[dict]) -> Optional[CloudSettings]:
+    if not isinstance(raw, dict):
+        return None
+    def num(key):
+        v = raw.get(key, 0)
+        return float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0 else 0.0
+    return CloudSettings(consent=raw.get("consent") is True, consent_date=str(raw.get("consent_date", "")), budget_usd=num("budget_usd"),
+                         price_input_per_million=num("price_input_per_million"), price_output_per_million=num("price_output_per_million"),
+                         price_embedding_per_million=num("price_embedding_per_million"))
+
+
+def resolve_ai_config(project_id: Optional[str] = None, cfg: Optional["AppConfig"] = None, credentials_path: Optional[Path] = None) -> AIProviderConfig:
+    """The AI configuration of a project: the global one, overridden by the project's own `ai` section if it has one."""
+    cfg = cfg or load_config()
+    base = cfg.ai_provider
+    entry = next((p for p in cfg.projects if p.id == project_id), None)
+    if entry is None or not entry.ai:
+        return base
+    ai = entry.ai
+    provider = ai.get("provider", base.provider)
+    host = ai.get("host") or (base.host if provider == base.provider else DEFAULT_HOSTS.get(provider, ""))
+    return AIProviderConfig(
+        provider=provider, host=host,
+        embedding_model=ai.get("embedding_model", base.embedding_model), llm_model=ai.get("llm_model", base.llm_model),
+        llm_num_ctx=_valid_num_ctx(ai.get("llm_num_ctx")) if "llm_num_ctx" in ai else base.llm_num_ctx,
+        cloud=_cloud_from(ai.get("cloud")), api_key=get_api_key(project_id, credentials_path or CREDENTIALS_PATH) or "",
+    )
+
+
+def set_project_ai(project_id: str, ai: Optional[dict], path: Path = CONFIG_PATH) -> bool:
+    """Sets (or with None removes) the AI override of a project."""
+    raw = _read_raw(path)
+    for p in raw.get("projects", []):
+        if p.get("id") == project_id:
+            if ai:
+                p["ai"] = ai
+            else:
+                p.pop("ai", None)
+            _write_raw(raw, path)
+            return True
+    return False
+
+
+def consent_today() -> str:
+    return date.today().isoformat()
 
 
 def _read_raw(path: Path = CONFIG_PATH) -> dict:
@@ -203,6 +275,32 @@ def get_project_token(project_id: str, path: Path = CREDENTIALS_PATH) -> Optiona
         return None
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return raw.get("projects", {}).get(project_id)
+
+
+def get_api_key(project_id: Optional[str], path: Path = CREDENTIALS_PATH) -> Optional[str]:
+    """API key of the project's external model server (credentials.yaml, `api_keys`, or BEACON_API_KEY_<ID> in the environment)."""
+    if project_id is None:
+        return None
+    env = os.getenv("BEACON_API_KEY_" + re.sub(r"[^A-Za-z0-9]", "_", project_id).upper())
+    if env:
+        return env
+    if not path.exists():
+        return None
+    raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return (raw.get("api_keys") or {}).get(project_id)
+
+
+def set_api_key(project_id: str, key: Optional[str], path: Path = CREDENTIALS_PATH):
+    raw = {}
+    if path.exists():
+        raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    keys = raw.setdefault("api_keys", {})
+    if key:
+        keys[project_id] = key
+    else:
+        keys.pop(project_id, None)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(yaml.safe_dump(raw, allow_unicode=True, sort_keys=False), encoding="utf-8")
 
 
 def set_project_token(project_id: str, token: str, path: Path = CREDENTIALS_PATH):

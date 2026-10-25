@@ -7,6 +7,9 @@ ai_provider:
   # more context and enough video memory it can be raised, for example to 16384 or 32768.
   # llm_num_ctx: 8192
 
+# A project can use its own model server with `beacon cloud enable <id> ...` (see docs/en/external-models.md);
+# local mode is the default and the recommended one.
+
 # Repositories to analyze. The simplest way is to register them with the CLI or the UI, which edit
 # this list for you:
 #   beacon add my-project --repo-path ../my-project

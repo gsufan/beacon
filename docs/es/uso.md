@@ -27,6 +27,8 @@ beacon docs <project_id> --full      # regenera toda la documentación
 beacon ask <project_id> "pregunta"   # consulta el RAG desde la terminal
 beacon export <project_id>           # empaqueta el índice+docs en un .zip portable
 beacon import <archivo.zip>          # registra un proyecto desde un .zip exportado
+beacon cloud enable <id> ...          # servidor de modelos externo opcional para un proyecto (ver modelos-externos.md)
+beacon cloud status | disable <id>   # qué proyectos usan uno, gastado / límite; volver a local
 beacon serve                         # levanta la API + UI en http://127.0.0.1:8000
 ```
 

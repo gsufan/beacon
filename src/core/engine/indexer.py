@@ -1,10 +1,11 @@
 """Incremental indexer: chunker, git diff, ChromaDB and embeddings."""
 
 import os
+from pathlib import Path
 from typing import Callable, List, Optional
 
 from core.engine.chroma_utils import bump_index_version, get_chroma_client, remove_orphan_segments
-from core.engine.backends import InputRejectedError, create_backend
+from core.engine.backends import InputRejectedError
 
 from core.config import AIProviderConfig
 from core.projects import ProjectContext
@@ -43,7 +44,7 @@ class CodebaseIndexer:
         self.project = project
         self.ai_config = ai_config
         self.watcher = GitWatcher(project.repo_path)
-        self.backend = create_backend(ai_config.provider, ai_config.host)
+        self.backend = ai_config.backend(Path(project.chroma_dir).parent)
         self.client = get_chroma_client(project.chroma_dir)
         self.collection = self.client.get_or_create_collection(
             name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"}

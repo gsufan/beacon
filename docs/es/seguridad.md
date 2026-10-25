@@ -9,6 +9,8 @@ Beacon está pensado para uso local o en red interna, por un desarrollador o equ
 - El explorador de carpetas (`/system/browse-dirs`) está acotado al directorio home del usuario del proceso, y el clonado de repos valida el esquema de la URL (solo http(s)/ssh) — pero ambos asumen que quien llega a la API ya es de confianza, dado el punto anterior.
 - `/system/available-models?host=...` hace que el servidor consulte el host indicado (para poblar la lista de modelos en Configuración). Con la API abierta, eso permite usar a Beacon para hacer peticiones HTTP hacia otras máquinas de su red; otra razón para activar `BEACON_API_KEY` si Beacon no corre solo en `localhost`.
 
+- **Los servidores de modelos externos son opcionales por proyecto.** Con uno, el código del proyecto se envía a ese proveedor; Beacon exige consentimiento, un límite de gasto, los precios del proveedor y una dirección https, y mantiene la clave de API fuera de `config.yaml` y de las respuestas de la API (ver [modelos-externos.md](modelos-externos.md)).
+
 ## Activar la clave de API (opcional)
 
 ```bash

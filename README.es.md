@@ -80,6 +80,7 @@ El asistente se abre en el navegador y te guía: aceptas la participación, elig
 | [Calidad medida](docs/es/calidad-medida.md) | Resultados de la búsqueda, de las respuestas y de las pruebas de carga |
 | [Seguridad](docs/es/seguridad.md) | Limitaciones conocidas y clave de API |
 | [Modo estudio](docs/es/estudio.md) | Participar en el estudio y analizar los resultados recibidos |
+| [Modelos externos](docs/es/modelos-externos.md) | Servidores de modelos fuera de tu red, opcionales (consentimiento, límite de gasto); el modo local sigue por defecto |
 | [Desarrollo](docs/es/desarrollo.md) | Estructura del código, frontend y pruebas |
 
 ## Resultados en breve

@@ -25,6 +25,22 @@ class ModelNotFoundError(BackendError):
         self.model = model
 
 
+class BackendAuthError(BackendError):
+    """The server rejected the credentials (missing, invalid or without access to the model)."""
+
+
+class BackendRateLimitError(BackendError):
+    """The server asked to slow down and the retries were exhausted."""
+
+
+class BudgetExceededError(BackendError):
+    """The next call would exceed the spending limit set for the project."""
+
+
+class CloudNotConfiguredError(BackendError):
+    """An external server was selected without the consent, the limit and the prices that Beacon requires."""
+
+
 class InputRejectedError(BackendError):
     """The server rejected the input, typically because the text does not fit in the model."""
 

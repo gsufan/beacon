@@ -9,6 +9,8 @@ Beacon is designed for local or internal-network use, by a developer or a team â
 - The folder browser (`/system/browse-dirs`) is limited to the home directory of the user running the process, and repository cloning validates the URL scheme (only http(s)/ssh) â€” but both assume that whoever reaches the API is already trusted, given the previous point.
 - `/system/available-models?host=...` makes the server query the indicated host (to populate the model list in Settings). With the API open, that allows Beacon to be used to make HTTP requests to other machines on its network; another reason to enable `BEACON_API_KEY` if Beacon is not running alone on `localhost`.
 
+- **External model servers are opt-in per project.** With one, the project's code is sent to that provider; Beacon requires consent, a spending limit, the provider's prices and an https address, and keeps the API key out of `config.yaml` and out of the API responses (see [external-models.md](external-models.md)).
+
 ## Enabling the API key (optional)
 
 ```bash

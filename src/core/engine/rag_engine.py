@@ -11,7 +11,6 @@ from typing import Callable, List, Optional
 from chromadb.errors import InvalidCollectionException
 
 from core.engine.chroma_utils import get_chroma_client
-from core.engine.backends import create_backend
 
 from core.config import AIProviderConfig
 from core.projects import ProjectContext
@@ -167,7 +166,7 @@ class RAGEngine:
     def __init__(self, project: ProjectContext, ai_config: AIProviderConfig):
         self.project = project
         self.ai_config = ai_config
-        self.backend = create_backend(ai_config.provider, ai_config.host)
+        self.backend = ai_config.backend(Path(project.chroma_dir).parent)
         self.client = get_chroma_client(project.chroma_dir)
         self.collection = self.client.get_or_create_collection(
             name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"}
