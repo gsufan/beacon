@@ -9,6 +9,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import yaml  # noqa: E402
 
+from core.engine.backends import OllamaBackend  # noqa: E402
 from core.config import (  # noqa: E402
     DEFAULT_LLM_NUM_CTX, AIProviderConfig, load_config, update_ai_provider,
 )
@@ -16,7 +17,7 @@ from core.engine import llm  # noqa: E402
 from core.engine.rag_engine import RAGEngine, RetrievedChunk  # noqa: E402
 from core.projects import ProjectContext  # noqa: E402
 
-AI = AIProviderConfig(provider="ollama", ollama_host="http://127.0.0.1:9",
+AI = AIProviderConfig(provider="ollama", host="http://127.0.0.1:9",
                       embedding_model="e", llm_model="m")
 
 
@@ -31,7 +32,7 @@ class _FakeOllama:
 
 def _write_config(path, ai_extra=""):
     path.write_text(
-        "ai_provider:\n  provider: ollama\n  ollama_host: http://localhost:11434\n"
+        "ai_provider:\n  provider: ollama\n  host: http://localhost:11434\n"
         "  embedding_model: e\n  llm_model: m\n" + ai_extra + "projects: []\n", encoding="utf-8")
 
 
@@ -77,7 +78,7 @@ def test_window_can_be_changed_and_default_is_not_written(tmp_path):
 
 def test_chat_sends_the_requested_window():
     fake = _FakeOllama()
-    llm.chat(fake, "m", "s", "u", num_ctx=32768)
+    llm.chat(OllamaBackend(fake), "m", "s", "u", num_ctx=32768)
     assert fake.chats[0]["options"]["num_ctx"] == 32768
 
 
@@ -90,7 +91,8 @@ def _engine(tmp_path, num_ctx):
     ctx = ProjectContext(id="t", name="t", repo_path=str(tmp_path),
                          chroma_dir=str(tmp_path / "chroma"), docs_dir=str(tmp_path / "docs"))
     engine = RAGEngine(ctx, replace(AI, llm_num_ctx=num_ctx))
-    engine.client_ollama = fake = _FakeOllama()
+    fake = _FakeOllama()
+    engine.backend = OllamaBackend(fake)
     chunks = [RetrievedChunk(file_path=f"f{i}.py", chunk_type="function", name=f"f{i}", start_line=1,
                              end_line=10, code="x" * 6000, distance=0.1) for i in range(10)]
     engine.select_context = lambda q, top_k: chunks

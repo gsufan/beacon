@@ -12,6 +12,7 @@ import pytest  # noqa: E402
 from fastapi import FastAPI  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
+from core.engine.backends import OllamaBackend  # noqa: E402
 from core.engine import llm  # noqa: E402
 from core.study import api as study_api  # noqa: E402
 
@@ -43,27 +44,27 @@ class _Client:
 
 def test_answers_have_a_length_cap_in_every_call():
     client = _Client()
-    llm.chat(client, "m", "s", "u", max_tokens=300)
+    llm.chat(OllamaBackend(client), "m", "s", "u", max_tokens=300)
     assert client.calls[0]["options"]["num_predict"] == 300 and not client.calls[0].get("stream")
-    llm.chat(client, "m", "s", "u")
+    llm.chat(OllamaBackend(client), "m", "s", "u")
     assert client.calls[1]["options"]["num_predict"] == llm.LLM_MAX_ANSWER_TOKENS
 
 
 def test_an_answer_that_hits_the_cap_is_marked_as_cut():
     client = _Client(_Stream(["a", "b"], done_counts=(10, 50)))
-    result = llm.chat(client, "m", "s", "u", max_tokens=50, max_seconds=10)
+    result = llm.chat(OllamaBackend(client), "m", "s", "u", max_tokens=50, max_seconds=10)
     assert result.content == "ab" and result.truncated and (result.prompt_tokens, result.answer_tokens) == (10, 50)
 
 
 def test_streaming_returns_the_full_text_and_counts():
-    result = llm.chat(_Client(_Stream(["hola ", "mundo"])), "m", "s", "u", should_stop=lambda: False)
+    result = llm.chat(OllamaBackend(_Client(_Stream(["hola ", "mundo"]))), "m", "s", "u", should_stop=lambda: False)
     assert result.content == "hola mundo" and not result.truncated and result.answer_tokens == 5
 
 
 def test_a_slow_answer_is_stopped_at_the_time_limit_and_the_stream_is_closed():
     stream = _Stream(["x"] * 50, delay=0.05)
     with pytest.raises(llm.LLMTimeoutError):
-        llm.chat(_Client(stream), "m", "s", "u", max_seconds=0.2)
+        llm.chat(OllamaBackend(_Client(stream)), "m", "s", "u", max_seconds=0.2)
     assert stream.closed
 
 
@@ -76,13 +77,13 @@ def test_a_cancelled_answer_stops_and_the_stream_is_closed():
         return len(seen) >= 3
 
     with pytest.raises(llm.LLMCancelledError):
-        llm.chat(_Client(stream), "m", "s", "u", should_stop=stop)
+        llm.chat(OllamaBackend(_Client(stream)), "m", "s", "u", should_stop=stop)
     assert stream.closed
 
 
 
 class _Engine:
-    ai_config = SimpleNamespace(ollama_host="http://x")
+    ai_config = SimpleNamespace(host="http://x")
 
     def __init__(self, error=None):
         self.error = error

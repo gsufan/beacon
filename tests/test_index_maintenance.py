@@ -12,13 +12,14 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 import git  # noqa: E402
 import pytest  # noqa: E402
 
+from core.engine.backends import OllamaBackend  # noqa: E402
 from core.config import AIProviderConfig  # noqa: E402
 from core.engine.chroma_utils import remove_orphan_segments  # noqa: E402
 from core.engine.indexer import CodebaseIndexer  # noqa: E402
 from core.engine.rag_engine import RAGEngine  # noqa: E402
 from core.projects import ProjectContext  # noqa: E402
 
-AI = AIProviderConfig(provider="ollama", ollama_host="http://127.0.0.1:9",
+AI = AIProviderConfig(provider="ollama", host="http://127.0.0.1:9",
                       embedding_model="qwen3-embedding:0.6b", llm_model="l")
 ORPHAN = "00000000-1111-2222-3333-444444444444"
 
@@ -41,7 +42,7 @@ def _project(tmp_path):
 
 def _indexer(ctx):
     idx = CodebaseIndexer(ctx, AI)
-    idx.client_ollama = _FakeEmbed()
+    idx.backend = OllamaBackend(_FakeEmbed())
     return idx
 
 
@@ -103,7 +104,7 @@ def test_query_retries_with_fewer_candidates_instead_of_failing(tmp_path):
     ctx = _project(tmp_path)
     _indexer(ctx).sync()
     engine = RAGEngine(ctx, AI)
-    engine.client_ollama = _FakeEmbed()
+    engine.backend = OllamaBackend(_FakeEmbed())
     engine.collection = _FlakyCollection(max_ok=12)
     chunks = engine.retrieve("¿qué hace a?", top_k=5)
     assert len(chunks) == 5
@@ -114,7 +115,7 @@ def test_other_chroma_errors_are_not_hidden(tmp_path):
     ctx = _project(tmp_path)
     _indexer(ctx).sync()
     engine = RAGEngine(ctx, AI)
-    engine.client_ollama = _FakeEmbed()
+    engine.backend = OllamaBackend(_FakeEmbed())
 
     class Broken(_FlakyCollection):
         def query(self, query_embeddings, n_results):
@@ -131,7 +132,7 @@ def test_queries_keep_working_while_the_index_is_rebuilt(tmp_path):
     ctx = _project(tmp_path)
     _indexer(ctx).sync()
     engine = RAGEngine(ctx, AI)  # like the server: opened before rebuilding
-    engine.client_ollama = _FakeEmbed()
+    engine.backend = OllamaBackend(_FakeEmbed())
     seen_during = []
 
     def query_midway(current, total, path):
@@ -180,7 +181,7 @@ def test_purge_works_after_the_index_was_queried_in_this_process(monkeypatch, tm
     services, ctx, project_dir, removed = _registered(monkeypatch, tmp_path)
     _indexer(ctx).sync()
     engine = RAGEngine(ctx, AI)
-    engine.client_ollama = _FakeEmbed()
+    engine.backend = OllamaBackend(_FakeEmbed())
     engine.retrieve("¿qué hace a?")
     del engine
 

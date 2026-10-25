@@ -57,7 +57,7 @@ export interface DocContent {
 
 export interface AIProviderConfig {
   provider: string;
-  ollama_host: string;
+  host: string;
   embedding_model: string;
   llm_model: string;
 }

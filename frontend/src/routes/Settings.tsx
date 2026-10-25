@@ -8,7 +8,7 @@ import { useProject } from "../components/ProjectSelector";
 import { api, ApiError, getApiKey, setApiKey } from "../lib/api";
 import type { AIProviderConfig, ProjectCreatePayload, ProjectEntry, SyncStatus, SystemProvider } from "../lib/types";
 
-// Ollama lists untagged models as "<name>:latest".
+// Servers such as Ollama list untagged models as "<name>:latest".
 function isInstalled(model: string, installed: string[]) {
   return installed.includes(model) || installed.includes(`${model}:latest`);
 }
@@ -111,15 +111,15 @@ export default function Settings() {
   }, []);
 
   useEffect(() => {
-    if (!aiConfig?.ollama_host) return;
+    if (!aiConfig?.host) return;
     // The "no models" warning is only shown once the request has finished.
     setModelsLoaded(false);
     api
-      .availableModels(aiConfig.ollama_host)
+      .availableModels(aiConfig.host, aiConfig.provider)
       .then((res) => setModels(res.models))
       .catch(() => setModels([]))
       .finally(() => setModelsLoaded(true));
-  }, [aiConfig?.ollama_host]);
+  }, [aiConfig?.host, aiConfig?.provider]);
 
   useEffect(() => {
     return () => {
@@ -447,10 +447,10 @@ export default function Settings() {
                   ))}
                 </select>
               </Field>
-              <Field label={t("settings_ollama_host")}>
+              <Field label={t("settings_host")}>
                 <input
-                  value={aiConfig.ollama_host}
-                  onChange={(e) => setAiConfig({ ...aiConfig, ollama_host: e.target.value })}
+                  value={aiConfig.host}
+                  onChange={(e) => setAiConfig({ ...aiConfig, host: e.target.value })}
                   className={`${inputClass} font-mono`}
                 />
               </Field>
@@ -458,7 +458,7 @@ export default function Settings() {
 
             {modelsLoaded && models.length === 0 && (
               <p role="status" className="rounded-lg border border-danger-line bg-danger-bg px-3 py-2 text-[13px] text-danger-ink">
-                {t("settings_no_models")} '{aiConfig.ollama_host}'. {t("settings_no_models_hint")}
+                {t("settings_no_models")} '{aiConfig.host}'. {t("settings_no_models_hint")}
               </p>
             )}
 

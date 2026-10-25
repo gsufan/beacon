@@ -15,6 +15,7 @@ from typer.testing import CliRunner  # noqa: E402
 
 import core.api as api  # noqa: E402
 import core.cli as cli_module  # noqa: E402
+from core.engine.backends import BackendUnavailableError, ModelNotFoundError, OllamaBackend  # noqa: E402
 from core.config import AIProviderConfig, InvalidProjectIdError, validate_project_id  # noqa: E402
 from core.engine.indexer import CodebaseIndexer  # noqa: E402
 from core.projects import ProjectContext, safe_project_dir  # noqa: E402
@@ -109,20 +110,20 @@ def _indexer_for_small_repo(tmp_path) -> CodebaseIndexer:
     repo.index.commit("init")
     ctx = ProjectContext(id="t", name="t", repo_path=str(repo_dir),
                          chroma_dir=str(tmp_path / "chroma"), docs_dir=str(tmp_path / "docs"))
-    ai = AIProviderConfig(provider="ollama", ollama_host="http://127.0.0.1:9",
+    ai = AIProviderConfig(provider="ollama", host="http://127.0.0.1:9",
                           embedding_model="nomic-embed-text", llm_model="llama3:8b")
     return CodebaseIndexer(ctx, ai)
 
 
-@pytest.mark.parametrize("exc", [
-    ConnectionError("Failed to connect to Ollama"),
-    ollama.ResponseError("model 'nomic-embed-text' not found", 404),
+@pytest.mark.parametrize("exc, expected", [
+    (ConnectionError("Failed to connect to Ollama"), BackendUnavailableError),
+    (ollama.ResponseError("model 'nomic-embed-text' not found", 404), ModelNotFoundError),
 ])
-def test_sync_does_not_mark_commit_indexed_when_embeddings_fail(tmp_path, exc):
+def test_sync_does_not_mark_commit_indexed_when_embeddings_fail(tmp_path, exc, expected):
     indexer = _indexer_for_small_repo(tmp_path)
-    indexer.client_ollama = _FailingOllama(exc)
+    indexer.backend = OllamaBackend(_FailingOllama(exc))
 
-    with pytest.raises(type(exc)):
+    with pytest.raises(expected):
         indexer.sync()
     assert indexer._get_last_indexed_commit() is None
 
@@ -130,7 +131,7 @@ def test_sync_does_not_mark_commit_indexed_when_embeddings_fail(tmp_path, exc):
 def test_sync_still_skips_chunk_rejected_for_length(tmp_path):
     """A rejection for content (not 404) is still tolerated: that chunk is skipped."""
     indexer = _indexer_for_small_repo(tmp_path)
-    indexer.client_ollama = _FailingOllama(ollama.ResponseError("input length exceeds context length", 500))
+    indexer.backend = OllamaBackend(_FailingOllama(ollama.ResponseError("input length exceeds context length", 500)))
 
     result = indexer.sync()
     assert result["status"] == "ok"

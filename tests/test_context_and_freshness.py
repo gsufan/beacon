@@ -18,6 +18,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import git  # noqa: E402
 
+from core.engine.backends import OllamaBackend  # noqa: E402
 from core.config import AIProviderConfig  # noqa: E402
 from core.engine import llm  # noqa: E402
 from core.engine.chroma_utils import bump_index_version, get_chroma_client  # noqa: E402
@@ -27,7 +28,7 @@ from core.engine.rag_engine import RAGEngine, RetrievedChunk  # noqa: E402
 from core.projects import ProjectContext  # noqa: E402
 
 SRC = str(Path(__file__).resolve().parents[1] / "src")
-AI = AIProviderConfig(provider="ollama", ollama_host="http://127.0.0.1:9",
+AI = AIProviderConfig(provider="ollama", host="http://127.0.0.1:9",
                       embedding_model="nomic-embed-text", llm_model="llama3:8b")
 
 
@@ -68,14 +69,14 @@ def _chunk(name, size, expanded=False):
 
 def test_chat_always_sends_explicit_num_ctx():
     fake = _RecordingOllama()
-    llm.chat(fake, "llama3:8b", "sistema", "usuario")
+    llm.chat(OllamaBackend(fake), "llama3:8b", "sistema", "usuario")
     assert fake.chats[0]["options"]["num_ctx"] == llm.LLM_NUM_CTX
 
 
 def test_chat_uses_low_temperature_and_fixed_seed():
     # Repeatable answers: the same question with the same context must not change between runs.
     fake = _RecordingOllama()
-    llm.chat(fake, "llama3:8b", "sistema", "usuario")
+    llm.chat(OllamaBackend(fake), "llama3:8b", "sistema", "usuario")
     options = fake.chats[0]["options"]
     assert options["temperature"] == llm.LLM_TEMPERATURE <= 0.3
     assert options["seed"] == llm.LLM_SEED
@@ -87,14 +88,15 @@ def test_chat_warns_when_model_processed_far_less_than_sent(caplog):
             return {"message": {"content": "r"}, "prompt_eval_count": 2060, "eval_count": 10}
 
     with caplog.at_level("WARNING", logger="beacon.llm"):
-        llm.chat(Truncating(), "m", "s", "u" * 30000)  # ~8,500 estimated tokens
+        llm.chat(OllamaBackend(Truncating()), "m", "s", "u" * 30000)  # ~8,500 estimated tokens
     assert any("truncó" in r.message for r in caplog.records)
 
 
 def test_rag_prompt_fits_context_and_sources_match_what_model_saw(tmp_path):
     _, ctx = _repo_and_ctx(tmp_path)
     engine = RAGEngine(ctx, AI)
-    engine.client_ollama = fake = _RecordingOllama(content="respuesta")
+    fake = _RecordingOllama(content="respuesta")
+    engine.backend = OllamaBackend(fake)
     # 10 chunks of ~6,000 characters (~1,700 tokens each): they do not all fit in 8,192
     chunks = [_chunk(f"f{i}", 6000) for i in range(10)]
     engine.select_context = lambda q, top_k: chunks
@@ -118,7 +120,7 @@ def test_index_uses_committed_content_not_uncommitted_working_tree(tmp_path):
     (Path(repo.working_dir) / "a.py").write_text("def cambio_sin_commitear():\n    return 2\n")
 
     idx = CodebaseIndexer(ctx, AI)
-    idx.client_ollama = _RecordingOllama()
+    idx.backend = OllamaBackend(_RecordingOllama())
     idx.sync()
 
     docs = " ".join(idx.collection.get(include=["documents"])["documents"])
@@ -131,7 +133,7 @@ def test_commit_arriving_during_sync_is_not_marked_as_indexed(tmp_path):
     repo, ctx = _repo_and_ctx(tmp_path)
     first = _commit(repo, "a.py", "def a():\n    return 1\n", "init")
     idx = CodebaseIndexer(ctx, AI)
-    idx.client_ollama = _RecordingOllama()
+    idx.backend = OllamaBackend(_RecordingOllama())
 
     original = idx._index_file
     late = {}
@@ -188,7 +190,8 @@ def test_own_writes_do_not_force_reload(tmp_path):
 def _docgen_with_chunks(tmp_path, chunks):
     _, ctx = _repo_and_ctx(tmp_path)
     gen = DocGenerator(ctx, AI)
-    gen.client_ollama = fake = _RecordingOllama(content="Componentes:\n- `x` — nota")
+    fake = _RecordingOllama(content="Componentes:\n- `x` — nota")
+    gen.backend = OllamaBackend(fake)
     gen._get_chunks_for_file = lambda fp: chunks
     return gen, fake
 

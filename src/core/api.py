@@ -9,7 +9,6 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
-import ollama
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -31,6 +30,7 @@ from core.projects import (
     ProjectNotFoundError,
 )
 from core.project_lock import ProjectBusyError
+from core.engine.backends import BackendUnavailableError, available_providers, create_backend
 from core.engine.chroma_utils import read_index_version
 from core.engine.indexer import IndexModelMismatchError
 from core.engine.rag_engine import RAGEngine
@@ -137,7 +137,7 @@ class QueryResponse(BaseModel):
 
 class AIProviderUpdate(BaseModel):
     provider: str
-    ollama_host: str
+    host: str
     embedding_model: str
     llm_model: str
     llm_num_ctx: Optional[int] = Field(default=None, ge=2048, le=1_000_000)  # None keeps the configured window
@@ -189,10 +189,10 @@ def query(project_id: str, req: QueryRequest):
         result = engine.ask(req.question, top_k=req.top_k, language=req.language)
     except IndexModelMismatchError as e:
         raise HTTPException(status_code=409, detail=str(e))
-    except (ConnectionError, httpx.TransportError):
-        # 503 lets the UI tell "Ollama is down" apart from other engine errors.
-        host = engine.ai_config.ollama_host
-        raise HTTPException(status_code=503, detail=f"No se pudo conectar a Ollama en '{host}'. Verifica que esté ejecutándose.")
+    except (BackendUnavailableError, ConnectionError, httpx.TransportError):
+        # 503 lets the UI tell "the model server is down" apart from other engine errors.
+        ai = engine.ai_config
+        raise HTTPException(status_code=503, detail=f"No se pudo conectar al servidor de modelos ({ai.provider}) en '{ai.host}'. Verifica que esté ejecutándose.")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el motor RAG: {e}")
     return result.to_dict()
@@ -248,8 +248,10 @@ def get_config():
 
 @app.put("/config/ai-provider")
 def put_ai_provider(body: AIProviderUpdate):
+    if body.provider not in {p["id"] for p in available_providers()}:
+        raise HTTPException(status_code=422, detail=f"Proveedor desconocido: '{body.provider}'.")
     updated = update_ai_provider(
-        provider=body.provider, ollama_host=body.ollama_host,
+        provider=body.provider, host=body.host,
         embedding_model=body.embedding_model, llm_model=body.llm_model,
         llm_num_ctx=body.llm_num_ctx,
     )
@@ -259,23 +261,24 @@ def put_ai_provider(body: AIProviderUpdate):
 
 @app.get("/system/providers")
 def system_providers():
-    return {"providers": [{"id": "ollama", "name": "Ollama (local)"}]}
+    return {"providers": available_providers()}
 
 
 @app.get("/system/available-models")
-def system_available_models(ollama_host: Optional[str] = None):
-    """Models actually installed on the configured Ollama host (or the one passed in the query)."""
-    host = ollama_host or load_config().ai_provider.ollama_host
+def system_available_models(host: Optional[str] = None, provider: Optional[str] = None):
+    """Models available on the configured server (or the host and provider passed in the query)."""
+    ai = load_config().ai_provider
+    provider = provider or ai.provider
+    host = host or ai.host
     try:
-        client = ollama.Client(host=host)
-        models = [m["model"] for m in client.list().get("models", [])]
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"No se pudo conectar a Ollama en '{host}': {e}")
+        models = create_backend(provider, host).list_models()
+    except Exception as e:  # noqa: BLE001
+        raise HTTPException(status_code=502, detail=f"No se pudo conectar al servidor de modelos ({provider}) en '{host}': {e}")
     return {"models": models}
 
 
 def _model_installed(name: str, installed: list) -> bool:
-    # Ollama lists untagged models as "<name>:latest".
+    # Servers such as Ollama list untagged models as "<name>:latest".
     return name in installed or f"{name}:latest" in installed
 
 
@@ -283,9 +286,8 @@ def _model_installed(name: str, installed: list) -> bool:
 def system_ai_status():
     ai = load_config().ai_provider
     try:
-        client = ollama.Client(host=ai.ollama_host, timeout=3)
-        installed = [m["model"] for m in client.list().get("models", [])]
-    except Exception:
+        installed = create_backend(ai.provider, ai.host).list_models(timeout=3)
+    except Exception:  # noqa: BLE001
         return {"reachable": False, "llm_model_available": False, "embedding_model_available": False}
     return {
         "reachable": True,

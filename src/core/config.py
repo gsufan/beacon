@@ -8,6 +8,8 @@ from typing import List, Optional
 
 import yaml
 
+from core.engine.backends import DEFAULT_HOSTS
+
 # Looked up relative to the project root, not the user's cwd
 _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.yaml"
 CONFIG_PATH = Path(os.getenv("DEUDA_TECNICA_CONFIG", _DEFAULT_CONFIG_PATH))
@@ -28,7 +30,7 @@ MIN_LLM_NUM_CTX = 2048
 @dataclass
 class AIProviderConfig:
     provider: str
-    ollama_host: str
+    host: str
     embedding_model: str
     llm_model: str
     llm_num_ctx: int = DEFAULT_LLM_NUM_CTX
@@ -68,7 +70,7 @@ def load_config(path: Path = CONFIG_PATH) -> AppConfig:
     ai = raw.get("ai_provider", {})
     provider = AIProviderConfig(
         provider=ai.get("provider", "ollama"),
-        ollama_host=ai.get("ollama_host", "http://localhost:11434"),
+        host=ai.get("host") or ai.get("ollama_host") or DEFAULT_HOSTS.get(ai.get("provider", "ollama"), ""),  # `ollama_host`: legacy key
         embedding_model=ai.get("embedding_model", DEFAULT_EMBEDDING_MODEL),
         llm_model=ai.get("llm_model", "llama3:8b"),
         llm_num_ctx=_valid_num_ctx(ai.get("llm_num_ctx")),
@@ -97,7 +99,7 @@ def _write_raw(raw: dict, path: Path = CONFIG_PATH):
 
 
 def update_ai_provider(
-    provider: str, ollama_host: str, embedding_model: str, llm_model: str,
+    provider: str, host: str, embedding_model: str, llm_model: str,
     path: Path = CONFIG_PATH, llm_num_ctx: Optional[int] = None,
 ) -> AIProviderConfig:
     """`llm_num_ctx=None` keeps the window already configured."""
@@ -106,14 +108,14 @@ def update_ai_provider(
         llm_num_ctx = _valid_num_ctx(raw.get("ai_provider", {}).get("llm_num_ctx"))
     llm_num_ctx = _valid_num_ctx(llm_num_ctx)
     ai = {
-        "provider": provider, "ollama_host": ollama_host,
+        "provider": provider, "host": host,
         "embedding_model": embedding_model, "llm_model": llm_model,
     }
     if llm_num_ctx != DEFAULT_LLM_NUM_CTX:
         ai["llm_num_ctx"] = llm_num_ctx  # only written when it differs from the default
     raw["ai_provider"] = ai
     _write_raw(raw, path)
-    return AIProviderConfig(provider, ollama_host, embedding_model, llm_model, llm_num_ctx)
+    return AIProviderConfig(provider, host, embedding_model, llm_model, llm_num_ctx)
 
 
 class ProjectAlreadyExistsError(Exception):

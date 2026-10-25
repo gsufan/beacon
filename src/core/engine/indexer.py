@@ -4,7 +4,7 @@ import os
 from typing import Callable, List, Optional
 
 from core.engine.chroma_utils import bump_index_version, get_chroma_client, remove_orphan_segments
-import ollama
+from core.engine.backends import InputRejectedError, create_backend
 
 from core.config import AIProviderConfig
 from core.projects import ProjectContext
@@ -43,7 +43,7 @@ class CodebaseIndexer:
         self.project = project
         self.ai_config = ai_config
         self.watcher = GitWatcher(project.repo_path)
-        self.client_ollama = ollama.Client(host=ai_config.ollama_host)
+        self.backend = create_backend(ai_config.provider, ai_config.host)
         self.client = get_chroma_client(project.chroma_dir)
         self.collection = self.client.get_or_create_collection(
             name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"}
@@ -100,7 +100,7 @@ class CodebaseIndexer:
     MAX_SPLIT_DEPTH = 8
 
     def _embed(self, text: str) -> List[float]:
-        return embed_documents(self.client_ollama, self.ai_config.embedding_model, [text])[0]
+        return embed_documents(self.backend, self.ai_config.embedding_model, [text])[0]
 
     def _embed_adaptive(self, chunk_id, code, base_meta, out, depth=0):
         if depth == 0 and len(code) > self.DIRECT_TRY_MAX_CHARS:
@@ -109,11 +109,10 @@ class CodebaseIndexer:
         try:
             out.append((chunk_id, code, base_meta, self._embed(embedding_text(base_meta, code))))
             return
-        except ollama.ResponseError as e:
-            # Only "text too long" justifies splitting; a missing model or Ollama being down must propagate,
+        except InputRejectedError:
+            # Only "text too long" justifies splitting; a missing model or a server that is down must propagate,
             # or the sync would mark the commit as indexed with 0 chunks.
-            if e.status_code == 404:
-                raise
+            pass
         if len(code) <= self.MIN_SPLIT_CHARS or depth >= self.MAX_SPLIT_DEPTH:
             return  # skipped: it could not be embedded even after splitting
         self._split_and_recurse(chunk_id, code, base_meta, out, depth)
@@ -136,11 +135,10 @@ class CodebaseIndexer:
         if all(len(c.code) <= self.DIRECT_TRY_MAX_CHARS for c in chunks):
             try:
                 texts = [embedding_text(c.to_metadata(), c.code) for c in chunks]
-                vectors = embed_documents(self.client_ollama, self.ai_config.embedding_model, texts)
+                vectors = embed_documents(self.backend, self.ai_config.embedding_model, texts)
                 return [(c.chunk_id(), c.code, c.to_metadata(), v) for c, v in zip(chunks, vectors)]
-            except ollama.ResponseError as e:
-                if e.status_code == 404:  # model not pulled: not a size problem
-                    raise
+            except InputRejectedError:
+                pass  # a missing model or a server that is down is not a size problem and propagates
         for c in chunks:
             self._embed_adaptive(c.chunk_id(), c.code, c.to_metadata(), results)
         return results

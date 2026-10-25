@@ -14,13 +14,14 @@ import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 import core.api as api  # noqa: E402
+from core.engine.backends import OllamaBackend  # noqa: E402
 from core.config import AIProviderConfig  # noqa: E402
 from core.engine.doc_generator import DocGenerator, IndexOutOfDateError  # noqa: E402
 from core.engine.git_watcher import GitWatcher  # noqa: E402
 from core.engine.indexer import CodebaseIndexer  # noqa: E402
 from core.projects import ProjectContext  # noqa: E402
 
-AI = AIProviderConfig(provider="ollama", ollama_host="http://127.0.0.1:9",
+AI = AIProviderConfig(provider="ollama", host="http://127.0.0.1:9",
                       embedding_model="nomic-embed-text", llm_model="llama3:8b")
 
 
@@ -56,7 +57,7 @@ def _setup(tmp_path):
 
 def _indexer(ctx):
     idx = CodebaseIndexer(ctx, AI)
-    idx.client_ollama = _FakeOllama()
+    idx.backend = OllamaBackend(_FakeOllama())
     return idx
 
 
@@ -128,7 +129,7 @@ def test_docs_refuse_to_run_when_index_is_behind_head(tmp_path):
     _commit(repo, {"a.py": "def a():\n    return 2\n"}, "cambio sin reindexar")
 
     gen = DocGenerator(ctx, AI)
-    gen.client_ollama = _FakeOllama()
+    gen.backend = OllamaBackend(_FakeOllama())
     with pytest.raises(IndexOutOfDateError):
         gen.sync()
     assert gen._get_last_documented_commit() is None
@@ -140,7 +141,7 @@ def test_docs_full_rescan_removes_orphan_docs(tmp_path):
     idx = _indexer(ctx)
     idx.sync()
     gen = DocGenerator(ctx, AI)
-    gen.client_ollama = _FakeOllama()
+    gen.backend = OllamaBackend(_FakeOllama())
     gen.sync()
     assert (Path(ctx.docs_dir) / "b.py.md").exists()
 

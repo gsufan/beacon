@@ -15,7 +15,7 @@ from core.config import AppConfig, AIProviderConfig, ProjectEntry  # noqa: E402
 runner = CliRunner()
 
 FAKE_AI_CONFIG = AIProviderConfig(
-    provider="ollama", ollama_host="http://localhost:11434",
+    provider="ollama", host="http://localhost:11434",
     embedding_model="nomic-embed-text", llm_model="llama3:8b",
 )
 

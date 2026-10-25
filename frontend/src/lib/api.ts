@@ -106,8 +106,11 @@ export const api = {
 
   systemProviders: () => request<{ providers: SystemProvider[] }>("/system/providers"),
 
-  availableModels: (ollamaHost?: string) => {
-    const qs = ollamaHost ? `?ollama_host=${encodeURIComponent(ollamaHost)}` : "";
+  availableModels: (host?: string, provider?: string) => {
+    const params = new URLSearchParams();
+    if (host) params.set("host", host);
+    if (provider) params.set("provider", provider);
+    const qs = params.toString() ? `?${params}` : "";
     return request<{ models: string[] }>(`/system/available-models${qs}`);
   },
 

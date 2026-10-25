@@ -10,7 +10,7 @@ from typing import Callable, List, Optional
 from chromadb.errors import InvalidCollectionException
 
 from core.engine.chroma_utils import get_chroma_client
-import ollama
+from core.engine.backends import create_backend
 
 from core.config import AIProviderConfig
 from core.projects import ProjectContext
@@ -145,7 +145,7 @@ class RAGEngine:
     def __init__(self, project: ProjectContext, ai_config: AIProviderConfig):
         self.project = project
         self.ai_config = ai_config
-        self.client_ollama = ollama.Client(host=ai_config.ollama_host)
+        self.backend = create_backend(ai_config.provider, ai_config.host)
         self.client = get_chroma_client(project.chroma_dir)
         self.collection = self.client.get_or_create_collection(
             name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"}
@@ -162,7 +162,7 @@ class RAGEngine:
 
     def _ranked_candidates(self, question: str, n: int) -> List[RetrievedChunk]:
         self._check_index_model()
-        embedding = embed_query(self.client_ollama, self.ai_config.embedding_model, question)
+        embedding = embed_query(self.backend, self.ai_config.embedding_model, question)
         try:
             count = self.collection.count()
             results = self._query(embedding, min(n, count)) if count else None
@@ -349,7 +349,7 @@ class RAGEngine:
         system_prompt = language_instruction + "\n\n" + SYSTEM_PROMPT
         chunks = self._fit_to_budget(question, system_prompt, chunks)
         prompt = self._build_prompt(question, chunks)
-        result = chat(self.client_ollama, self.ai_config.llm_model, system_prompt, prompt, self.ai_config.llm_num_ctx,
+        result = chat(self.backend, self.ai_config.llm_model, system_prompt, prompt, self.ai_config.llm_num_ctx,
                       max_tokens=ANSWER_RESERVE_TOKENS, max_seconds=max_seconds, should_stop=should_stop)
         answer = strip_preamble(result.content, heading_marker="\x00")
         if result.truncated:

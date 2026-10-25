@@ -19,7 +19,7 @@ from core.config import AIProviderConfig, AppConfig, ProjectEntry  # noqa: E402
 from core.project_lock import LOCK_FILENAME, ProjectBusyError, ensure_not_busy, project_lock  # noqa: E402
 
 SRC = str(Path(__file__).resolve().parents[1] / "src")
-AI = AIProviderConfig(provider="ollama", ollama_host="http://x", embedding_model="e", llm_model="l")
+AI = AIProviderConfig(provider="ollama", host="http://x", embedding_model="e", llm_model="l")
 
 
 class _Holder:

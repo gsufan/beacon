@@ -20,7 +20,8 @@ la misma consulta tardó 13,6 s (la primera, incluida la carga del modelo) y
 la siguiente 6,2 s. Basta con cambiar en `config/config.yaml`:
 
 ```yaml
-ollama_host: http://host.docker.internal:11434
+ai_provider:
+  host: http://host.docker.internal:11434
 ```
 
 y levantar solo el servicio de Beacon, sin el contenedor de Ollama

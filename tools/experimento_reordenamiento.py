@@ -39,7 +39,7 @@ def rerank(engine, question, candidates):
     user = (f"PREGUNTA: {question}\n\nFRAGMENTOS:\n\n" + "\n\n".join(blocks)
             + "\n\nEscribe los números de los 5 fragmentos más útiles para responder la pregunta, "
               "del más útil al menos útil, separados por comas.")
-    answer = chat(engine.client_ollama, engine.ai_config.llm_model, SYSTEM, user).content
+    answer = chat(engine.backend, engine.ai_config.llm_model, SYSTEM, user).content
     order = []
     for n in re.findall(r"\d+", answer):
         idx = int(n) - 1

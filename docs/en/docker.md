@@ -20,7 +20,8 @@ query took 13.6 s (the first one, including the model load) and the next one
 6.2 s. It is enough to change in `config/config.yaml`:
 
 ```yaml
-ollama_host: http://host.docker.internal:11434
+ai_provider:
+  host: http://host.docker.internal:11434
 ```
 
 and start only the Beacon service, without the Ollama container

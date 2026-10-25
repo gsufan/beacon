@@ -8,7 +8,7 @@ Usage:
     beacon edit <id> [--name] [--repo-path] [--auto-watch/--no-auto-watch]
     beacon remove <id> [--purge-data]      # unregister a project
     beacon status <id>                     # state of the index and the documentation
-    beacon doctor                          # health check (Ollama, models, repos)
+    beacon doctor                          # health check (model server, models, repos)
     beacon sync <id>                       # incremental indexing
     beacon docs <id>                       # generate the documentation
     beacon ask <id> "question"
@@ -26,13 +26,13 @@ from pathlib import Path
 from typing import Optional
 
 import git
-import ollama
 import typer
 from rich.console import Console
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from core.cli_lang import tr
+from core.engine.backends import BackendError, BackendUnavailableError, ModelNotFoundError, create_backend
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -432,26 +432,29 @@ def cmd_doctor():
     cfg = load_config()
     ok_all = True
 
-    console.print(tr("[bold]Chequeando Ollama...[/bold]", "[bold]Checking Ollama...[/bold]"))
+    ai = cfg.ai_provider
+    name = ai.provider.capitalize()
+    console.print(tr(f"[bold]Chequeando {name}...[/bold]", f"[bold]Checking {name}...[/bold]"))
     try:
-        client = ollama.Client(host=cfg.ai_provider.ollama_host)
-        models_response = client.list()
-        installed = {m["model"] for m in models_response.get("models", [])}
-        console.print(tr(f"  [green]✓[/green] Conectado en {cfg.ai_provider.ollama_host}",
-                         f"  [green]✓[/green] Connected at {cfg.ai_provider.ollama_host}"))
+        backend = create_backend(ai.provider, ai.host)
+        installed = set(backend.list_models())
+        console.print(tr(f"  [green]✓[/green] Conectado en {ai.host}", f"  [green]✓[/green] Connected at {ai.host}"))
 
-        for label, model in [("embedding_model", cfg.ai_provider.embedding_model), ("llm_model", cfg.ai_provider.llm_model)]:
+        for label, model in [("embedding_model", ai.embedding_model), ("llm_model", ai.llm_model)]:
             match = any(model in m for m in installed)
+            hint = backend.install_hint(model)
             if match:
-                console.print(tr(f"  [green]✓[/green] {label} ({model}) está descargado", f"  [green]✓[/green] {label} ({model}) is downloaded"))
+                console.print(tr(f"  [green]✓[/green] {label} ({model}) está disponible", f"  [green]✓[/green] {label} ({model}) is available"))
             else:
-                console.print(tr(f"  [red]✗[/red] {label} ({model}) NO está descargado — corre: ollama pull {model}",
-                                 f"  [red]✗[/red] {label} ({model}) is NOT downloaded — run: ollama pull {model}"))
+                console.print(tr(f"  [red]✗[/red] {label} ({model}) NO está disponible — corre: {hint}",
+                                 f"  [red]✗[/red] {label} ({model}) is NOT available — run: {hint}"))
                 ok_all = False
     except Exception as e:
-        console.print(tr(f"  [red]✗[/red] No se pudo conectar a Ollama en {cfg.ai_provider.ollama_host}: {e}",
-                         f"  [red]✗[/red] Could not connect to Ollama at {cfg.ai_provider.ollama_host}: {e}"))
-        console.print(tr("  [dim]¿Corriste 'ollama serve'?[/dim]", "  [dim]Did you run 'ollama serve'?[/dim]"))
+        console.print(tr(f"  [red]✗[/red] No se pudo conectar a {name} en {ai.host}: {e}",
+                         f"  [red]✗[/red] Could not connect to {name} at {ai.host}: {e}"))
+        start = backend.start_hint() if "backend" in locals() else ""
+        if start:
+            console.print(tr(f"  [dim]¿Corriste '{start}'?[/dim]", f"  [dim]Did you run '{start}'?[/dim]"))
         ok_all = False
 
     console.print(tr("\n[bold]Chequeando proyectos registrados...[/bold]", "\n[bold]Checking registered projects...[/bold]"))
@@ -620,10 +623,10 @@ def cmd_study(
     # Study-specific configuration: it uses the Ollama and the models already installed.
     try:
         ai = load_config().ai_provider
-        ai_cfg = {"provider": ai.provider, "ollama_host": ai.ollama_host, "embedding_model": ai.embedding_model,
+        ai_cfg = {"provider": ai.provider, "host": ai.host, "embedding_model": ai.embedding_model,
                   "llm_model": ai.llm_model}
     except FileNotFoundError:
-        ai_cfg = {"provider": "ollama", "ollama_host": "http://localhost:11434", "embedding_model": "qwen3-embedding:0.6b",
+        ai_cfg = {"provider": "ollama", "host": "http://localhost:11434", "embedding_model": "qwen3-embedding:0.6b",
                   "llm_model": "llama3:8b"}
     study_config = study_dir / "config.yaml"
     projects = []
@@ -709,19 +712,22 @@ def _run_safely(fn, *, repo_path: str = ""):
     except IndexOutOfDateError as e:
         console.print(f"[yellow]{e}[/yellow]")
         raise typer.Exit(code=1)
-    except ollama.ResponseError as e:
-        console.print(tr("[red]Ollama respondió con un error:[/red] ", "[red]Ollama responded with an error:[/red] ") + f"{e}")
-        console.print(tr("[dim]¿El modelo está descargado? Revisa 'ollama_model'/'embedding_model' en config.yaml y corre 'ollama pull <modelo>'.[/dim]",
-                         "[dim]Is the model downloaded? Check 'ollama_model'/'embedding_model' in config.yaml and run 'ollama pull <model>'.[/dim]"))
+    except ModelNotFoundError as e:
+        console.print(tr("[red]El servidor de modelos no tiene el modelo pedido:[/red] ", "[red]The model server does not have the requested model:[/red] ") + f"{e.model}")
+        console.print(tr("[dim]Revisa 'llm_model' y 'embedding_model' en config.yaml y descarga el modelo que falte.[/dim]",
+                         "[dim]Check 'llm_model' and 'embedding_model' in config.yaml and download the missing model.[/dim]"))
+        raise typer.Exit(code=1)
+    except BackendUnavailableError as e:
+        console.print(tr("[red]No se pudo conectar con el servidor de modelos.[/red]", "[red]Could not connect to the model server.[/red]"))
+        console.print(f"[dim]{e}[/dim]")
+        console.print(tr("[dim]¿Está corriendo? Confirma 'provider' y 'host' en config.yaml (beacon doctor ayuda a diagnosticarlo).[/dim]",
+                         "[dim]Is it running? Confirm 'provider' and 'host' in config.yaml (beacon doctor helps diagnose it).[/dim]"))
+        raise typer.Exit(code=1)
+    except BackendError as e:
+        console.print(tr("[red]El servidor de modelos respondió con un error:[/red] ", "[red]The model server responded with an error:[/red] ") + f"{e}")
         raise typer.Exit(code=1)
     except Exception as e:
-        msg = str(e).lower()
-        if "connection" in msg or "refused" in msg or "connect" in msg:
-            console.print(tr("[red]No se pudo conectar con Ollama.[/red]", "[red]Could not connect to Ollama.[/red]"))
-            console.print(tr("[dim]¿Está corriendo? Prueba 'ollama serve' en otra terminal, y confirma 'ollama_host' en config.yaml.[/dim]",
-                             "[dim]Is it running? Try 'ollama serve' in another terminal, and confirm 'ollama_host' in config.yaml.[/dim]"))
-        else:
-            console.print(tr("[red]Algo falló inesperadamente:[/red] ", "[red]Something failed unexpectedly:[/red] ") + f"{e}")
+        console.print(tr("[red]Algo falló inesperadamente:[/red] ", "[red]Something failed unexpectedly:[/red] ") + f"{e}")
         raise typer.Exit(code=1)
 
 

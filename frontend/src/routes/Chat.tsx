@@ -207,7 +207,7 @@ export default function Chat() {
     }
   };
 
-  const host = aiProvider?.ollama_host.replace(/^https?:\/\//, "");
+  const host = aiProvider?.host.replace(/^https?:\/\//, "");
   const aiProblem = !aiStatus
     ? null
     : !aiStatus.reachable

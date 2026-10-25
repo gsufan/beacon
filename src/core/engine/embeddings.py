@@ -9,7 +9,7 @@ llama3:8b on an 8 GB GPU (see docs/en/measured-quality.md).
 from dataclasses import dataclass
 from typing import List
 
-import ollama
+from core.engine.backends import Backend
 
 
 _QWEN_TASK = "Given a developer question, retrieve the source code that implements the answer"
@@ -19,10 +19,10 @@ _QWEN_TASK = "Given a developer question, retrieve the source code that implemen
 class EmbeddingProfile:
     query_prefix: str
     document_prefix: str
-    num_ctx: int  # window requested from Ollama (no larger than the model's real one)
+    num_ctx: int  # window requested from the server (no larger than the model's real one)
 
 
-# Key: model name prefix in Ollama (without the tag).
+# Key: model name prefix (without the tag).
 _PROFILES = {
     "qwen3-embedding": EmbeddingProfile(f"Instruct: {_QWEN_TASK}\nQuery:", "", 8192),
     "nomic-embed-text": EmbeddingProfile("search_query: ", "search_document: ", 2048),  # 2,048 real
@@ -37,21 +37,11 @@ def profile_for(model: str) -> EmbeddingProfile:
     return _PROFILES.get(base, _GENERIC)
 
 
-def _embed_batch(client, model: str, texts: List[str], num_ctx: int) -> List[List[float]]:
-    # truncate=False: if a text does not fit, Ollama returns an error (instead of silently cutting it)
-    # and the indexer splits it into parts.
-    response = client.embed(model=model, input=texts, truncate=False, options={"num_ctx": num_ctx})
-    vectors = response["embeddings"]
-    if len(vectors) != len(texts) or any(not v for v in vectors):
-        raise ollama.ResponseError("el modelo devolvió embeddings vacíos", 500)
-    return vectors
-
-
-def embed_documents(client, model: str, texts: List[str]) -> List[List[float]]:
+def embed_documents(backend: Backend, model: str, texts: List[str]) -> List[List[float]]:
     p = profile_for(model)
-    return _embed_batch(client, model, [p.document_prefix + t for t in texts], p.num_ctx)
+    return backend.embed(model, [p.document_prefix + t for t in texts], num_ctx=p.num_ctx)
 
 
-def embed_query(client, model: str, text: str) -> List[float]:
+def embed_query(backend: Backend, model: str, text: str) -> List[float]:
     p = profile_for(model)
-    return _embed_batch(client, model, [p.query_prefix + text], p.num_ctx)[0]
+    return backend.embed(model, [p.query_prefix + text], num_ctx=p.num_ctx)[0]

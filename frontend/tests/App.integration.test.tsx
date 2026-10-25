@@ -25,7 +25,7 @@ const routes: Record<string, Handler> = {
   }),
   "GET /config": () => ({
     body: {
-      ai_provider: { provider: "ollama", ollama_host: "http://localhost:11434",
+      ai_provider: { provider: "ollama", host: "http://localhost:11434",
                      embedding_model: "qwen3-embedding:0.6b", llm_model: "llama3:8b" },
       projects: [{ id: "demo", name: "Demo", repo_path: "/repos/demo", source_type: "local", auto_watch: false }],
     },
@@ -177,17 +177,17 @@ describe("chat", () => {
     });
   });
 
-  it("avisa en la cabecera cuando Ollama no responde", async () => {
+  it("avisa en la cabecera cuando el servidor de modelos no responde", async () => {
     installFakeServer({
       "GET /system/ai-status": () => ({
         body: { reachable: false, llm_model_available: false, embedding_model_available: false },
       }),
     });
     renderApp();
-    expect(await screen.findByText("Ollama no responde")).toBeInTheDocument();
+    expect(await screen.findByText("El servidor de modelos no responde")).toBeInTheDocument();
   });
 
-  it("no muestra avisos cuando Ollama y los modelos están disponibles", async () => {
+  it("no muestra avisos cuando el servidor y los modelos están disponibles", async () => {
     installFakeServer({
       "GET /system/ai-status": () => ({
         body: { reachable: true, llm_model_available: true, embedding_model_available: true },
@@ -195,7 +195,7 @@ describe("chat", () => {
     });
     renderApp();
     await screen.findByText("llama3:8b");
-    expect(screen.queryByText("Ollama no responde")).not.toBeInTheDocument();
+    expect(screen.queryByText("El servidor de modelos no responde")).not.toBeInTheDocument();
     expect(screen.queryByText("Falta instalar un modelo configurado")).not.toBeInTheDocument();
   });
 
@@ -301,7 +301,7 @@ describe("configuración: proyectos y modelos", () => {
 
   it("sigue la sincronización de cada proyecto por separado", async () => {
     const twoProjects = {
-      ai_provider: { provider: "ollama", ollama_host: "http://localhost:11434",
+      ai_provider: { provider: "ollama", host: "http://localhost:11434",
                      embedding_model: "qwen3-embedding:0.6b", llm_model: "llama3:8b" },
       projects: [
         { id: "demo", name: "Demo", repo_path: "/repos/demo", source_type: "local", auto_watch: false },
@@ -337,12 +337,12 @@ describe("configuración: proyectos y modelos", () => {
   it("avisa cuando un modelo configurado no está instalado", async () => {
     installFakeServer({ "GET /system/available-models": () => ({ body: { models: ["llama3:8b"] } }) });
     renderApp("/settings");
-    expect(await screen.findByText("Este modelo no está instalado en Ollama.")).toBeInTheDocument();
+    expect(await screen.findByText("Este modelo no está disponible en el servidor.")).toBeInTheDocument();
   });
 });
 
 describe("configuración", () => {
-  it("muestra el proveedor y los modelos detectados en Ollama", async () => {
+  it("muestra el proveedor y los modelos detectados en el servidor", async () => {
     renderApp("/settings");
     expect(await screen.findByDisplayValue("http://localhost:11434")).toBeInTheDocument();
     await waitFor(() => expect(calls.some((c) => c.path === "/system/available-models")).toBe(true));

@@ -16,7 +16,7 @@ from core.study.session import StudySession  # noqa: E402
 
 
 class FakeEngine:
-    ai_config = SimpleNamespace(ollama_host="http://x")
+    ai_config = SimpleNamespace(host="http://x")
 
     def ask(self, question, top_k=5, language="es", **_):
         source = SimpleNamespace(file_path="src/a.py", chunk_type="function", name="f", start_line=3, end_line=9,

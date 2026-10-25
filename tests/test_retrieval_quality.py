@@ -11,6 +11,7 @@ import git  # noqa: E402
 import ollama  # noqa: E402
 import pytest  # noqa: E402
 
+from core.engine.backends import OllamaBackend  # noqa: E402
 from core.config import AIProviderConfig  # noqa: E402
 from core.engine.chunker import chunk_source  # noqa: E402
 from core.engine.embeddings import embed_query, profile_for  # noqa: E402
@@ -21,7 +22,7 @@ from core.projects import ProjectContext  # noqa: E402
 
 
 def _ai(model):
-    return AIProviderConfig(provider="ollama", ollama_host="http://127.0.0.1:9", embedding_model=model, llm_model="l")
+    return AIProviderConfig(provider="ollama", host="http://127.0.0.1:9", embedding_model=model, llm_model="l")
 
 
 class _FakeEmbed:
@@ -60,7 +61,7 @@ def test_each_model_gets_its_own_query_and_document_format():
 
 def test_query_is_sent_with_model_prefix_and_no_silent_truncation():
     fake = _FakeEmbed()
-    embed_query(fake, "nomic-embed-text", "¿qué hace f?")
+    embed_query(OllamaBackend(fake), "nomic-embed-text", "¿qué hace f?")
     assert fake.calls[0][1] == ["search_query: ¿qué hace f?"]
 
 
@@ -68,7 +69,8 @@ def test_query_is_sent_with_model_prefix_and_no_silent_truncation():
 def test_file_chunks_are_embedded_in_a_single_batch(tmp_path):
     ctx = _repo(tmp_path, {"a.py": "def f():\n    return 1\n\n\ndef g():\n    return 2\n"})
     idx = CodebaseIndexer(ctx, _ai("qwen3-embedding:0.6b"))
-    idx.client_ollama = fake = _FakeEmbed()
+    fake = _FakeEmbed()
+    idx.backend = OllamaBackend(fake)
     idx.sync()
     assert len(fake.calls) == 1 and len(fake.calls[0][1]) >= 2
 
@@ -76,7 +78,7 @@ def test_file_chunks_are_embedded_in_a_single_batch(tmp_path):
 def test_batch_rejected_for_length_falls_back_to_per_chunk(tmp_path):
     ctx = _repo(tmp_path, {"a.py": "def f():\n    return 1\n\n\ndef g():\n    return 2\n"})
     idx = CodebaseIndexer(ctx, _ai("qwen3-embedding:0.6b"))
-    idx.client_ollama = _FakeEmbed(fail_batches=True)
+    idx.backend = OllamaBackend(_FakeEmbed(fail_batches=True))
     result = idx.sync()
     assert result["chunks_insertados"] >= 2
 
@@ -90,11 +92,11 @@ def test_empty_files_are_not_indexed():
 def test_changing_embedding_model_rebuilds_index_with_new_dimension(tmp_path):
     ctx = _repo(tmp_path, {"a.py": "def f():\n    return 1\n"})
     old = CodebaseIndexer(ctx, _ai("nomic-embed-text"))
-    old.client_ollama = _FakeEmbed(dim=3)
+    old.backend = OllamaBackend(_FakeEmbed(dim=3))
     old.sync()
 
     new = CodebaseIndexer(ctx, _ai("qwen3-embedding:0.6b"))
-    new.client_ollama = _FakeEmbed(dim=4)  # another dimension, like 768 -> 1024
+    new.backend = OllamaBackend(_FakeEmbed(dim=4))  # another dimension, like 768 -> 1024
     result = new.sync()  # no new commits: it must rebuild anyway
 
     assert "índice reconstruido" in result["modelo_embeddings"]
@@ -106,7 +108,7 @@ def test_changing_embedding_model_rebuilds_index_with_new_dimension(tmp_path):
 def test_querying_an_index_built_with_another_model_gives_a_clear_error(tmp_path):
     ctx = _repo(tmp_path, {"a.py": "def f():\n    return 1\n"})
     idx = CodebaseIndexer(ctx, _ai("nomic-embed-text"))
-    idx.client_ollama = _FakeEmbed()
+    idx.backend = OllamaBackend(_FakeEmbed())
     idx.sync()
     engine = RAGEngine(ctx, _ai("qwen3-embedding:0.6b"))
     with pytest.raises(IndexModelMismatchError, match="beacon sync"):
@@ -118,7 +120,7 @@ def test_embedded_text_carries_the_file_path_but_the_document_is_only_code(tmp_p
     ctx = _repo(tmp_path, {"src/shipping/quote.go": "package main\n\nfunc GetQuote() int {\n\treturn 1\n}\n"})
     idx = CodebaseIndexer(ctx, _ai("qwen3-embedding:0.6b"))
     fake = _FakeEmbed()
-    idx.client_ollama = fake
+    idx.backend = OllamaBackend(fake)
     idx.sync()
     embedded = [text for _, batch in fake.calls for text in batch]
     assert any("src/shipping/quote.go" in t and "func GetQuote" in t for t in embedded)
@@ -148,12 +150,12 @@ def test_index_built_with_an_older_format_is_rebuilt(tmp_path, monkeypatch):
     ctx = _repo(tmp_path, {"a.py": "def f():\n    return 1\n"})
     monkeypatch.setattr(indexer_module, "INDEX_FORMAT", 1)
     old = CodebaseIndexer(ctx, _ai("qwen3-embedding:0.6b"))
-    old.client_ollama = _FakeEmbed()
+    old.backend = OllamaBackend(_FakeEmbed())
     old.sync()
 
     monkeypatch.setattr(indexer_module, "INDEX_FORMAT", 2)
     new = CodebaseIndexer(ctx, _ai("qwen3-embedding:0.6b"))
-    new.client_ollama = _FakeEmbed()
+    new.backend = OllamaBackend(_FakeEmbed())
     result = new.sync()  # no new commits: it must rebuild anyway
     assert result["formato_indice"] == "1 → 2 (índice reconstruido)"
     assert new.sync()["status"] == "sin_cambios"
@@ -178,7 +180,7 @@ class _Coll:
 def _engine_with(tmp_path, rows):
     ctx = _repo(tmp_path, {"a.py": "x = 1\n"})
     engine = RAGEngine(ctx, _ai("qwen3-embedding:0.6b"))
-    engine.client_ollama = _FakeEmbed()
+    engine.backend = OllamaBackend(_FakeEmbed())
     engine.collection = _Coll(rows)
     engine.index_model = "qwen3-embedding:0.6b"
     return engine

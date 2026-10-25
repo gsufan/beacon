@@ -1,6 +1,6 @@
 ai_provider:
   provider: ollama
-  ollama_host: http://localhost:11434
+  host: http://localhost:11434
   embedding_model: qwen3-embedding:0.6b
   llm_model: llama3:8b
   # Context window requested from the model (optional, 8192 by default). With a model that supports

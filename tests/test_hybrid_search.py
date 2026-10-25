@@ -10,12 +10,13 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 import git  # noqa: E402
 
+from core.engine.backends import OllamaBackend  # noqa: E402
 from core.config import AIProviderConfig  # noqa: E402
 from core.engine.indexer import CodebaseIndexer  # noqa: E402
 from core.engine.rag_engine import RAGEngine  # noqa: E402
 from core.projects import ProjectContext  # noqa: E402
 
-AI = AIProviderConfig(provider="ollama", ollama_host="http://127.0.0.1:9",
+AI = AIProviderConfig(provider="ollama", host="http://127.0.0.1:9",
                       embedding_model="qwen3-embedding:0.6b", llm_model="l")
 
 SOURCES = {
@@ -53,10 +54,10 @@ def _engine(tmp_path):
     ctx = ProjectContext(id="t", name="t", repo_path=str(repo_dir),
                          chroma_dir=str(tmp_path / "data" / "chroma_db"), docs_dir=str(tmp_path / "data" / "docs"))
     idx = CodebaseIndexer(ctx, AI)
-    idx.client_ollama = _SameVector()
+    idx.backend = OllamaBackend(_SameVector())
     idx.sync()
     engine = RAGEngine(ctx, AI)
-    engine.client_ollama = _SameVector()
+    engine.backend = OllamaBackend(_SameVector())
     return engine
 
 

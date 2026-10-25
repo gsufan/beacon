@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from core import services
 from core.config import load_config
+from core.engine.backends import BackendUnavailableError, create_backend
 from core.engine.indexer import IndexModelMismatchError
 from core.engine.llm import LLMCancelledError, LLMTimeoutError
 from core.projects import DATA_ROOT, InvalidRepoUrlError, ProjectNotFoundError
@@ -124,14 +125,13 @@ def run_health_checks() -> list:
     items = []
     try:
         ai = load_config().ai_provider
-        host, embedding, llm = ai.ollama_host, ai.embedding_model, ai.llm_model
+        provider, host, embedding, llm = ai.provider, ai.host, ai.embedding_model, ai.llm_model
     except FileNotFoundError:
-        host, embedding, llm = "http://localhost:11434", "qwen3-embedding:0.6b", "llama3:8b"
+        provider, host, embedding, llm = "ollama", "http://localhost:11434", "qwen3-embedding:0.6b", "llama3:8b"
 
     installed, ollama_ok = [], False
     try:
-        import ollama
-        installed = [m["model"] for m in ollama.Client(host=host, timeout=4).list().get("models", [])]
+        installed = create_backend(provider, host).list_models(timeout=4)
         ollama_ok = True
     except Exception:  # noqa: BLE001
         pass
@@ -232,9 +232,9 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
         models, version = [], ""
         try:
             ai = load_config().ai_provider
-            import ollama
-            models = [m["model"] for m in ollama.Client(host=ai.ollama_host, timeout=3).list().get("models", [])]
-            version = httpx.get(ai.ollama_host.rstrip("/") + "/api/version", timeout=3).json().get("version", "")
+            backend = create_backend(ai.provider, ai.host)
+            models = backend.list_models(timeout=3)
+            version = backend.health().version
         except Exception:
             pass
         try:
@@ -330,8 +330,8 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
                                                         "Prueba con una pregunta más concreta.")
         except IndexModelMismatchError as e:
             raise HTTPException(status_code=409, detail=str(e))
-        except (ConnectionError, httpx.TransportError):
-            raise HTTPException(status_code=503, detail="No se pudo conectar a Ollama. Verifica que esté ejecutándose.")
+        except (BackendUnavailableError, ConnectionError, httpx.TransportError):
+            raise HTTPException(status_code=503, detail="No se pudo conectar al servidor de modelos. Verifica que esté ejecutándose.")
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=f"Error en el motor: {e}")
         data = result.to_dict()

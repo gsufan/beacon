@@ -13,7 +13,7 @@ import core.services as services  # noqa: E402
 import core.storage as storage  # noqa: E402
 from core.config import AIProviderConfig, AppConfig, ProjectEntry  # noqa: E402
 
-AI = AIProviderConfig(provider="ollama", ollama_host="http://x", embedding_model="e", llm_model="l")
+AI = AIProviderConfig(provider="ollama", host="http://x", embedding_model="e", llm_model="l")
 
 
 def _write(path: Path, size: int):

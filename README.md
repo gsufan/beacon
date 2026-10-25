@@ -31,7 +31,7 @@ cd beacon
 cp config/config.example.yaml config/config.yaml
 ```
 
-Edit `config/config.yaml`: keep `ollama_host: http://ollama:11434` (the name `ollama` is resolved by the internal Docker Compose network — do not use `localhost` there) and add the repository or repositories you want to index.
+Edit `config/config.yaml`: keep `host: http://ollama:11434` (the name `ollama` is resolved by the internal Docker Compose network — do not use `localhost` there) and add the repository or repositories you want to index.
 
 ```bash
 docker compose up -d --build

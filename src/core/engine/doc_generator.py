@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from core.engine.chroma_utils import get_chroma_client
-import ollama
+from core.engine.backends import create_backend
 
 from core.config import AIProviderConfig
 from core.projects import ProjectContext
@@ -74,7 +74,7 @@ class DocGenerator:
         self.project = project
         self.ai_config = ai_config
         self.watcher = GitWatcher(project.repo_path)
-        self.client_ollama = ollama.Client(host=ai_config.ollama_host)
+        self.backend = create_backend(ai_config.provider, ai_config.host)
         self.client = get_chroma_client(project.chroma_dir)
         self.control = self.client.get_or_create_collection(name=CONTROL_COLLECTION_NAME)
 
@@ -134,7 +134,7 @@ class DocGenerator:
         return groups
 
     def _llm(self, system: str, user: str) -> str:
-        return chat(self.client_ollama, self.ai_config.llm_model, system, user, self.ai_config.llm_num_ctx,
+        return chat(self.backend, self.ai_config.llm_model, system, user, self.ai_config.llm_num_ctx,
                     max_tokens=DOC_ANSWER_RESERVE_TOKENS).content
 
     def generate_doc_for_file(self, file_path: str) -> Optional[str]:

@@ -10,6 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+import ollama
 import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
@@ -101,7 +102,7 @@ def test_put_ai_provider_wiring(monkeypatch):
     api._get_engine.cache_clear()
 
     resp = client.put("/config/ai-provider", json={
-        "provider": "ollama", "ollama_host": "http://localhost:11434",
+        "provider": "ollama", "host": "http://localhost:11434",
         "embedding_model": "nomic-embed-text", "llm_model": "llama3:8b",
     })
     assert resp.status_code == 200
@@ -114,7 +115,7 @@ def test_put_ai_provider_accepts_context_window(monkeypatch):
     monkeypatch.setattr(api, "update_ai_provider",
                         lambda **kw: calls.update(kw) or type("Cfg", (), kw)())
     api._get_engine.cache_clear()
-    body = {"provider": "ollama", "ollama_host": "http://h:11434", "embedding_model": "e", "llm_model": "m"}
+    body = {"provider": "ollama", "host": "http://h:11434", "embedding_model": "e", "llm_model": "m"}
 
     assert client.put("/config/ai-provider", json={**body, "llm_num_ctx": 32768}).status_code == 200
     assert calls["llm_num_ctx"] == 32768
@@ -134,7 +135,7 @@ def test_system_providers():
 
 
 def test_system_available_models_bad_host():
-    resp = client.get("/system/available-models", params={"ollama_host": "http://localhost:1"})
+    resp = client.get("/system/available-models", params={"host": "http://localhost:1"})
     assert resp.status_code == 502
 
 
@@ -241,7 +242,7 @@ def test_api_key_does_not_protect_healthz(monkeypatch):
 def test_auto_watch_tick_logs_instead_of_swallowing_sync_failure(monkeypatch, caplog):
     entry = ProjectEntry(id="broken-project", name="Broken", repo_path="/tmp/x", auto_watch=True)
     cfg = AppConfig(
-        ai_provider=AIProviderConfig(provider="ollama", ollama_host="http://x", embedding_model="e", llm_model="l"),
+        ai_provider=AIProviderConfig(provider="ollama", host="http://x", embedding_model="e", llm_model="l"),
         projects=[entry],
     )
     monkeypatch.setattr(api, "load_config", lambda: cfg)
@@ -272,7 +273,7 @@ def test_auto_watch_tick_logs_config_load_failure(monkeypatch, caplog):
 def test_auto_watch_tick_skips_projects_with_auto_watch_disabled(monkeypatch):
     entry = ProjectEntry(id="quiet-project", name="Quiet", repo_path="/tmp/x", auto_watch=False)
     cfg = AppConfig(
-        ai_provider=AIProviderConfig(provider="ollama", ollama_host="http://x", embedding_model="e", llm_model="l"),
+        ai_provider=AIProviderConfig(provider="ollama", host="http://x", embedding_model="e", llm_model="l"),
         projects=[entry],
     )
     monkeypatch.setattr(api, "load_config", lambda: cfg)
@@ -297,7 +298,7 @@ def test_ai_status_unreachable(monkeypatch):
     def refuse(**kwargs):
         raise ConnectionError("down")
 
-    monkeypatch.setattr(api.ollama, "Client", refuse)
+    monkeypatch.setattr(ollama, "Client", refuse)
     resp = client.get("/system/ai-status")
     assert resp.status_code == 200
     assert resp.json() == {"reachable": False, "llm_model_available": False, "embedding_model_available": False}
@@ -305,7 +306,7 @@ def test_ai_status_unreachable(monkeypatch):
 
 def test_ai_status_reports_missing_model(monkeypatch):
     ai = api.load_config().ai_provider
-    monkeypatch.setattr(api.ollama, "Client", lambda **kwargs: _FakeOllama([ai.llm_model]))
+    monkeypatch.setattr(ollama, "Client", lambda **kwargs: _FakeOllama([ai.llm_model]))
     body = client.get("/system/ai-status").json()
     assert body == {"reachable": True, "llm_model_available": True, "embedding_model_available": False}
 
@@ -319,7 +320,7 @@ class _FakeEngine:
     def __init__(self, ask):
         self.ask = ask
         self.ai_config = AIProviderConfig(
-            provider="ollama", ollama_host="http://localhost:11434",
+            provider="ollama", host="http://localhost:11434",
             embedding_model="nomic-embed-text", llm_model="llama3:8b",
         )
 
