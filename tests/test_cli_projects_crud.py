@@ -1,5 +1,4 @@
-"""Tests de 'beacon add'/'edit'/'remove' (CRUD de proyectos) con datos
-temporales — no tocan config.yaml real ni requieren Ollama."""
+"""Tests of 'beacon add'/'edit'/'remove' with temporary data: they touch no real config.yaml and need no Ollama."""
 
 import sys
 from pathlib import Path
@@ -23,7 +22,6 @@ def _git_repo(tmp_path, name="repo") -> str:
     return str(repo_dir)
 
 
-# ---------------------------------------------------------------- add ----
 
 def test_add_requires_repo_path_or_url():
     result = runner.invoke(cli_module.app, ["add", "demo"])
@@ -89,7 +87,6 @@ def test_add_duplicate_id_fails(monkeypatch, tmp_path):
     assert result.exit_code == 1
 
 
-# --------------------------------------------------------------- edit ----
 
 def test_edit_requires_at_least_one_field():
     result = runner.invoke(cli_module.app, ["edit", "demo"])
@@ -132,7 +129,6 @@ def test_edit_toggles_auto_watch(monkeypatch):
     assert calls["watch"] == ("demo", False)
 
 
-# ------------------------------------------------------------- remove ----
 
 def test_remove_unknown_project_fails(monkeypatch):
     monkeypatch.setattr(services, "remove_project", lambda pid: False)

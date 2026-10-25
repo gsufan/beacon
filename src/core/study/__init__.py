@@ -1,3 +1,1 @@
-"""Modo estudio de uso (`beacon study`): recoge, con consentimiento explícito y de forma local,
-datos de uso y de hardware para evaluar Beacon. Nada se envía solo: el participante revisa y
-entrega el archivo que se genera."""
+"""Usage study mode (`beacon study`): collects usage and hardware data locally and with explicit consent to evaluate Beacon. Nothing is sent automatically: the participant reviews and submits the generated file."""

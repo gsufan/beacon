@@ -1,4 +1,4 @@
-# --- Etapa 1: build del frontend (React + Vite) ---
+# --- Stage 1: frontend build (React + Vite) ---
 FROM node:20-slim AS frontend-build
 WORKDIR /app/frontend
 COPY frontend/package.json frontend/package-lock.json ./
@@ -6,12 +6,11 @@ RUN npm ci
 COPY frontend/ ./
 RUN npm run build
 
-# --- Etapa 2: backend + UI compilada ---
+# --- Stage 2: backend + compiled UI ---
 FROM python:3.11-slim AS runtime
 WORKDIR /app
 
-# git es requerido en runtime: gitpython invoca al binario real para
-# clonar/leer repos (git_watcher.py, clonado por URL).
+# git is required at runtime: gitpython calls the real binary to clone and read repositories.
 RUN apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 

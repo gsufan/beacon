@@ -24,8 +24,8 @@ describe("useLanguage", () => {
     localStorage.setItem("beacon:language", "en");
     const { result } = renderHook(() => useLanguage(), { wrapper: LanguageProvider });
     expect(result.current.language).toBe("en");
-    expect(result.current.t("nav_chat")).toBe("Chat"); // coincide en ambos idiomas
-    expect(result.current.t("nav_settings")).toBe("Settings"); // este sí difiere
+    expect(result.current.t("nav_chat")).toBe("Chat"); // same in both languages
+    expect(result.current.t("nav_settings")).toBe("Settings"); // this one differs
   });
 });
 

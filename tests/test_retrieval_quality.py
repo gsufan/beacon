@@ -1,7 +1,6 @@
-"""Cambios de calidad de búsqueda (2026-09, medidos con tools/eval_retrieval.py):
-formato por modelo de embeddings, embeddings por lotes, reconstrucción del
-índice al cambiar de modelo, penalización de tests, contexto adaptativo y
-archivos vacíos. Ollama se reemplaza por clientes falsos."""
+"""Search quality: per-model embedding format, batched embeddings, index rebuild on a model change, test
+penalty, adaptive context and empty files. Ollama is replaced by fake clients.
+"""
 
 import sys
 from pathlib import Path
@@ -26,7 +25,7 @@ def _ai(model):
 
 
 class _FakeEmbed:
-    """Vectores de tamaño fijo por modelo (como la dimensión real de cada uno)."""
+    """Fixed-size vectors per model (like each one's real dimension)."""
     def __init__(self, dim=3, fail_batches=False):
         self.dim, self.fail_batches, self.calls = dim, fail_batches, []
 
@@ -50,7 +49,6 @@ def _repo(tmp_path, files):
                           chroma_dir=str(tmp_path / "data" / "chroma_db"), docs_dir=str(tmp_path / "data" / "docs"))
 
 
-# ------------------------------------------------ formato por modelo ----
 
 def test_each_model_gets_its_own_query_and_document_format():
     assert profile_for("nomic-embed-text").query_prefix == "search_query: "
@@ -66,7 +64,6 @@ def test_query_is_sent_with_model_prefix_and_no_silent_truncation():
     assert fake.calls[0][1] == ["search_query: ¿qué hace f?"]
 
 
-# ------------------------------------------------ indexado por lotes ----
 
 def test_file_chunks_are_embedded_in_a_single_batch(tmp_path):
     ctx = _repo(tmp_path, {"a.py": "def f():\n    return 1\n\n\ndef g():\n    return 2\n"})
@@ -89,7 +86,6 @@ def test_empty_files_are_not_indexed():
     assert chunk_source("pkg/__init__.py", "  \n\n") == []
 
 
-# ------------------------------------------- cambio de modelo ----
 
 def test_changing_embedding_model_rebuilds_index_with_new_dimension(tmp_path):
     ctx = _repo(tmp_path, {"a.py": "def f():\n    return 1\n"})
@@ -98,8 +94,8 @@ def test_changing_embedding_model_rebuilds_index_with_new_dimension(tmp_path):
     old.sync()
 
     new = CodebaseIndexer(ctx, _ai("qwen3-embedding:0.6b"))
-    new.client_ollama = _FakeEmbed(dim=4)  # otra dimensión, como 768 → 1024
-    result = new.sync()  # sin commits nuevos: igual debe reconstruir
+    new.client_ollama = _FakeEmbed(dim=4)  # another dimension, like 768 -> 1024
+    result = new.sync()  # no new commits: it must rebuild anyway
 
     assert "índice reconstruido" in result["modelo_embeddings"]
     assert new.indexed_embedding_model() == "qwen3-embedding:0.6b"
@@ -117,7 +113,6 @@ def test_querying_an_index_built_with_another_model_gives_a_clear_error(tmp_path
         engine.retrieve("¿qué hace f?")
 
 
-# ------------------------------------------- formato del índice ----
 
 def test_embedded_text_carries_the_file_path_but_the_document_is_only_code(tmp_path):
     ctx = _repo(tmp_path, {"src/shipping/quote.go": "package main\n\nfunc GetQuote() int {\n\treturn 1\n}\n"})
@@ -159,15 +154,14 @@ def test_index_built_with_an_older_format_is_rebuilt(tmp_path, monkeypatch):
     monkeypatch.setattr(indexer_module, "INDEX_FORMAT", 2)
     new = CodebaseIndexer(ctx, _ai("qwen3-embedding:0.6b"))
     new.client_ollama = _FakeEmbed()
-    result = new.sync()  # sin commits nuevos: igual debe reconstruir
+    result = new.sync()  # no new commits: it must rebuild anyway
     assert result["formato_indice"] == "1 → 2 (índice reconstruido)"
     assert new.sync()["status"] == "sin_cambios"
 
 
-# ------------------------------------ penalización de tests y contexto ----
 
 class _Coll:
-    """Colección falsa: devuelve candidatos con distancias fijas."""
+    """Fake collection: returns candidates with fixed distances."""
     def __init__(self, rows):
         self.rows = rows
 
@@ -203,5 +197,5 @@ def test_adaptive_context_adds_near_ties_but_not_distant_results(tmp_path):
     engine = _engine_with(tmp_path, rows)
     names = [c.name for c in engine.select_context("pregunta", top_k=5)]
     assert names[:5] == ["f0", "f1", "f2", "f3", "f4"]
-    assert "f5" in names and "f6" in names  # casi empatados con el 5º
-    assert "f7" not in names  # claramente menos relevante
+    assert "f5" in names and "f6" in names  # nearly tied with the 5th
+    assert "f7" not in names  # clearly less relevant

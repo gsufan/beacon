@@ -1,4 +1,4 @@
-"""Genera documentación .md incremental a partir de los chunks ya indexados."""
+"""Incremental .md documentation generated from the already indexed chunks."""
 
 from pathlib import Path
 from typing import Callable, List, Optional
@@ -17,23 +17,18 @@ DOC_CONTROL_KEY_ID = "last_documented_commit"
 
 
 class IndexOutOfDateError(RuntimeError):
-    """La documentación se arma desde los chunks indexados: con el índice
-    atrasado se documentaría código viejo y se marcaría como al día."""
+    """Documentation is built from the indexed chunks: with a stale index it would document old code and mark it as up to date."""
 
 
 ProgressCallback = Optional[Callable[[int, int, str], None]]
 
-# Sin esto, llama3 tiende a responder en inglés cuando el código y sus
-# comentarios están en inglés (pasaba con varios archivos de psf/requests).
+# Without this instruction the model tends to answer in English when the code and its comments are in English.
 DOC_LANGUAGE = ("IMPORTANTE: escribe todo en español neutro (sin modismos regionales ni voseo), "
                 "aunque el código o sus comentarios estén en inglés. Mantén en su forma original "
                 "los nombres de funciones, clases y variables.")
 
-# Tokens libres para la respuesta (un documento completo es más largo que una
-# respuesta del chat). El resto de la ventana es para el prompt.
 DOC_ANSWER_RESERVE_TOKENS = 1536
-# Tope de rondas de condensación de notas (archivos enormes): con ~6.000
-# tokens por ronda alcanza para archivos de varios MB de código.
+# Cap on note-condensation rounds (huge files): about 6,000 tokens per round is enough for files of several MB.
 MAX_REDUCE_ROUNDS = 4
 
 NOTES_SYSTEM_PROMPT = """Eres un ingeniero de software senior. Recibes UNA PARTE de un archivo de código más grande (o notas previas sobre él).
@@ -85,8 +80,8 @@ class DocGenerator:
 
     @property
     def collection(self):
-        # Se busca por nombre en cada uso: una reconstrucción del índice recrea
-        # la colección y una referencia guardada apuntaría a la ya borrada.
+        # Looked up by name on each use: an index rebuild recreates the collection and a stored reference would
+        # point to the deleted one.
         return self.client.get_or_create_collection(name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
 
     def _get_control_commit(self, key: str):
@@ -116,16 +111,15 @@ class DocGenerator:
         return f"--- {label} (líneas {c.get('start_line')}-{c.get('end_line')}) ---\n{c['code']}\n"
 
     def _content_budget_chars(self, system_prompt: str) -> int:
-        """Caracteres de contenido que caben en un prompt, descontando el
-        prompt de sistema, el encabezado y la reserva para la respuesta."""
+        """Characters of content that fit in a prompt, after the system prompt, the header and the reserve for the answer."""
         tokens = prompt_budget_tokens(DOC_ANSWER_RESERVE_TOKENS, self.ai_config.llm_num_ctx) - estimate_tokens(system_prompt) - 100
         return int(tokens * CHARS_PER_TOKEN)
 
     @staticmethod
     def _group(blocks: List[str], budget_chars: int) -> List[List[str]]:
-        """Agrupa bloques consecutivos sin pasar el presupuesto. Un bloque que
-        por sí solo no cabe se recorta (no debería ocurrir: el indexador ya
-        divide los fragmentos largos) y se marca el recorte explícitamente."""
+        """Groups consecutive blocks without exceeding the budget. A block that does not fit on its own is
+        trimmed (it should not happen: the indexer already splits long chunks) and the trim is marked.
+        """
         groups, current, size = [], [], 0
         for block in blocks:
             if len(block) > budget_chars:
@@ -144,17 +138,17 @@ class DocGenerator:
                     max_tokens=DOC_ANSWER_RESERVE_TOKENS).content
 
     def generate_doc_for_file(self, file_path: str) -> Optional[str]:
-        """Documenta el archivo completo. Si no cabe en una sola llamada, se
-        analiza por partes (notas por parte, condensadas si hace falta) y se
-        redacta el documento final a partir de esas notas más el índice
-        completo de componentes, en vez de documentar solo el comienzo."""
+        """Documents the whole file. If it does not fit in one call, it is analyzed in parts (notes per part,
+        condensed if needed) and the final document is written from those notes plus the complete component
+        index, instead of documenting only the beginning.
+        """
         chunks = self._get_chunks_for_file(file_path)
         if not chunks:
             return None
         blocks = [self._chunk_block(c) for c in chunks]
         budget = self._content_budget_chars(DOC_SYSTEM_PROMPT)
-        # El índice sale del análisis sintáctico, no del modelo: es exacto y
-        # completo aunque el modelo resuma solo los componentes principales.
+        # The index comes from the syntax analysis, not from the model: it is exact and complete even if the
+        # model only summarizes the main components.
         index = self._components_index(chunks)
         appendix = f"\n\n## Índice de componentes\n\n{index}"
 
@@ -163,7 +157,6 @@ class DocGenerator:
             body = strip_preamble(body)
             return f"# `{file_path}`\n\n> Documentación generada automáticamente.\n\n{body}{appendix}"
 
-        # Archivo extenso: notas por parte (map) y condensación de notas (reduce).
         parts = self._group(blocks, self._content_budget_chars(NOTES_SYSTEM_PROMPT))
         notes = [self._llm(NOTES_SYSTEM_PROMPT, f"Archivo: {file_path} — parte {i} de {len(parts)}\n\n{''.join(g)}")
                  for i, g in enumerate(parts, 1)]
@@ -176,7 +169,7 @@ class DocGenerator:
                      for g in groups]
             rounds += 1
         joined = "\n\n".join(f"### Notas de la parte {i}\n{n}" for i, n in enumerate(notes, 1))
-        if len(joined) > final_budget:  # tope de rondas alcanzado: se recorta y se declara
+        if len(joined) > final_budget:  # round cap reached: trimmed and declared
             joined = joined[:final_budget - 80] + "\n\n[... notas recortadas: archivo excepcionalmente extenso ...]"
         body = self._llm(
             DOC_SYSTEM_PROMPT,
@@ -193,8 +186,8 @@ class DocGenerator:
     def _components_index(chunks: List[dict]) -> str:
         lines, seen_splits = [], set()
         for c in chunks:
-            # Un fragmento largo se indexa solo como sus partes (con split_of y
-            # las líneas del original): se lista una vez, no una por parte.
+            # A long chunk is indexed only as its parts (with split_of and the original lines): it is listed once,
+            # not once per part.
             if c.get("split_of"):
                 if c["split_of"] in seen_splits:
                     continue
@@ -230,7 +223,7 @@ class DocGenerator:
         }
 
     def sync(self, on_progress: ProgressCallback = None, full: bool = False) -> dict:
-        head = self.watcher.current_commit_hash()  # fijo durante todo el sync
+        head = self.watcher.current_commit_hash()  # fixed for the whole sync
         if self._get_control_commit(CONTROL_KEY_ID) != head:
             raise IndexOutOfDateError(
                 "El índice no está al día con el último commit. Corre 'beacon sync' antes de generar la documentación."
@@ -245,7 +238,7 @@ class DocGenerator:
         deleted = 0
         stale = changes.files_to_purge()
         if changes.full_rescan:
-            # sin commit base no se sabe qué se borró: todo .md sin archivo fuente vigente es huérfano
+            # without a base commit it is unknown what was deleted: any .md without a current source file is an orphan
             current = set(files)
             stale = [fp for fp in self._existing_doc_sources() if fp not in current]
         for fp in stale:

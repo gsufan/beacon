@@ -1,4 +1,4 @@
-"""Motor RAG: recuperación semántica + expansión por grafo de llamadas + LLM local."""
+"""RAG engine: semantic retrieval, call-graph expansion and local LLM."""
 
 import logging
 import re
@@ -26,57 +26,40 @@ logger = logging.getLogger("beacon.rag")
 
 DEFAULT_TOP_K = 5
 DEFAULT_MAX_CALL_EXPANSIONS = 5
-# Tokens que se dejan libres para la respuesta dentro de la ventana del modelo.
 ANSWER_RESERVE_TOKENS = 1024
 TRUNCATED_NOTES = {
     "es": "\n\n[La respuesta alcanzó el límite de longitud y se cortó.]",
     "en": "\n\n[The answer reached the length limit and was cut off.]",
 }
 
-# Los tests repiten literalmente las palabras de la pregunta en sus nombres
-# (test_http_303_changes_post_to_get) y le ganaban a la función que la
-# responde. Se les suma esta distancia salvo que la pregunta sea sobre tests.
-# Medido con eval/requests.yaml: Hit@5 subió de 80% a 93% con qwen3-embedding.
+# Test names repeat the words of the question and outranked the function that answers it: this
+# distance is added to them unless the question is about tests.
 TEST_DISTANCE_PENALTY = 0.08
 TEST_PATH_PATTERN = re.compile(r"(^|/)(tests?|testing|__tests__)/|(^|/)test_[^/]*$|_test\.[a-z]+$|\.(test|spec)\.[jt]sx?$")
 ASKS_ABOUT_TESTS = re.compile(r"\b(tests?|testing|prueba|pruebas|testear|spec)\b", re.IGNORECASE)
 
-# Contexto adaptativo: además de los top_k, se suman fragmentos casi tan
-# relevantes como el último elegido (dentro de este margen de distancia),
-# hasta este máximo. Así una pregunta que toca varios archivos recibe más
-# contexto sin inflar las preguntas puntuales. El presupuesto de tokens
-# (_fit_to_budget) sigue siendo el tope final.
+# Adaptive context: besides top_k, chunks almost as relevant as the last one chosen (within this
+# distance margin) are added, up to this maximum. The token budget (_fit_to_budget) remains the final cap.
 ADAPTIVE_MARGIN = 0.03
 ADAPTIVE_MAX_EXTRA = 5
 
-# Búsqueda híbrida: si la pregunta nombra un identificador del código
-# (`super_len`, `TooManyRedirects`, `DEFAULT_CA_BUNDLE_PATH`), se suman como
-# candidatos los fragmentos que se llaman así o que lo usan, aunque la
-# búsqueda semántica no los haya traído, y se les resta distancia. Sin esto,
-# los tests con el identificador en su nombre le ganaban a la función, y en
-# preguntas de uso ("¿dónde se usa max_redirects?") aparecía la definición
-# pero no quien la usa.
+# Hybrid search: when the question names a code identifier (`super_len`, `TooManyRedirects`), chunks
+# named like it or using it are added as candidates, even if semantic search did not return them, and
+# get a distance discount.
 NAME_MATCH_BONUS = 0.10
 CODE_MATCH_BONUS = 0.04
-# Un identificador presente en más fragmentos que esto es demasiado común
-# para orientar la búsqueda (ej. `self`, `request`): se ignora su aparición
-# en el código.
+# An identifier present in more chunks than this is too common to guide the search (e.g. `self`,
+# `request`) and its occurrences in code are ignored.
 IDENTIFIER_MAX_CODE_MATCHES = 15
 QUESTION_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{3,}")
-# "¿Dónde se usa X?", "¿quién llama a X?", "¿cuándo se lanza X?": se pregunta
-# por quien usa el identificador, no por su definición, así que el descuento
-# fuerte va a los fragmentos que lo usan.
+# "Where is X used?", "who calls X?": the question is about whoever uses the identifier, not its
+# definition, so the larger discount goes to the chunks that use it.
 ASKS_ABOUT_USAGE = re.compile(
     r"\b(d[oó]nde|qui[eé]n|qu[eé]|cu[aá]ndo)\b.{0,25}\b(usa|usan|utiliza|llama|llaman|invoca|lanza|lanzan|"
     r"levanta|produce|lee|leen|modifica|asigna)\b", re.IGNORECASE)
 
-# Candidatos a llamada: `nombre(`, salvo cuando es una definición
-# (`def hook(` dentro de un test no es una llamada a otro `hook`). Se comparó
-# con extraer las llamadas del AST en todo el índice de los dos repositorios
-# de evaluación: coinciden en el 98% (requests) y 92% (microservices-demo) de
-# las expansiones, y casi todas las diferencias están en tests; fuera de
-# ellos, el AST evitaría 3 expansiones de más. No justifica mantener reglas
-# de extracción para cada lenguaje.
+# Call candidates: `name(`, unless it is a definition (`def hook(` is not a call).
+# Extracting calls from the AST would give almost the same result without per-language rules.
 CALL_CANDIDATE_PATTERN = re.compile(
     r"(?<!\bdef )(?<!\bfunc )(?<!\bfunction )(?<!\bclass )\b([A-Za-z_][A-Za-z0-9_]*)\s*\(")
 KEYWORD_BLOCKLIST = {
@@ -132,8 +115,7 @@ class RetrievedChunk:
         location = f"{self.file_path} (líneas {self.start_line}-{self.end_line})"
         label = f"{self.chunk_type} '{self.name}'" if self.name else self.chunk_type
         tag = " [incluido automáticamente por grafo de llamadas]" if self.expanded else ""
-        # Sin número de fragmento: el modelo tendía a citar "el fragmento 3",
-        # que el usuario no ve; si la etiqueta es la ruta, cita la ruta.
+        # Each chunk is labeled with its path rather than a number, so the model cites the file.
         return f"[{location}] {label}{tag}\n```\n{self.code}\n```"
 
 
@@ -141,8 +123,8 @@ class RetrievedChunk:
 class RAGResponse:
     answer: str
     sources: List[RetrievedChunk]
-    # Tokens que Ollama reporta haber procesado (0 si no los informa); los usa
-    # tools/eval_answers.py para confirmar que ningún prompt se truncó.
+    # Tokens Ollama reports having processed (0 if not reported); tools/eval_answers.py uses them to
+    # confirm that no prompt was truncated.
     prompt_tokens: int = 0
     answer_tokens: int = 0
 
@@ -179,16 +161,13 @@ class RAGEngine:
             )
 
     def _ranked_candidates(self, question: str, n: int) -> List[RetrievedChunk]:
-        """Candidatos ordenados por distancia: búsqueda semántica más los
-        fragmentos que coinciden con identificadores de la pregunta, con la
-        penalización a tests."""
         self._check_index_model()
         embedding = embed_query(self.client_ollama, self.ai_config.embedding_model, question)
         try:
             count = self.collection.count()
             results = self._query(embedding, min(n, count)) if count else None
         except InvalidCollectionException:
-            self._refresh_collection()  # se reemplazó durante una reconstrucción
+            self._refresh_collection()  # replaced during a rebuild
             count = self.collection.count()
             results = self._query(embedding, min(n, count)) if count else None
         if not count:
@@ -213,9 +192,9 @@ class RAGEngine:
 
     @staticmethod
     def question_identifiers(question: str) -> List[str]:
-        """Palabras de la pregunta con forma de identificador de código:
-        snake_case, camelCase/PascalCase o CONSTANTE_CON_GUION. Las palabras
-        comunes (en español o en inglés) no tienen esa forma."""
+        """Words in the question shaped like code identifiers: snake_case, camelCase/PascalCase or
+        CONSTANT_CASE. Common words (Spanish or English) do not have that shape.
+        """
         found = []
         for token in QUESTION_TOKEN.findall(question):
             if ("_" in token.strip("_") or re.search(r"[a-z][A-Z]", token)) and token not in found:
@@ -223,11 +202,10 @@ class RAGEngine:
         return found
 
     def _identifier_matches(self, question: str, embedding: List[float]) -> dict:
-        """Fragmentos que se llaman como un identificador de la pregunta o lo
-        usan en su código, con su distancia real a la pregunta y el descuento
-        que les corresponde. Se usan `get` con filtros y la distancia se
-        calcula aquí: las consultas filtradas de hnswlib fallan cuando hay
-        menos coincidencias que resultados pedidos."""
+        """Chunks named like an identifier of the question or using it in their code, with their real
+        distance and discount. It uses filtered `get` and computes the distance here because filtered
+        hnswlib queries fail when there are fewer matches than requested results.
+        """
         identifiers = self.question_identifiers(question)
         if not identifiers:
             return {}
@@ -253,19 +231,17 @@ class RAGEngine:
         return found
 
     def _refresh_collection(self):
-        """Vuelve a buscar la colección por nombre: una reconstrucción completa
-        (en este u otro proceso) la reemplaza por una nueva y la referencia
-        guardada apunta a la anterior, ya borrada."""
+        """Looks the collection up again by name: a full rebuild (in this or another process) replaces it,
+        and the stored reference points to the deleted one.
+        """
         self.collection = self.client.get_or_create_collection(name=COLLECTION_NAME,
                                                                metadata={"hnsw:space": "cosine"})
 
     def _query(self, embedding: List[float], n: int) -> dict:
-        """Consulta a ChromaDB. Con muchos elementos borrados en el grafo HNSW,
-        hnswlib puede no reunir `n` vecinos y falla ("Cannot return the results
-        in a contigious 2D array"); se observó una vez tras varias
-        reconstrucciones seguidas. En vez de perder la consulta se reintenta
-        pidiendo menos candidatos. La causa se evita al reconstruir (ver
-        CodebaseIndexer.sync), esto es solo la red de seguridad."""
+        """Queries ChromaDB. With many deleted elements in the HNSW graph, hnswlib may fail to gather `n`
+        neighbors; the query is then retried asking for fewer candidates. The cause is avoided when the index
+        is rebuilt (see CodebaseIndexer.sync): this is only a safety net.
+        """
         while True:
             try:
                 return self.collection.query(query_embeddings=[embedding], n_results=n)
@@ -277,14 +253,13 @@ class RAGEngine:
                 n //= 2
 
     def retrieve(self, question: str, top_k: int = DEFAULT_TOP_K) -> List[RetrievedChunk]:
-        """Los top_k fragmentos más relevantes. Se piden más candidatos que
-        top_k porque la penalización de tests reordena la lista."""
+        """More candidates than top_k are requested because the test penalty reorders the list."""
         return self._ranked_candidates(question, max(top_k * 4, 20))[:top_k]
 
     def select_context(self, question: str, top_k: int = DEFAULT_TOP_K) -> List[RetrievedChunk]:
-        """top_k fragmentos más los que quedan casi empatados con el último
-        (ver ADAPTIVE_MARGIN): el contexto crece solo cuando la pregunta tiene
-        varias respuestas igual de relevantes."""
+        """top_k chunks plus those nearly tied with the last one (see ADAPTIVE_MARGIN): the context only
+        grows when the question has several equally relevant answers.
+        """
         candidates = self._ranked_candidates(question, max(top_k * 4, 20))
         chosen = candidates[:top_k]
         if chosen:
@@ -348,17 +323,17 @@ class RAGEngine:
 
     def _fit_to_budget(self, question: str, system_prompt: str,
                        chunks: List[RetrievedChunk]) -> List[RetrievedChunk]:
-        """Deja solo los fragmentos que caben en la ventana del modelo, en orden
-        de prioridad (primero los recuperados por similitud, luego los del grafo
-        de llamadas). Mejor entregar menos contexto completo que un prompt que
-        Ollama trunque por el comienzo, perdiendo las reglas del sistema."""
+        """Keeps only the chunks that fit in the model window, in priority order (similarity first, then call
+        graph). Less complete context is better than a prompt that Ollama truncates at the start, losing
+        the system rules.
+        """
         budget = prompt_budget_tokens(ANSWER_RESERVE_TOKENS, self.ai_config.llm_num_ctx)
         used = estimate_tokens(system_prompt) + estimate_tokens(self._build_prompt(question, []))
         kept: List[RetrievedChunk] = []
         for chunk in chunks:
             cost = estimate_tokens(chunk.as_context_block(len(kept) + 1)) + 1
             if used + cost > budget:
-                continue  # uno más chico que venga después todavía puede caber
+                continue  # a smaller one that comes later may still fit
             kept.append(chunk)
             used += cost
         return kept
@@ -372,7 +347,6 @@ class RAGEngine:
             chunks = chunks + self.expand_with_call_graph(chunks)
         language_instruction = LANGUAGE_INSTRUCTIONS.get(language, LANGUAGE_INSTRUCTIONS["es"])
         system_prompt = language_instruction + "\n\n" + SYSTEM_PROMPT
-        # Las fuentes que se devuelven son exactamente las que vio el modelo.
         chunks = self._fit_to_budget(question, system_prompt, chunks)
         prompt = self._build_prompt(question, chunks)
         result = chat(self.client_ollama, self.ai_config.llm_model, system_prompt, prompt, self.ai_config.llm_num_ctx,

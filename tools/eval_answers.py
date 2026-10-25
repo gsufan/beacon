@@ -1,29 +1,25 @@
-"""Evalúa las respuestas del RAG completo (recuperación + LLM) con el modelo real.
+"""Evaluates the full RAG answers (retrieval + LLM) with the real model.
 
-Complementa a eval_retrieval.py: aquella mide si el fragmento correcto llega
-al modelo; esta mide qué hace el modelo con él. Los criterios son
-verificables sin juicio humano, para poder repetir la medición y comparar:
+It complements eval_retrieval.py: that one measures whether the right chunk reaches the model; this one
+measures what the model does with it. The criteria are verifiable without human judgment, so the
+measurement can be repeated and compared:
 
-  - Contenido: la respuesta menciona los datos clave de la pregunta (grupos
-    `must` del conjunto; cada grupo admite alternativas).
-  - Cita: menciona el archivo donde está la respuesta (regla 3 del prompt).
-  - Rechazo correcto: ante una pregunta sobre algo que no está en el
-    repositorio, dice que no hay información suficiente (regla 2) y no
-    agrega código de relleno (regla 4). Un rechazo seguido de un ejemplo
-    genérico cuenta como incorrecto.
-  - Falso rechazo: dice que no hay información en una pregunta respondible.
-  - Identificadores sin respaldo: nombres de código que la respuesta escribe
-    entre comillas invertidas y que no aparecen en ningún fragmento entregado
-    al modelo. Es un indicador de posible invención, no una prueba: puede
-    nombrar, por ejemplo, un módulo estándar de Python.
-  - Idioma: la respuesta está en español.
-  - Tamaño del prompt: el máximo de tokens que Ollama reporta haber
-    procesado, para confirmar que todo cabe en la ventana de 8.192 (si se
-    truncara, llm.chat además lo advierte en el registro).
-  - Latencia de la respuesta completa.
+  - Content: the answer mentions the key facts of the question (`must` groups of the set; each group
+    accepts alternatives).
+  - Citation: it mentions the file where the answer is (prompt rule 3).
+  - Correct refusal: for a question about something not in the repository, it says there is not enough
+    information (rule 2) and adds no filler code (rule 4). A refusal followed by a generic example counts
+    as incorrect.
+  - False refusal: it says there is no information for an answerable question.
+  - Ungrounded identifiers: code names the answer writes in backticks that appear in no chunk given to
+    the model. A signal of possible invention, not proof: it may name, for example, a Python standard module.
+  - Language: the answer is in Spanish.
+  - Prompt size: the maximum tokens Ollama reports having processed, to confirm everything fits in the
+    8,192 window (llm.chat also warns in the log if it were truncated).
+  - Latency of the full answer.
 
-Uso:
-  python tools/eval_answers.py <project_id> eval/answers-requests.yaml [--json salida.json]
+Usage:
+  python tools/eval_answers.py <project_id> eval/answers-requests.yaml [--json output.json]
 """
 
 import argparse
@@ -42,11 +38,9 @@ from core.config import load_config  # noqa: E402
 from core.engine.rag_engine import RAGEngine  # noqa: E402
 from core.projects import get_project  # noqa: E402
 
-# Rechazo = la frase que exige la regla 2 del prompt (en cualquier parte: si
-# cierra una respuesta correcta, es un rechazo indebido) o un rechazo con
-# otras palabras al comienzo de la respuesta. Una mención parcial en medio
-# ("no hay información en el contexto sobre getproxies", que permite la regla
-# 6) no es un rechazo.
+# Refusal = the phrase required by prompt rule 2 (anywhere: if it closes a correct answer it is an
+# undue refusal) or a refusal in other words at the start of the answer. A partial mention in the middle
+# ("no information in the context about getproxies", which rule 6 allows) is not a refusal.
 CANONICAL_REFUSAL = re.compile(r"no encontr[ée] informaci[óo]n suficiente", re.IGNORECASE)
 REFUSAL = re.compile(
     r"no (encontr[ée]|hay|tengo|se encontr[óo]|dispongo de) (suficiente )?(informaci[óo]n|fragmentos|c[óo]digo)",
@@ -66,7 +60,6 @@ ENGLISH_WORDS = {"the", "is", "and", "of", "to", "in", "that", "this", "for", "w
 
 
 def ungrounded_identifiers(answer: str, sources) -> list:
-    """Identificadores citados como código que no aparecen en el contexto."""
     corpus = "\n".join(f"{s.file_path}\n{s.code}" for s in sources)
     found = set()
     for snippet in BACKTICKED.findall(answer):

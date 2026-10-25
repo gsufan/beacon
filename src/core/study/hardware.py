@@ -1,5 +1,4 @@
-"""Datos del equipo para el estudio. Solo lo mínimo para saber cómo rinde Beacon en cada configuración:
-CPU, RAM, disco libre, GPU(s) y sistema operativo. Nunca nombre de usuario, rutas, IP ni nombre del equipo."""
+"""Machine data for the study: only what is needed to know how Beacon performs per configuration (CPU, RAM, free disk, GPUs, operating system). Never user name, paths, IP or machine name."""
 
 import os
 import platform
@@ -10,7 +9,7 @@ from typing import List, Optional
 
 
 def _os_name() -> str:
-    """platform.release() dice 'Windows 10' también en Windows 11: se distingue por el número de compilación."""
+    """platform.release() says 'Windows 10' on Windows 11 too: they are told apart by the build number."""
     if sys.platform == "win32":
         try:
             return "Windows 11" if sys.getwindowsversion().build >= 22000 else "Windows 10"
@@ -66,7 +65,7 @@ def _ram_gb() -> Optional[float]:
 
 
 def parse_nvidia_smi(output: str) -> List[dict]:
-    """Salida de `nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits`."""
+    """Output of `nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits`."""
     gpus = []
     for line in output.splitlines():
         if "," not in line:
@@ -87,11 +86,11 @@ def _gpus() -> List[dict]:
             return parse_nvidia_smi(result.stdout)
     except Exception:
         pass
-    return []  # sin GPU NVIDIA detectable (puede haber otra GPU que este chequeo no ve)
+    return []  # no detectable NVIDIA GPU (there may be another GPU this check cannot see)
 
 
 def collect_hardware(disk_path: str = ".") -> dict:
-    """Foto del equipo. `disk_path` solo se usa para medir el espacio libre; la ruta no se guarda."""
+    """Machine snapshot. `disk_path` is only used to measure free space; the path is not stored."""
     try:
         free_gb = round(shutil.disk_usage(disk_path).free / 1024 ** 3, 1)
     except Exception:
@@ -107,7 +106,6 @@ def collect_hardware(disk_path: str = ".") -> dict:
 
 
 def beacon_commit() -> str:
-    """Commit de Beacon que se está ejecutando (vacío si no es una copia de git)."""
     try:
         import git
         from pathlib import Path

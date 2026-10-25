@@ -1,7 +1,7 @@
-"""Consistencia del índice y la documentación incrementales frente a casos
-borde de git (renames, cambios en staging, historia reescrita) y al orden
-sync/docs. Usan un repo git y un ChromaDB temporales; Ollama se reemplaza
-por un cliente falso, así que no hace falta tenerlo corriendo."""
+"""Consistency of the incremental index and documentation against git edge cases (renames, staged changes,
+rewritten history) and the sync/docs order. They use a temporary git repo and ChromaDB; Ollama is
+replaced by a fake client, so it does not need to be running.
+"""
 
 import os
 import sys
@@ -64,7 +64,6 @@ def _indexed_files(idx):
     return {m["file_path"] for m in idx.collection.get(include=["metadatas"])["metadatas"]}
 
 
-# ------------------------------------------------------------ git_watcher ----
 
 def test_rename_to_non_indexable_extension_counts_as_deleted(tmp_path):
     repo, ctx = _setup(tmp_path)
@@ -82,13 +81,12 @@ def test_uncommitted_includes_staged_new_files(tmp_path):
     repo, ctx = _setup(tmp_path)
     _commit(repo, {"a.py": "x = 1\n"}, "init")
     (Path(ctx.repo_path) / "nuevo.py").write_text("y = 2\n")
-    repo.index.add(["nuevo.py"])  # en staging, sin commit
+    repo.index.add(["nuevo.py"])  # staged, no commit
 
     changes = GitWatcher(ctx.repo_path).get_uncommitted_changes()
     assert "nuevo.py" in changes.added
 
 
-# ---------------------------------------------------------------- indexer ----
 
 def test_full_rescan_purges_chunks_of_files_that_no_longer_exist(tmp_path):
     repo, ctx = _setup(tmp_path)
@@ -97,7 +95,7 @@ def test_full_rescan_purges_chunks_of_files_that_no_longer_exist(tmp_path):
     idx.sync()
     assert _indexed_files(idx) == {"a.py", "b.py"}
 
-    # Simula historia reescrita: el commit guardado ya no existe y b.py desapareció
+    # Simulates rewritten history: the stored commit no longer exists and b.py disappeared
     _commit(repo, {"b.py": None}, "borra b")
     idx._save_last_indexed_commit("0" * 40)
     idx.sync()
@@ -113,7 +111,7 @@ def test_resync_of_added_file_does_not_leave_stale_chunks(tmp_path):
     nuevo = Path(ctx.repo_path) / "nuevo.py"
     nuevo.write_text("def viejo():\n    return 1\n")
     idx.sync(include_uncommitted=True)
-    nuevo.write_text("\n\n\ndef nuevo():\n    return 2\n")  # cambia el rango de líneas
+    nuevo.write_text("\n\n\ndef nuevo():\n    return 2\n")  # the line range changes
     _commit(repo, {"nuevo.py": nuevo.read_text()}, "agrega nuevo.py")
     idx.sync()
 
@@ -121,7 +119,6 @@ def test_resync_of_added_file_does_not_leave_stale_chunks(tmp_path):
     assert names == {"nuevo"}
 
 
-# ------------------------------------------------------------ doc_generator ----
 
 def test_docs_refuse_to_run_when_index_is_behind_head(tmp_path):
     repo, ctx = _setup(tmp_path)
@@ -150,17 +147,16 @@ def test_docs_full_rescan_removes_orphan_docs(tmp_path):
     _commit(repo, {"b.py": None}, "borra b")
     idx._save_last_indexed_commit("0" * 40)
     idx.sync()
-    gen._save_last_documented_commit("0" * 40)  # historia reescrita también para las docs
+    gen._save_last_documented_commit("0" * 40)  # rewritten history also for the docs
     gen.sync()
     assert not (Path(ctx.docs_dir) / "b.py.md").exists()
     assert (Path(ctx.docs_dir) / "a.py.md").exists()
 
 
-# ------------------------------------------------------------ race en /sync ----
 
 def test_second_sync_request_is_rejected_while_first_is_claimed(monkeypatch):
     monkeypatch.setattr(api, "get_project", lambda pid: object())
-    monkeypatch.setattr(api, "_run_sync", lambda pid: None)  # la tarea "no termina": el claim sigue vigente
+    monkeypatch.setattr(api, "_run_sync", lambda pid: None)  # the task "does not finish": the claim stays active
     client = TestClient(api.app)
     try:
         assert client.post("/projects/demo-race/sync").status_code == 202

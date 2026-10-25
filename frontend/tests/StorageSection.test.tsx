@@ -1,4 +1,4 @@
-// Sección de almacenamiento de Configuración: tamaños por proyecto y borrado selectivo con confirmación.
+// Storage section of Settings: sizes per project and selective deletion with confirmation.
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -38,10 +38,10 @@ describe("almacenamiento", () => {
   it("muestra los tamaños, no ofrece borrar la carpeta de un proyecto local y exige confirmar", async () => {
     open();
     expect(await screen.findByText(/Clonado/)).toBeInTheDocument();
-    expect(screen.getAllByText(/tu carpeta|your own folder/).length).toBe(1);  // el proyecto local no tiene clon administrado
+    expect(screen.getAllByText(/tu carpeta|your own folder/).length).toBe(1);  // a local project has no managed clone
     await userEvent.click(screen.getByRole("button", { name: /(Borrar|Delete) (Clon del repositorio|Repository clone) clonado/ }));
-    expect(screen.getByRole("note")).toHaveTextContent(/se vuelve a descargar|downloaded again/i);  // avisa qué pasará
-    expect(calls.some((c) => c.method === "POST")).toBe(false);  // todavía no se borró nada
+    expect(screen.getByRole("note")).toHaveTextContent(/se vuelve a descargar|downloaded again/i);  // says what will happen
+    expect(calls.some((c) => c.method === "POST")).toBe(false);  // nothing deleted yet
     await userEvent.click(screen.getByRole("button", { name: /Confirmar|Confirm/ }));
     await waitFor(() => expect(calls.some((c) => c.path === "/projects/clonado/clean" && JSON.stringify(c.body) === JSON.stringify({ clone: true }))).toBe(true));
     expect(await screen.findByText(/liberaron|Freed/)).toBeInTheDocument();

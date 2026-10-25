@@ -1,15 +1,11 @@
-"""Experimento: reordenar los candidatos de la búsqueda con el LLM.
+"""Experiment: rerank the search candidates with the LLM.
 
-Pregunta que responde: ¿conviene una segunda etapa que pida a llama3 ordenar
-los 20 candidatos de la búsqueda antes de armar el contexto? Es la forma de
-reordenamiento disponible en local (Ollama no ofrece modelos de
-reordenamiento propiamente tales). Se mide con los mismos conjuntos que
-tools/eval_retrieval.py y se compara contra la búsqueda sin reordenar.
+Would a second stage that asks llama3 to order the 20 search candidates before building the context pay
+off? It is the form of reranking available locally (Ollama has no dedicated reranking models). It is
+measured with the same sets as tools/eval_retrieval.py and compared against the search without reranking.
+It is not part of the engine: it stays as evidence of the decision.
 
-No forma parte del motor: si el resultado no justifica el costo (una llamada
-al LLM más por consulta), queda como evidencia de la decisión.
-
-Uso:
+Usage:
   python tools/experimento_reordenamiento.py <project_id> eval/requests.yaml
 """
 

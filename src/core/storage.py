@@ -1,10 +1,10 @@
-"""Espacio en disco por proyecto y limpieza selectiva.
+"""Disk usage per project and selective cleanup.
 
-Cada proyecto guarda en data/<id>/ hasta tres cosas, que se pueden borrar por separado:
-  - el clon del repositorio (solo si Beacon lo clonó por URL; una carpeta local del usuario nunca se toca),
-  - el índice vectorial (se reconstruye con `beacon sync`),
-  - la documentación generada (se reconstruye con `beacon docs`).
-El proyecto sigue registrado: lo borrado se vuelve a crear en el siguiente `sync`."""
+Each project keeps up to three things in data/<id>/, which can be deleted separately: the repository
+clone (only if Beacon cloned it from a URL; a user's local folder is never touched), the vector index
+and the generated documentation. The project stays registered: what was deleted is recreated on the
+next `sync`.
+"""
 
 import shutil
 from dataclasses import dataclass
@@ -25,7 +25,7 @@ class ProjectUsage:
     clone_bytes: int
     index_bytes: int
     docs_bytes: int
-    clone_path: str  # carpeta del clon administrado por Beacon ("" si el repo es una carpeta local del usuario)
+    clone_path: str  # folder of the clone managed by Beacon ("" if the repo is a user's local folder)
 
     @property
     def total_bytes(self) -> int:
@@ -46,7 +46,7 @@ def dir_size(path: Path) -> int:
 
 
 def _managed_clone(entry: ProjectEntry, data_root: Path) -> Path | None:
-    """El clon solo es de Beacon si lo creó él: proyecto por URL y dentro de data/<id>/."""
+    """The clone belongs to Beacon only if it created it: a URL project, inside data/<id>/."""
     if entry.source_type != "git":
         return None
     path = Path(entry.repo_path).resolve()
@@ -69,12 +69,11 @@ def list_usage(data_root: Path | None = None) -> List[ProjectUsage]:
 
 
 def _remove_dir(path: Path):
-    """En Windows, borrar falla si otro proceso la tiene abierta: se avisa en vez de dejar algo a medias."""
+    """On Windows, deleting fails if another process has it open: report it instead of leaving things half done."""
     shutil.rmtree(path)
 
 
 def clean_project(project_id: str, *, clone: bool = False, index: bool = False, docs: bool = False) -> int:
-    """Borra lo pedido y devuelve los bytes liberados. El proyecto sigue registrado."""
     entry = next((p for p in load_config().projects if p.id == project_id), None)
     if entry is None:
         raise ProjectNotFoundError(f"Proyecto '{project_id}' no encontrado en config.yaml.")
@@ -82,12 +81,12 @@ def clean_project(project_id: str, *, clone: bool = False, index: bool = False, 
     usage = project_usage(entry)
     freed = 0
     if project_dir.exists() and (clone or index or docs):
-        ensure_not_busy(project_dir)  # no borrar mientras otro proceso (sync, servidor) escribe
+        ensure_not_busy(project_dir)  # do not delete while another process (sync, server) writes
     if index and (project_dir / "chroma_db").exists():
         release_chroma_client(str(project_dir / "chroma_db"))
         _remove_dir(project_dir / "chroma_db")
         freed += usage.index_bytes
-        bump_index_version(project_dir)  # un servidor ya levantado no debe seguir usando el índice borrado
+        bump_index_version(project_dir)  # a running server must not keep using the deleted index
     if docs and (project_dir / "docs").exists():
         _remove_dir(project_dir / "docs")
         freed += usage.docs_bytes
@@ -95,7 +94,7 @@ def clean_project(project_id: str, *, clone: bool = False, index: bool = False, 
     if clone and managed is not None and managed.exists():
         _remove_dir(managed)
         freed += usage.clone_bytes
-    ensure_project_dirs(project_id)  # las carpetas vacías que el resto del sistema espera
+    ensure_project_dirs(project_id)  # the empty folders the rest of the system expects
     return freed
 
 

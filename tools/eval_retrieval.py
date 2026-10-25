@@ -1,21 +1,17 @@
-"""Evalúa la recuperación del RAG contra un conjunto de preguntas de referencia.
+"""Evaluates RAG retrieval against a set of reference questions.
 
-Métricas (estándar en recuperación de información):
-  - Hit@k (recall@k por pregunta): % de preguntas con al menos un fragmento
-    esperado entre los k primeros resultados.
-  - MRR@10: promedio de 1/posición del primer fragmento correcto (0 si no
-    aparece en los 10 primeros). Premia que el correcto quede arriba.
-  - En contexto: % de preguntas cuyo fragmento esperado queda dentro del
-    contexto que realmente se entrega al modelo (top_k=5 más los fragmentos
-    casi empatados que suma el contexto adaptativo), y su tamaño medio.
-  - Latencia media de la recuperación (embedding de la pregunta + búsqueda),
-    sin contar la generación del LLM.
+Metrics (standard in information retrieval):
+  - Hit@k: % of questions with at least one expected chunk among the first k results.
+  - MRR@10: mean of 1/position of the first correct chunk (0 if absent from the first 10).
+  - In context: % of questions whose expected chunk is inside the context actually given to the model
+    (top_k=5 plus the nearly tied chunks added by the adaptive context), and its average size.
+  - Mean retrieval latency (question embedding + search), excluding LLM generation.
 
-Solo mide la recuperación (no llama al LLM), así que es rápido y repetible:
-sirve para comparar cambios (ej. otro modelo de embeddings) con números.
+It only measures retrieval (no LLM call), so it is fast and repeatable: useful to compare changes (e.g.
+another embedding model) with numbers.
 
-Uso:
-  python tools/eval_retrieval.py <project_id> eval/requests.yaml [--json salida.json]
+Usage:
+  python tools/eval_retrieval.py <project_id> eval/requests.yaml [--json output.json]
 """
 
 import argparse
@@ -38,8 +34,7 @@ KS = (1, 3, 5, 10)
 
 def evaluate(project_id: str, questions: list) -> dict:
     engine = RAGEngine(get_project(project_id), load_config().ai_provider)
-    # Una clave esperada mal escrita contaría como fallo de la búsqueda sin
-    # serlo: se aborta antes de medir.
+    # A misspelled expected key would count as a search failure without being one: abort before measuring.
     indexed = {f"{m['file_path']}::{m['name']}" for m in engine.collection.get(include=["metadatas"])["metadatas"]}
     unknown = sorted({k for item in questions for k in item["expected"]} - indexed)
     if unknown:

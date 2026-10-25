@@ -5,8 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Beacon</title>
     <script>
-      // Aplica el tema guardado (o el del sistema) antes de que React monte,
-      // para no mostrar un flash del tema equivocado al cargar.
+      // Apply the saved (or system) theme before React mounts, to avoid a flash of the wrong theme.
       (function () {
         var stored = localStorage.getItem("beacon:theme");
         var dark = stored ? stored === "dark" : window.matchMedia("(prefers-color-scheme: dark)").matches;

@@ -1,11 +1,10 @@
-# Conjunto de evaluación de la recuperación sobre Online Boutique
-# (GoogleCloudPlatform/microservices-demo): 11 microservicios en Go, C#,
-# JavaScript, Python y Java. Complementa a eval/requests.yaml (un solo
-# lenguaje) para medir la búsqueda en un repositorio políglota.
+# Retrieval evaluation set on Online Boutique (GoogleCloudPlatform/microservices-demo): 11 microservices
+# in Go, C#, JavaScript, Python and Java. Complements eval/requests.yaml (a single language) to measure
+# search on a polyglot repository.
 #
-# Mismo formato y criterio que requests.yaml: cada pregunta, escrita en
-# español, lista los fragmentos que la responden como "ruta::nombre".
-# Uso: python tools/eval_retrieval.py <project_id> eval/microservices-demo.yaml
+# Same format and criteria as requests.yaml: each question, written in Spanish, lists the chunks that
+# answer it as "path::name".
+# Usage: python tools/eval_retrieval.py <project_id> eval/microservices-demo.yaml
 
 questions:
   - q: "¿Cómo se procesa un pedido completo, desde el carrito hasta el pago y el envío?"

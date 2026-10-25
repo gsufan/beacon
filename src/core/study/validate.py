@@ -1,5 +1,4 @@
-"""Validación automática de un archivo de resultados al recibirlo (pensada para cientos de archivos).
-Devuelve problemas (el archivo no sirve) y avisos (el archivo sirve pero es sospechoso)."""
+"""Automatic validation of a results file on receipt. Returns problems (the file is unusable) and warnings (usable but suspicious)."""
 
 from typing import List, Tuple
 
@@ -44,8 +43,8 @@ def validate_result(data: dict) -> Tuple[List[str], List[str]]:
         warnings.append("tiempo de respuesta mayor a 15 minutos")
     if all(q.get("valoracion") is None for q in questions):
         warnings.append("ninguna respuesta fue valorada")
-    # Una negativa corta («no encontré información») puede salir en menos de 1 s: lo que no es plausible es generar
-    # respuestas largas a más de 400 tokens/s con un modelo local de 8B.
+    # A short refusal ("no information found") can come back in under 1 s; what is implausible is generating
+    # long answers above 400 tokens/s with a local 8B model.
     if any(q.get("tokens_respuesta", 0) >= 50 and q.get("segundos_respuesta", 0) > 0
            and q["tokens_respuesta"] / q["segundos_respuesta"] > 400 for q in questions):
         warnings.append("velocidad de generación de más de 400 tokens/s: poco plausible para un modelo local de 8B")

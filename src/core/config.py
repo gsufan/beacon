@@ -1,4 +1,4 @@
-"""Carga config/config.yaml. Reemplaza al .env: todo lo configurable vive acá."""
+"""Loading and validation of config/config.yaml and the credentials."""
 
 import os
 import re
@@ -8,21 +8,19 @@ from typing import List, Optional
 
 import yaml
 
-# Busca config.yaml relativo a la raíz del proyecto, no al cwd del usuario
+# Looked up relative to the project root, not the user's cwd
 _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.yaml"
 CONFIG_PATH = Path(os.getenv("DEUDA_TECNICA_CONFIG", _DEFAULT_CONFIG_PATH))
 
-# Tokens de repos privados: archivo separado, gitignoreado, NUNCA junto a config.yaml
-# (config.yaml lo expone la API en GET /config y se copia/comparte con facilidad;
-# un token ahí se filtraría).
+# Tokens for private repositories: a separate file, kept out of git and never in config.yaml, which the API
+# exposes in GET /config.
 _DEFAULT_CREDENTIALS_PATH = Path(__file__).resolve().parents[2] / "config" / "credentials.yaml"
 CREDENTIALS_PATH = Path(os.getenv("DEUDA_TECNICA_CREDENTIALS", _DEFAULT_CREDENTIALS_PATH))
 
-# Ver core/engine/embeddings.py: elegido midiendo la recuperación (tools/eval_retrieval.py).
 DEFAULT_EMBEDDING_MODEL = "qwen3-embedding:0.6b"
 
 
-# Ventana de contexto por defecto: el máximo de llama3:8b (ver core/engine/llm.py).
+# Default context window: the maximum of llama3:8b (see core/engine/llm.py).
 DEFAULT_LLM_NUM_CTX = 8192
 MIN_LLM_NUM_CTX = 2048
 
@@ -33,7 +31,7 @@ class AIProviderConfig:
     ollama_host: str
     embedding_model: str
     llm_model: str
-    llm_num_ctx: int = DEFAULT_LLM_NUM_CTX  # ventana de contexto que se pide al modelo de lenguaje
+    llm_num_ctx: int = DEFAULT_LLM_NUM_CTX
 
 
 @dataclass
@@ -41,7 +39,7 @@ class ProjectEntry:
     id: str
     name: str
     repo_path: str
-    source_type: str = "local"  # "local" | "git"
+    source_type: str = "local"
     repo_url: Optional[str] = None
     auto_watch: bool = False
 
@@ -53,7 +51,7 @@ class AppConfig:
 
 
 def _valid_num_ctx(value) -> int:
-    """Ventana de contexto del config.yaml; si falta o no es un entero razonable, la por defecto."""
+    """Context window from config.yaml; the default if missing or not a reasonable integer."""
     if isinstance(value, int) and not isinstance(value, bool) and value >= MIN_LLM_NUM_CTX:
         return value
     return DEFAULT_LLM_NUM_CTX
@@ -102,7 +100,7 @@ def update_ai_provider(
     provider: str, ollama_host: str, embedding_model: str, llm_model: str,
     path: Path = CONFIG_PATH, llm_num_ctx: Optional[int] = None,
 ) -> AIProviderConfig:
-    """Guarda el proveedor y los modelos. `llm_num_ctx=None` conserva la ventana ya configurada."""
+    """`llm_num_ctx=None` keeps the window already configured."""
     raw = _read_raw(path)
     if llm_num_ctx is None:
         llm_num_ctx = _valid_num_ctx(raw.get("ai_provider", {}).get("llm_num_ctx"))
@@ -112,7 +110,7 @@ def update_ai_provider(
         "embedding_model": embedding_model, "llm_model": llm_model,
     }
     if llm_num_ctx != DEFAULT_LLM_NUM_CTX:
-        ai["llm_num_ctx"] = llm_num_ctx  # solo se escribe si difiere del valor por defecto
+        ai["llm_num_ctx"] = llm_num_ctx  # only written when it differs from the default
     raw["ai_provider"] = ai
     _write_raw(raw, path)
     return AIProviderConfig(provider, ollama_host, embedding_model, llm_model, llm_num_ctx)
@@ -126,7 +124,7 @@ class InvalidProjectIdError(ValueError):
     pass
 
 
-# El id es nombre de carpeta (data/<id>/): con ".." un purge borraría la raíz del proyecto.
+# The id is a folder name (data/<id>/): it must reject paths such as "..".
 _PROJECT_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
 
 
@@ -172,9 +170,7 @@ def update_project(
     project_id: str, name: Optional[str] = None, repo_path: Optional[str] = None,
     path: Path = CONFIG_PATH,
 ) -> bool:
-    """Actualiza campos puntuales de un proyecto ya registrado (name y/o
-    repo_path). None significa "no tocar ese campo" — para desactivar
-    auto_watch se usa set_auto_watch, que ya cubre ese caso."""
+    """Updates individual fields of a registered project. None means "leave that field"; use set_auto_watch to change auto_watch."""
     raw = _read_raw(path)
     projects = raw.get("projects", [])
     for p in projects:
@@ -199,7 +195,6 @@ def set_auto_watch(project_id: str, enabled: bool, path: Path = CONFIG_PATH) -> 
     return False
 
 
-# ---------- Credenciales (config/credentials.yaml, gitignoreado) ----------
 
 def get_project_token(project_id: str, path: Path = CREDENTIALS_PATH) -> Optional[str]:
     if not path.exists():

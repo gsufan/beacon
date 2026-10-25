@@ -1,6 +1,6 @@
-"""Mantenimiento del índice vectorial (2026-10): reconstrucción limpia,
-carpetas huérfanas de ChromaDB y consultas sobre un grafo HNSW con muchos
-elementos borrados. Ollama se reemplaza por un cliente falso."""
+"""Vector index maintenance: clean rebuild, orphan ChromaDB folders and queries on an HNSW graph with many
+deleted elements. Ollama is replaced by a fake client.
+"""
 
 import sqlite3
 import sys
@@ -51,7 +51,7 @@ def test_full_rebuild_recreates_the_collection_instead_of_deleting_one_by_one(tm
     idx.sync()
     first_id = idx.collection.id
     result = idx.sync(full=True)
-    # Colección nueva: el grafo HNSW parte sin elementos marcados como borrados.
+    # New collection: the HNSW graph starts with no elements marked as deleted.
     assert idx.collection.id != first_id
     assert result["chunks_purgados"] == result["chunks_insertados"] == idx.collection.count() > 0
 
@@ -68,10 +68,10 @@ def test_orphan_segment_folders_are_removed_and_live_ones_kept(tmp_path):
 
     assert remove_orphan_segments(str(chroma_dir)) == 1
     assert not orphan.exists()
-    assert unrelated.exists()  # solo se tocan carpetas con nombre de segmento
+    assert unrelated.exists()  # only folders named like segments are touched
     with closing(sqlite3.connect(chroma_dir / "chroma.sqlite3")) as conn:
         live = {row[0] for row in conn.execute("SELECT id FROM segments")}
-    for segment in live:  # los segmentos en uso siguen intactos (si tienen carpeta)
+    for segment in live:  # segments in use stay intact (if they have a folder)
         assert not (chroma_dir / segment).exists() or any((chroma_dir / segment).iterdir())
 
 
@@ -82,7 +82,7 @@ def test_orphan_cleanup_without_catalog_does_nothing(tmp_path):
 
 
 class _FlakyCollection:
-    """Como hnswlib con muchos borrados: no reúne más de `max_ok` vecinos."""
+    """Like hnswlib with many deletions: it does not gather more than `max_ok` neighbors."""
     def __init__(self, max_ok):
         self.max_ok, self.requested = max_ok, []
 
@@ -125,14 +125,12 @@ def test_other_chroma_errors_are_not_hidden(tmp_path):
         engine.retrieve("¿qué hace a?")
 
 
-# ------------------------------------------ reconstrucción sin interrupción ----
 
 def test_queries_keep_working_while_the_index_is_rebuilt(tmp_path):
-    # Medido con tools/stress_test.py: antes, una consulta durante un
-    # `sync --full` de otra consola respondía error 500.
+    # A query during a `sync --full` from another console must answer normally.
     ctx = _project(tmp_path)
     _indexer(ctx).sync()
-    engine = RAGEngine(ctx, AI)  # como el servidor: abierta antes de reconstruir
+    engine = RAGEngine(ctx, AI)  # like the server: opened before rebuilding
     engine.client_ollama = _FakeEmbed()
     seen_during = []
 
@@ -140,8 +138,8 @@ def test_queries_keep_working_while_the_index_is_rebuilt(tmp_path):
         seen_during.append(len(engine.retrieve("¿qué hace a?", top_k=5)))
 
     _indexer(ctx).sync(full=True, on_progress=query_midway)
-    assert seen_during and all(n > 0 for n in seen_during)  # el índice anterior seguía disponible
-    assert len(engine.retrieve("¿qué hace a?", top_k=5)) > 0  # y después ve el nuevo
+    assert seen_during and all(n > 0 for n in seen_during)  # the previous index was still available
+    assert len(engine.retrieve("¿qué hace a?", top_k=5)) > 0  # and afterwards sees the new one
 
 
 def test_a_failed_rebuild_leaves_the_previous_index_intact(tmp_path):
@@ -160,7 +158,6 @@ def test_a_failed_rebuild_leaves_the_previous_index_intact(tmp_path):
     assert "codebase_index__rebuild" not in [c.name for c in fresh.client.list_collections()]
 
 
-# ------------------------------------------------- borrado de un proyecto ----
 
 def _registered(monkeypatch, tmp_path):
     import core.services as services
@@ -179,7 +176,7 @@ def _registered(monkeypatch, tmp_path):
 
 
 def test_purge_works_after_the_index_was_queried_in_this_process(monkeypatch, tmp_path):
-    # En Windows, el índice abierto impedía borrar la carpeta (WinError 32).
+    # On Windows, an open index prevents deleting the folder.
     services, ctx, project_dir, removed = _registered(monkeypatch, tmp_path)
     _indexer(ctx).sync()
     engine = RAGEngine(ctx, AI)
@@ -206,5 +203,5 @@ def test_purge_of_data_in_use_changes_nothing(monkeypatch, tmp_path):
     monkeypatch.setattr(Path, "rename", locked)
     with pytest.raises(ProjectBusyError, match="no se borró nada"):
         services.unregister_project("demo", purge_data=True)
-    assert removed == []  # sigue registrado
-    assert (project_dir / "chroma_db").exists()  # y con sus datos
+    assert removed == []  # still registered
+    assert (project_dir / "chroma_db").exists()  # and with its data

@@ -1,8 +1,6 @@
-// Pruebas de integración de la interfaz: la aplicación completa (rutas,
-// contexto de proyecto e idioma, llamadas a la API) con un servidor simulado
-// en `fetch`. Cubren los flujos que antes solo se probaban a mano en el
-// navegador: navegar entre vistas, preguntar y ver fuentes, leer la
-// documentación y mostrar los errores de la API.
+// Interface integration tests: the whole app (routes, project and language context, API calls) against a
+// fake server behind `fetch`. They cover navigating between views, asking and viewing sources, reading the
+// documentation and showing API errors.
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";

@@ -1,4 +1,4 @@
-"""Indexador incremental: chunker + git diff + ChromaDB + embeddings."""
+"""Incremental indexer: chunker, git diff, ChromaDB and embeddings."""
 
 import os
 from typing import Callable, List, Optional
@@ -13,37 +13,28 @@ from core.engine.embeddings import embed_documents
 from core.engine.git_watcher import GitWatcher, ChangeSet
 
 COLLECTION_NAME = "codebase_index"
-# Colección donde se arma una reconstrucción completa antes de reemplazar a
-# la vigente (ver CodebaseIndexer.sync).
 STAGING_COLLECTION_NAME = "codebase_index__rebuild"
 CONTROL_COLLECTION_NAME = "sys_index_control"
 CONTROL_KEY_ID = "last_indexed_commit"
-# Índices creados antes de registrar el modelo usaban siempre nomic-embed-text.
 LEGACY_EMBEDDING_MODEL = "nomic-embed-text"
-# Versión de lo que se guarda en el índice (qué se embebe y cómo se dividen
-# los archivos). Si cambia, el próximo sync reconstruye el índice completo
-# para no mezclar fragmentos de las dos versiones.
-#   1: solo el código.
-#   2: ruta del archivo antes del código y sin firmas @overload (medido con
-#      tools/eval_retrieval.py: Hit@5 en microservices-demo de 77% a 95%).
+# Version of what is stored in the index (what is embedded and how files are split). If it changes,
+# the next sync rebuilds the whole index so fragments of both versions are not mixed.
+#   1: code only.
+#   2: file path before the code, without @overload signatures.
 INDEX_FORMAT = 2
 
 
 class IndexModelMismatchError(RuntimeError):
-    """El índice se construyó con otro modelo de embeddings: sus vectores no
-    son comparables con los de las consultas y hay que reindexar."""
+    """The index was built with another embedding model: its vectors are not comparable with query vectors and it must be reindexed."""
 
 def embedding_text(meta: dict, code: str) -> str:
-    """Texto que se embebe para un fragmento: el código precedido de su ruta y
-    su nombre. El código solo no dice a qué módulo o servicio pertenece (en un
-    repositorio de microservicios, `GetQuote` de shipping y `getQuote` del
-    frontend son casi iguales); la ruta sí. Lo que se guarda y se entrega al
-    modelo sigue siendo solo el código."""
+    """Text embedded for a chunk: the code preceded by its path and name. The code alone does not say which
+    module or service it belongs to (in a microservices repository two `getQuote` functions look alike);
+    the path does. What is stored and given to the model is still only the code.
+    """
     return f"{meta.get('file_path', '')}\n\n{code}"
 
 
-# Progreso: callback(current, total, file_path) — la CLI/UI lo usan para
-# mostrar avance real en vez de una consola muda.
 ProgressCallback = Optional[Callable[[int, int, str], None]]
 
 
@@ -59,14 +50,12 @@ class CodebaseIndexer:
         )
         self.control = self.client.get_or_create_collection(name=CONTROL_COLLECTION_NAME)
 
-    # ---------- Estado ----------
 
     def _get_last_indexed_commit(self):
         result = self.control.get(ids=[CONTROL_KEY_ID])
         return result["metadatas"][0]["commit_hash"] if result["ids"] else None
 
     def indexed_embedding_model(self) -> Optional[str]:
-        """Modelo con que se construyó el índice (None si todavía no hay índice)."""
         return indexed_embedding_model(self.control, self.collection)
 
     def _indexed_format(self) -> int:
@@ -81,14 +70,11 @@ class CodebaseIndexer:
         )
 
     def _start_rebuild(self):
-        """Empieza una reconstrucción completa en una colección aparte. La
-        vigente sigue respondiendo consultas hasta el reemplazo; antes se
-        borraba al comenzar y una consulta llegada en ese lapso fallaba
-        (medido con tools/stress_test.py: el servidor respondía error 500
-        mientras otra consola corría `sync --full`). También sirve al cambiar
-        de modelo, porque la colección nueva admite otra dimensión de vector."""
+        """Starts a full rebuild in a separate collection; the current one keeps answering queries until
+        the swap. It also serves a model change, since the new collection accepts another vector dimension.
+        """
         try:
-            self.client.delete_collection(STAGING_COLLECTION_NAME)  # restos de un intento fallido
+            self.client.delete_collection(STAGING_COLLECTION_NAME)  # leftovers from a failed attempt
         except Exception:
             pass
         live = self.collection
@@ -97,7 +83,6 @@ class CodebaseIndexer:
         return live
 
     def _finish_rebuild(self):
-        """Reemplaza la colección vigente por la reconstruida."""
         self.client.delete_collection(COLLECTION_NAME)
         self.collection.modify(name=COLLECTION_NAME)
         self.collection = self.client.get_collection(COLLECTION_NAME)
@@ -109,7 +94,6 @@ class CodebaseIndexer:
             pass
         self.collection = live
 
-    # ---------- Embeddings (con división recursiva adaptativa) ----------
 
     DIRECT_TRY_MAX_CHARS = 16000
     MIN_SPLIT_CHARS = 800
@@ -126,12 +110,12 @@ class CodebaseIndexer:
             out.append((chunk_id, code, base_meta, self._embed(embedding_text(base_meta, code))))
             return
         except ollama.ResponseError as e:
-            # Solo "texto demasiado largo" amerita dividir; modelo faltante u Ollama caído
-            # deben propagarse, o el sync marcaría el commit como indexado con 0 chunks.
+            # Only "text too long" justifies splitting; a missing model or Ollama being down must propagate,
+            # or the sync would mark the commit as indexed with 0 chunks.
             if e.status_code == 404:
                 raise
         if len(code) <= self.MIN_SPLIT_CHARS or depth >= self.MAX_SPLIT_DEPTH:
-            return  # se omite: no se pudo embeber ni dividiendo
+            return  # skipped: it could not be embedded even after splitting
         self._split_and_recurse(chunk_id, code, base_meta, out, depth)
 
     def _split_and_recurse(self, chunk_id, code, base_meta, out, depth):
@@ -145,9 +129,9 @@ class CodebaseIndexer:
         self._embed_adaptive(f"{chunk_id}::R{depth+1}", code[split_at:], right_meta, out, depth + 1)
 
     def _embed_file_chunks(self, chunks: List[CodeChunk]) -> list:
-        """Embeddings de todos los chunks de un archivo en una sola llamada (por
-        lotes). Si alguno no cabe en el modelo, se vuelve al camino chunk por
-        chunk, que divide los largos recursivamente."""
+        """Embeddings for all chunks of a file in one batched call. If one does not fit in the model, it
+        falls back to chunk-by-chunk, which splits long chunks recursively.
+        """
         results = []
         if all(len(c.code) <= self.DIRECT_TRY_MAX_CHARS for c in chunks):
             try:
@@ -155,13 +139,12 @@ class CodebaseIndexer:
                 vectors = embed_documents(self.client_ollama, self.ai_config.embedding_model, texts)
                 return [(c.chunk_id(), c.code, c.to_metadata(), v) for c, v in zip(chunks, vectors)]
             except ollama.ResponseError as e:
-                if e.status_code == 404:  # modelo no descargado: no es un problema de tamaño
+                if e.status_code == 404:  # model not pulled: not a size problem
                     raise
         for c in chunks:
             self._embed_adaptive(c.chunk_id(), c.code, c.to_metadata(), results)
         return results
 
-    # ---------- Purga / indexación de un archivo ----------
 
     def _purge_file(self, file_path: str) -> int:
         existing = self.collection.get(where={"file_path": file_path})
@@ -170,9 +153,9 @@ class CodebaseIndexer:
         return len(existing["ids"])
 
     def _index_file(self, file_path: str, commit_hash: Optional[str] = None) -> int:
-        """Indexa un archivo. Con `commit_hash`, el contenido se lee desde ese
-        commit (el caso normal); sin él, desde el disco (solo el modo
-        --uncommitted, que por diseño no registra ningún commit)."""
+        """Indexes one file. With `commit_hash` the content is read from that commit (the normal case);
+        without it, from disk (only the --uncommitted mode, which records no commit).
+        """
         if commit_hash:
             source = self.watcher.read_file_at(commit_hash, file_path)
             if source is None:
@@ -199,24 +182,21 @@ class CodebaseIndexer:
         self.collection.upsert(ids=ids, documents=documents, embeddings=embeddings, metadatas=metadatas)
         return len(ids)
 
-    # ---------- Orquestación ----------
 
     def sync(self, include_uncommitted: bool = False, on_progress: ProgressCallback = None,
              full: bool = False) -> dict:
-        # full=True: rehace el índice entero (ej. tras actualizar el chunker)
         remove_orphan_segments(self.project.chroma_dir)
         previous_model = self.indexed_embedding_model()
         model_changed = previous_model is not None and previous_model != self.ai_config.embedding_model
         if model_changed:
-            full = True  # vectores de otro modelo no son comparables: se reconstruye todo
+            full = True  # another model's vectors are not comparable: rebuild everything
         previous_format = self._indexed_format()
         format_changed = previous_model is not None and not model_changed and previous_format != INDEX_FORMAT
         if format_changed:
-            full = True  # mismo modelo y dimensión: basta con rehacerlo todo
+            full = True  # same model and dimension: rebuilding is enough
         last_commit = None if full else self._get_last_indexed_commit()
-        # Se fija el commit al empezar: el diff, el contenido indexado y el hash
-        # registrado al final son del mismo commit aunque llegue otro durante
-        # el sync (antes se leía HEAD al final y el disco durante el proceso).
+        # The commit is fixed at the start: the diff, the indexed content and the recorded hash all belong to
+        # the same commit even if another arrives during the sync.
         target = self.watcher.current_commit_hash()
         changes: ChangeSet = self.watcher.get_changes_since(last_commit, target=target)
 
@@ -232,17 +212,14 @@ class CodebaseIndexer:
         files = changes.files_to_reindex()
         purged = 0
         indexed, files_indexed = 0, 0
-        # Una reconstrucción completa se arma en una colección nueva en vez de
-        # borrar fragmento por fragmento: hnswlib solo marca los borrados, así
-        # que cada reconstrucción inflaba el índice (13 MB para 363 fragmentos
-        # tras cinco reconstrucciones) y con muchos borrados la búsqueda puede
-        # fallar ("Cannot return the results in a contigious 2D array").
+        # A full rebuild is assembled in a new collection instead of deleting chunk by chunk: hnswlib only marks
+        # deletions, so the index grows and, with many deleted elements, search can fail.
         live = self._start_rebuild() if changes.full_rescan else None
         try:
             if changes.full_rescan:
                 purged += live.count()
             else:
-                # también los que se reindexan: un 'added' pudo quedar indexado por un --uncommitted previo
+                # also those being reindexed: an 'added' file may have been indexed by a previous --uncommitted run
                 for fp in changes.files_to_purge() + files:
                     purged += self._purge_file(fp)
             total = len(files)
@@ -257,10 +234,10 @@ class CodebaseIndexer:
                 self._finish_rebuild()
                 live = None
         finally:
-            if live is not None:  # falló a mitad: el índice anterior queda intacto
+            if live is not None:  # failed midway: the previous index stays intact
                 self._abort_rebuild(live)
-            # Aunque el sync falle a mitad, el índice ya cambió: avisar a otros
-            # procesos (el servidor) para que no sigan buscando en su copia vieja.
+            # Even if the sync fails midway the index has changed: notify other processes (the server) so they
+            # stop searching their stale copy.
             bump_index_version(os.path.dirname(self.project.chroma_dir))
 
         if not include_uncommitted:
@@ -284,8 +261,7 @@ class CodebaseIndexer:
 
 
 def indexed_embedding_model(control, collection) -> Optional[str]:
-    """Modelo registrado en la colección de control; los índices anteriores a
-    este registro se construyeron con LEGACY_EMBEDDING_MODEL."""
+    """Model recorded in the control collection; indexes created before it was recorded used LEGACY_EMBEDDING_MODEL."""
     result = control.get(ids=[CONTROL_KEY_ID])
     if result["ids"]:
         return result["metadatas"][0].get("embedding_model") or LEGACY_EMBEDDING_MODEL

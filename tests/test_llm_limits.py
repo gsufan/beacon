@@ -1,5 +1,6 @@
-"""Límites de la respuesta del modelo: tope de longitud, tiempo máximo y cancelación (un bucle de repetición no debe
-dejar la GPU ocupada minutos), más el chequeo previo del modo estudio."""
+"""Limits on the model answer: length cap, maximum time and cancellation (a repetition loop must not keep the
+GPU busy for minutes), plus the study mode pre-check.
+"""
 import sys
 import time
 from pathlib import Path
@@ -16,7 +17,7 @@ from core.study import api as study_api  # noqa: E402
 
 
 class _Stream:
-    """Flujo de Ollama simulado: fragmentos de texto y un último con los conteos. Registra si se cerró."""
+    """Simulated Ollama stream: text chunks and a last one with the counts. Records whether it was closed."""
 
     def __init__(self, pieces, done_counts=(10, 5), delay=0.0):
         self.pieces, self.done_counts, self.delay, self.closed = pieces, done_counts, delay, False
@@ -79,7 +80,6 @@ def test_a_cancelled_answer_stops_and_the_stream_is_closed():
     assert stream.closed
 
 
-# ---- endpoints del estudio ------------------------------------------------------
 
 class _Engine:
     ai_config = SimpleNamespace(ollama_host="http://x")
@@ -123,7 +123,7 @@ def test_a_cancelled_question_is_reported_and_the_cancel_flag_resets_for_the_nex
 def test_the_server_shutdown_hook_stops_a_running_answer(tmp_path, monkeypatch):
     _, router = _client(tmp_path, monkeypatch, _Engine())
     assert callable(router.shutdown)
-    router.shutdown()  # no falla aunque no haya nada en curso
+    router.shutdown()  # does not fail when nothing is in progress
 
 
 def test_health_flags_what_is_missing_before_starting(monkeypatch):
@@ -134,7 +134,7 @@ def test_health_flags_what_is_missing_before_starting(monkeypatch):
             pass
 
         def list(self):
-            return {"models": [{"model": "llama3:8b"}]}  # falta el modelo de embeddings
+            return {"models": [{"model": "llama3:8b"}]}  # the embedding model is missing
 
     monkeypatch.setattr(ollama, "Client", _Ollama)
     monkeypatch.setattr(study_api.hardware, "collect_hardware", lambda path=".": {"gpus": [{"modelo": "GPU", "vram_gb": 4.0}], "disco_libre_gb": 1.0})

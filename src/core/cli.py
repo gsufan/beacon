@@ -1,23 +1,21 @@
-"""
-Punto de entrada único. Antes: 5 scripts sueltos, cada uno con su propia
-consola muda. Ahora: un comando, con progreso real y mensajes claros.
-Los mensajes y la ayuda salen en el idioma del sistema operativo (ver cli_lang).
+"""`beacon` command: project management, indexing, queries, API and study mode.
+Messages and help are shown in the operating system language (see cli_lang).
 
-Uso:
-    beacon projects                        # lista proyectos registrados (Read)
-    beacon add <id> --repo-path <ruta>     # registra un proyecto local ya clonado (Create)
-    beacon add <id> --url <repo_url>       # o clona uno remoto y lo registra (Create)
-    beacon edit <id> [--name] [--repo-path] [--auto-watch/--no-auto-watch]  # (Update)
-    beacon remove <id> [--purge-data]      # desregistra un proyecto (Delete)
-    beacon status <id>                     # estado del índice/documentación de un proyecto
-    beacon doctor                          # chequeo de salud (Ollama, modelos, repos)
-    beacon sync <id>                       # indexa + purga generado
-    beacon docs <id>                       # genera documentación
-    beacon ask <id> "pregunta"
-    beacon export <id>                     # empaqueta el índice+docs en un .zip portable
-    beacon import <archivo.zip>            # registra un proyecto desde un .zip exportado
-    beacon serve                           # levanta la API + UI
-    beacon study                           # modo estudio (ver docs/en/study-mode.md)
+Usage:
+    beacon projects                        # list registered projects
+    beacon add <id> --repo-path <path>     # register an already cloned local project
+    beacon add <id> --url <repo_url>       # clone a remote repository and register it
+    beacon edit <id> [--name] [--repo-path] [--auto-watch/--no-auto-watch]
+    beacon remove <id> [--purge-data]      # unregister a project
+    beacon status <id>                     # state of the index and the documentation
+    beacon doctor                          # health check (Ollama, models, repos)
+    beacon sync <id>                       # incremental indexing
+    beacon docs <id>                       # generate the documentation
+    beacon ask <id> "question"
+    beacon export <id>                     # pack index and documentation into a .zip
+    beacon import <file.zip>               # register a project from an exported .zip
+    beacon serve                           # start the API and the web interface
+    beacon study                           # study mode (see docs/en/study-mode.md)
 """
 
 import json
@@ -350,8 +348,7 @@ def cmd_import(
             raise typer.Exit(code=1)
 
         target_id = project_id or manifest["id"]
-        # El id puede venir del manifest de un .zip ajeno: validarlo ANTES de
-        # tocar el disco, o un id como "../x" extraería fuera de data/.
+        # The id comes from the .zip manifest: validate it before touching the disk.
         _validate_id_or_exit(target_id)
         target_dir = (DATA_ROOT / target_id).resolve()
         if target_dir.exists():
@@ -366,11 +363,11 @@ def cmd_import(
                     continue
                 dest = (target_dir / Path(member).relative_to("data")).resolve()
                 if not dest.is_relative_to(target_dir):
-                    continue  # zip malicioso/corrupto intentando escapar de target_dir
+                    continue  # entry that escapes target_dir
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 with zf.open(member) as src, open(dest, "wb") as out:
                     out.write(src.read())
-        bump_index_version(target_dir)  # un servidor ya levantado no debe usar datos previos de este id
+        bump_index_version(target_dir)  # a running server must not use previous data of this id
 
     final_repo_path = repo_path or manifest["repo_path"]
     try:
@@ -485,10 +482,9 @@ def cmd_doctor():
 
 
 def _configure_beacon_logging():
-    """Formato prolijo para lo que loguee el paquete `beacon.*` (ej. fallas
-    del watcher automático en api.py). No toca el logger raíz ni el de
-    uvicorn — solo se engancha al namespace propio, así que comandos que no
-    levantan el server (ask, sync, docs...) no se ven afectados en nada."""
+    """Log format for the `beacon.*` package (e.g. automatic watcher failures in api.py). It does not touch
+    the root or uvicorn loggers, so commands that do not start the server are unaffected.
+    """
     handler = logging.StreamHandler()
     handler.setFormatter(logging.Formatter(
         fmt="%(asctime)s  %(levelname)-7s  %(name)s  %(message)s",
@@ -574,7 +570,6 @@ def cmd_clean(
 
 
 def _remove_study_data():
-    """Borra los repositorios clonados por el estudio (lo que la configuración del estudio tiene registrado)."""
     import shutil
     from core.study.api import study_project_ids
     for project_id in study_project_ids() + ["estudio"]:
@@ -622,7 +617,7 @@ def cmd_study(
         except StudyError as e:
             console.print(f"[red]{e}[/red]")
             raise typer.Exit(code=1)
-    # Configuración propia del estudio: usa el mismo Ollama y los mismos modelos que el participante ya tiene.
+    # Study-specific configuration: it uses the Ollama and the models already installed.
     try:
         ai = load_config().ai_provider
         ai_cfg = {"provider": ai.provider, "ollama_host": ai.ollama_host, "embedding_model": ai.embedding_model,
@@ -632,7 +627,7 @@ def cmd_study(
                   "llm_model": "llama3:8b"}
     study_config = study_dir / "config.yaml"
     projects = []
-    if study_config.exists() and session.started:  # sesión retomada: sigue registrado el repositorio ya preparado
+    if study_config.exists() and session.started:  # resumed session: the prepared repository stays registered
         try:
             projects = (yaml.safe_load(study_config.read_text(encoding="utf-8")) or {}).get("projects") or []
         except yaml.YAMLError:
@@ -652,13 +647,12 @@ def cmd_study(
         pass
     finally:
         if not StudySession(study_dir / "sesion.json").started:
-            # Ya se descartó desde la pantalla ("Descartar todo y salir"): no hay nada que preguntar.
             _remove_study_data()
             console.print(tr("[dim]Sesión descartada: la próxima vez el estudio parte desde cero.[/dim]",
                              "[dim]Session discarded: next time the study starts from scratch.[/dim]"))
             return
-        # Al cerrar se pregunta si se descarta la sesión (y el repositorio clonado). Los archivos ya generados en la
-        # raíz del proyecto no se tocan. Sin respuesta (Ctrl+C otra vez, entrada cerrada) se conserva la sesión.
+        # On exit, ask whether to discard the session and the cloned repository; files already generated are
+        # left alone. With no answer (Ctrl+C again, closed input) the session is kept.
         try:
             discard = typer.confirm(tr("¿Descartar la sesión del estudio? Si dices que no, la próxima vez continúa donde quedó",
                                        "Discard the study session? If you say no, next time it continues where it left off"), default=True)
@@ -691,9 +685,7 @@ def _resolve_or_exit(project_id: str):
 
 
 def _run_safely(fn, *, repo_path: str = ""):
-    """Ejecuta fn() traduciendo los fallos más comunes a mensajes claros,
-    en vez de un traceback crudo de Python. El error original siempre se
-    muestra igual (en gris, debajo), por si hace falta para debug."""
+    """Runs fn() translating the most common failures into clear messages instead of a raw traceback; the original error is still shown (dimmed, below)."""
     try:
         return fn()
     except ProjectBusyError as e:

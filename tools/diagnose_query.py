@@ -1,5 +1,6 @@
-"""Diagnóstico: cuántos chunks hay, cuántos son generados, si un archivo está indexado.
-Uso: python tools/diagnose_query.py <project_id>"""
+"""Diagnostics: how many chunks there are, how many are generated, whether a file is indexed.
+Usage: python tools/diagnose_query.py <project_id>
+"""
 
 import sys
 from pathlib import Path

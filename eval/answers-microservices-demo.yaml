@@ -1,11 +1,8 @@
-# Conjunto de evaluación de las RESPUESTAS sobre microservices-demo
-# (Go, C#, JavaScript, Python y Java). Mismo formato que answers-requests.yaml.
+# Evaluation set for ANSWERS on microservices-demo (Go, C#, JavaScript, Python and Java). Same format as
+# answers-requests.yaml. It was written after tuning the prompt with answers-requests.yaml and was not used
+# to tune anything: it checks that the improvements do not depend on the questions used to measure them.
 #
-# Se escribió DESPUÉS de ajustar el prompt con answers-requests.yaml y no se
-# usó para ajustar nada: sirve para comprobar que las mejoras no dependen de
-# las preguntas con que se midieron.
-#
-# Uso: python tools/eval_answers.py <project_id> eval/answers-microservices-demo.yaml
+# Usage: python tools/eval_answers.py <project_id> eval/answers-microservices-demo.yaml
 
 questions:
   - q: "¿Cómo se procesa un pedido completo, desde el carrito hasta el pago y el envío?"

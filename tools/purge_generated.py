@@ -1,6 +1,6 @@
-"""Purga puntual de código generado/vendor ya indexado (normalmente no hace
-falta: 'deuda-tecnica sync' ya la aplica automáticamente).
-Uso: python tools/purge_generated.py <project_id> [--confirm]"""
+"""One-off purge of generated/vendor code already indexed (normally unnecessary: 'beacon sync' already
+applies it). Usage: python tools/purge_generated.py <project_id> [--confirm]
+"""
 
 import sys
 from pathlib import Path
@@ -29,7 +29,7 @@ def purge(project_id: str, dry_run: bool = True):
         print("[DRY RUN] Corre con --confirm para aplicar.")
         return
     collection.delete(ids=to_delete)
-    bump_index_version(Path(project.chroma_dir).parent)  # un servidor levantado recarga el índice
+    bump_index_version(Path(project.chroma_dir).parent)  # a running server reloads the index
     print(f"Purgados {len(to_delete)} chunks.")
 
 

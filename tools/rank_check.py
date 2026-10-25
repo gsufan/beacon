@@ -1,5 +1,6 @@
-"""Ranking completo (no solo top-k) para una pregunta, útil para diagnosticar recuperación.
-Uso: python tools/rank_check.py <project_id> "pregunta"'"""
+"""Full ranking (not just top-k) for a question, useful to diagnose retrieval.
+Usage: python tools/rank_check.py <project_id> "question"
+"""
 
 import sys
 from pathlib import Path

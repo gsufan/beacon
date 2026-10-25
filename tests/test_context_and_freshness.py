@@ -1,13 +1,12 @@
-"""Regresiones de la revisión de arquitectura (2026-09):
+"""Model context and index freshness:
 
-- 1a: el prompt del chat cabe en la ventana del modelo (num_ctx explícito y
-  recorte previo), y las fuentes devueltas son las que vio el modelo.
-- 1b: el índice corresponde exactamente al commit registrado (se lee desde
-  git, no desde el disco, y el commit se fija al empezar el sync).
-- 1c: un proceso con ChromaDB abierto ve lo que otro proceso indexó.
-- 1d: la documentación de un archivo grande cubre el archivo completo.
+- the chat prompt fits in the model window (explicit num_ctx and prior trimming) and the sources returned
+  are the ones the model saw;
+- the index matches the recorded commit exactly (read from git, commit fixed at the start of the sync);
+- a process with ChromaDB open sees what another process indexed;
+- the documentation of a large file covers the whole file.
 
-Ollama se reemplaza por clientes falsos; el 1c usa un proceso hijo real.
+Ollama is replaced by fake clients; the cross-process case uses a real child process.
 """
 
 import subprocess
@@ -61,7 +60,6 @@ def _commit(repo, rel, content, msg):
     return repo.index.commit(msg).hexsha
 
 
-# ------------------------------------------------------------------- 1a ----
 
 def _chunk(name, size, expanded=False):
     return RetrievedChunk(file_path=f"{name}.py", chunk_type="function", name=name, start_line=1,
@@ -75,8 +73,7 @@ def test_chat_always_sends_explicit_num_ctx():
 
 
 def test_chat_uses_low_temperature_and_fixed_seed():
-    # Respuestas repetibles: la misma pregunta con el mismo contexto no debe
-    # cambiar de una corrida a otra (y la evaluación debe poder compararse).
+    # Repeatable answers: the same question with the same context must not change between runs.
     fake = _RecordingOllama()
     llm.chat(fake, "llama3:8b", "sistema", "usuario")
     options = fake.chats[0]["options"]
@@ -90,7 +87,7 @@ def test_chat_warns_when_model_processed_far_less_than_sent(caplog):
             return {"message": {"content": "r"}, "prompt_eval_count": 2060, "eval_count": 10}
 
     with caplog.at_level("WARNING", logger="beacon.llm"):
-        llm.chat(Truncating(), "m", "s", "u" * 30000)  # ~8.500 tokens estimados
+        llm.chat(Truncating(), "m", "s", "u" * 30000)  # ~8,500 estimated tokens
     assert any("truncó" in r.message for r in caplog.records)
 
 
@@ -98,7 +95,7 @@ def test_rag_prompt_fits_context_and_sources_match_what_model_saw(tmp_path):
     _, ctx = _repo_and_ctx(tmp_path)
     engine = RAGEngine(ctx, AI)
     engine.client_ollama = fake = _RecordingOllama(content="respuesta")
-    # 10 fragmentos de ~6.000 caracteres (~1.700 tokens c/u): no caben todos en 8.192
+    # 10 chunks of ~6,000 characters (~1,700 tokens each): they do not all fit in 8,192
     chunks = [_chunk(f"f{i}", 6000) for i in range(10)]
     engine.select_context = lambda q, top_k: chunks
     engine.expand_with_call_graph = lambda c: []
@@ -108,13 +105,12 @@ def test_rag_prompt_fits_context_and_sources_match_what_model_saw(tmp_path):
     sent = sum(len(m["content"]) for m in fake.chats[0]["messages"])
     assert llm.estimate_tokens("x" * sent) <= llm.prompt_budget_tokens(1024)
     assert 0 < len(result.sources) < 10
-    assert [s.name for s in result.sources] == [f"f{i}" for i in range(len(result.sources))]  # por prioridad
+    assert [s.name for s in result.sources] == [f"f{i}" for i in range(len(result.sources))]  # by priority
     user_prompt = fake.chats[0]["messages"][1]["content"]
     assert all(f"'{s.name}'" in user_prompt for s in result.sources)
     assert f"'f{len(result.sources)}'" not in user_prompt
 
 
-# ------------------------------------------------------------------- 1b ----
 
 def test_index_uses_committed_content_not_uncommitted_working_tree(tmp_path):
     repo, ctx = _repo_and_ctx(tmp_path)
@@ -141,28 +137,27 @@ def test_commit_arriving_during_sync_is_not_marked_as_indexed(tmp_path):
     late = {}
 
     def index_and_commit_meanwhile(fp, commit_hash=None):
-        if not late:  # llega un commit nuevo mientras se indexa
+        if not late:  # a new commit arrives while indexing
             late["sha"] = _commit(repo, "b.py", "def b():\n    return 2\n", "llega durante el sync")
         return original(fp, commit_hash=commit_hash)
 
     idx._index_file = index_and_commit_meanwhile
     idx.sync()
-    assert idx._get_last_indexed_commit() == first  # no el que llegó durante el sync
+    assert idx._get_last_indexed_commit() == first  # not the one that arrived during the sync
 
     idx._index_file = original
-    idx.sync()  # el siguiente sync sí procesa b.py
+    idx.sync()  # the next sync does process b.py
     files = {m["file_path"] for m in idx.collection.get(include=["metadatas"])["metadatas"]}
     assert "b.py" in files
     assert idx._get_last_indexed_commit() == late["sha"]
 
 
-# ------------------------------------------------------------------- 1c ----
 
 def test_process_sees_index_written_by_another_process(tmp_path):
     chroma_dir = str(tmp_path / "data" / "chroma_db")
     coll = get_chroma_client(chroma_dir).get_or_create_collection("codebase_index", metadata={"hnsw:space": "cosine"})
     coll.add(ids=["a0", "a1"], embeddings=[[1.0, 0.0, 0.0], [0.9, 0.1, 0.0]], documents=["a", "a"])
-    coll.query(query_embeddings=[[1.0, 0.0, 0.0]], n_results=1)  # carga el índice en memoria
+    coll.query(query_embeddings=[[1.0, 0.0, 0.0]], n_results=1)  # loads the index in memory
 
     writer = textwrap.dedent(f"""
         import sys; sys.path.insert(0, {SRC!r})
@@ -184,12 +179,11 @@ def test_own_writes_do_not_force_reload(tmp_path):
     chroma_dir = str(tmp_path / "data" / "chroma_db")
     get_chroma_client(chroma_dir)
     system_before = SharedSystemClient._identifier_to_system[chroma_dir]
-    bump_index_version(Path(chroma_dir).parent)  # escritura de este mismo proceso
+    bump_index_version(Path(chroma_dir).parent)  # this process's own write
     get_chroma_client(chroma_dir)
     assert SharedSystemClient._identifier_to_system[chroma_dir] is system_before
 
 
-# ------------------------------------------------------------------- 1d ----
 
 def _docgen_with_chunks(tmp_path, chunks):
     _, ctx = _repo_and_ctx(tmp_path)
@@ -208,7 +202,7 @@ def test_small_file_is_documented_in_a_single_call(tmp_path):
 
 
 def test_large_file_is_documented_completely_in_parts(tmp_path):
-    # ~70.000 caracteres (como sessions.py de requests, que antes quedaba al 28%)
+    # ~70,000 characters
     chunks = [{"code": f"def funcion_{i}():\n" + "    x = 1\n" * 350, "chunk_type": "function",
                "name": f"funcion_{i}", "start_line": i * 400, "end_line": i * 400 + 351} for i in range(20)]
     gen, fake = _docgen_with_chunks(tmp_path, chunks)
@@ -217,12 +211,12 @@ def test_large_file_is_documented_completely_in_parts(tmp_path):
     notes_calls = [c for c in fake.chats if "UNA PARTE" in c["messages"][0]["content"]]
     assert len(notes_calls) >= 2
     sent_code = "".join(c["messages"][1]["content"] for c in notes_calls)
-    assert all(f"funcion_{i}" in sent_code for i in range(20))  # cada componente se analizó
+    assert all(f"funcion_{i}" in sent_code for i in range(20))  # each component was analyzed
     final_prompt = fake.chats[-1]["messages"][1]["content"]
-    assert all(f"`funcion_{i}`" in final_prompt for i in range(20))  # y aparece en el índice final
+    assert all(f"`funcion_{i}`" in final_prompt for i in range(20))  # and appears in the final index
     assert "se analizó completo en" in doc
     index = doc.split("## Índice de componentes", 1)[1]
-    assert all(f"`funcion_{i}`" in index for i in range(20))  # índice exacto, no depende del modelo
+    assert all(f"`funcion_{i}`" in index for i in range(20))  # exact index, independent of the model
     for call in fake.chats:
         sent = sum(len(m["content"]) for m in call["messages"])
         assert llm.estimate_tokens("x" * sent) <= llm.prompt_budget_tokens(1536)

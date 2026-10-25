@@ -1,9 +1,4 @@
-"""
-Registro de proyectos: cada proyecto tiene su propio repo, su propio índice
-ChromaDB y su propia carpeta de documentación generada — completamente
-aislados entre sí. Así una empresa puede registrar varios repos y que
-distintos devs trabajen con cada uno sin que se pisen los índices.
-"""
+"""Project registry. Each project has its repository, ChromaDB index and generated documentation in folders isolated from the others."""
 
 from dataclasses import dataclass
 from pathlib import Path
@@ -13,8 +8,7 @@ from core.config import load_config
 
 DATA_ROOT = Path(__file__).resolve().parents[2] / "data"
 
-# Compartido entre api.py y cli.py para que la lista de esquemas permitidos
-# viva en un solo lugar (es una validación de seguridad, no una conveniencia).
+# Shared by the API and the CLI so the allowed URL schemes live in one place.
 ALLOWED_GIT_URL_PREFIXES = ("http://", "https://", "git@", "ssh://")
 
 
@@ -23,9 +17,9 @@ class InvalidRepoUrlError(ValueError):
 
 
 def validate_repo_url(repo_url: str):
-    """Rechaza esquemas que no sean http(s)/ssh/git@ — en particular `ext::`,
-    que git soporta para invocar un comando de transporte arbitrario y es un
-    vector de inyección de comandos conocido si se deja pasar sin validar."""
+    """Rejects schemes other than http(s)/ssh/git@; in particular `ext::`, which git supports to run an arbitrary
+    transport command and is a known command-injection vector.
+    """
     if not repo_url.startswith(ALLOWED_GIT_URL_PREFIXES):
         raise InvalidRepoUrlError(
             "'repo_url' debe ser http(s)://, ssh:// o git@... — otros esquemas no están permitidos."
@@ -33,7 +27,7 @@ def validate_repo_url(repo_url: str):
 
 
 def build_clone_url(repo_url: str, auth_token: Optional[str]) -> str:
-    """Inserta el token en la URL solo para el clonado — nunca se persiste con la URL."""
+    """Inserts the token in the URL only for cloning; it is never persisted with the URL."""
     if not auth_token or "://" not in repo_url:
         return repo_url
     scheme, rest = repo_url.split("://", 1)
@@ -68,9 +62,9 @@ def get_project(project_id: str) -> ProjectContext:
 
 
 def safe_project_dir(project_id: str, data_root: Optional[Path] = None) -> Path:
-    """data/<id>/ resuelto, garantizando que quede DENTRO de data_root.
-    Defensa en profundidad para operaciones destructivas (purge) por si
-    config.yaml trae un id editado a mano que no pasó por validate_project_id."""
+    """Resolved data/<id>/, guaranteed to be INSIDE data_root. Defense in depth for destructive operations
+    (purge) in case config.yaml has a hand-edited id that did not go through validate_project_id.
+    """
     root = (data_root or DATA_ROOT).resolve()
     target = (root / project_id).resolve()
     if target == root or not target.is_relative_to(root):

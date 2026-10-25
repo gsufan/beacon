@@ -1,8 +1,8 @@
-"""Sesión del estudio: estado persistente en un archivo local y construcción del archivo de resultados.
+"""Study session: persistent state in a local file and construction of the results file.
 
-El participante aprueba cada paso. El archivo de resultados no contiene código fuente (solo rutas
-relativas y rangos de líneas de las fuentes), ni nombre de usuario, rutas locales, IP ni nombre del
-equipo. La identidad opcional va en un archivo aparte."""
+The results file contains no source code (only relative paths and line ranges of the sources), user
+name, local paths, IP or machine name. The optional identity goes in a separate file.
+"""
 
 import hashlib
 import json
@@ -29,10 +29,10 @@ def _now() -> str:
 
 
 def _clean_source(src: dict) -> dict:
-    """Solo archivo relativo y rango de líneas: nunca el código ni una ruta absoluta del equipo."""
+    """Only the relative file and line range: never the code or an absolute path of the machine."""
     path = str(src.get("archivo") or src.get("file_path") or "").replace("\\", "/")
     if path.startswith("/") or (len(path) > 1 and path[1] == ":"):
-        path = path.rsplit("/", 1)[-1]  # ruta absoluta: se deja solo el nombre
+        path = path.rsplit("/", 1)[-1]  # absolute path: keep only the name
     start, end = src.get("start_line"), src.get("end_line")
     lines = src.get("lineas") or (f"{start}-{end}" if start and end else "")
     return {"archivo": path, "lineas": str(lines)}
@@ -43,7 +43,6 @@ class StudySession:
         self.path = Path(path)
         self.state = self._load()
 
-    # ---------- persistencia ----------
     def _load(self) -> dict:
         if self.path.exists():
             return json.loads(self.path.read_text(encoding="utf-8"))
@@ -60,7 +59,6 @@ class StudySession:
     def started(self) -> bool:
         return bool(self.state)
 
-    # ---------- pasos ----------
     def start(self, profile: str = "abierto", code: Optional[str] = None, order: int = 1, language: str = "es",
               beacon_version: str = "", beacon_commit: str = ""):
         if profile not in PROFILES:
@@ -85,14 +83,14 @@ class StudySession:
             raise StudyError(f"tipo de consentimiento inválido: {kind}")
         self.state["consentimientos"].append({"tipo": kind, "aceptado": bool(accepted), "ts": _now()})
         if kind == "participacion" and accepted and not self.state["meta"].get("participacion_desde"):
-            # La duración cuenta desde que la persona acepta participar, no desde que se lanzó el programa.
+            # The duration counts from when the person accepts to participate, not from when the program started.
             self.state["meta"]["participacion_desde"] = _now()
         if kind == "hardware" and not accepted:
-            self.state["hardware"] = None  # si lo retira, se borra
+            self.state["hardware"] = None  # if withdrawn, it is deleted
         self._save()
 
     def has_consent(self, kind: str) -> bool:
-        """El último consentimiento de ese tipo manda (se puede retirar)."""
+        """The latest consent of that kind wins (it can be withdrawn)."""
         last = [c for c in self.state.get("consentimientos", []) if c["tipo"] == kind]
         return bool(last and last[-1]["aceptado"])
 
@@ -162,12 +160,11 @@ class StudySession:
         self.state["identidad"] = {"github": github, "presentacion": presentation} if (github or presentation) else None
         self._save()
 
-    # ---------- cierre ----------
     def can_finish(self) -> bool:
         return self.has_consent("participacion") and len(self.state.get("preguntas", [])) >= MIN_QUESTIONS
 
     def build_result(self) -> dict:
-        """Archivo de resultados (sin identidad). Exige consentimiento de participación y el mínimo de preguntas."""
+        """Results file (without identity). Requires participation consent and the minimum number of questions."""
         self._require_started()
         if not self.can_finish():
             raise StudyError(f"hacen falta el consentimiento de participación y al menos {MIN_QUESTIONS} preguntas")
@@ -183,12 +180,11 @@ class StudySession:
                 "integridad": {"sha256_de_preguntas": digest}}
 
     def build_identity(self) -> Optional[dict]:
-        """Lleva el mismo id corto que el archivo de resultados: es lo único que los enlaza."""
+        """Carries the same short id as the results file: it is the only link between them."""
         identity = self.state.get("identidad")
         return dict(identity, id=self.state["meta"]["id"]) if identity else None
 
     def discard(self):
-        """El participante abandona y borra todo."""
         if self.path.exists():
             self.path.unlink()
         self.state = {}

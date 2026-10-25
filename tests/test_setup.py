@@ -1,10 +1,6 @@
-"""
-Script de verificación de entorno.
-Corre esto ANTES de escribir cualquier lógica del proyecto.
-Valida: (1) Ollama responde, (2) el modelo de embeddings funciona,
-(3) el LLM local responde, (4) ChromaDB puede persistir en disco.
+"""Environment check: Ollama responds, the embedding model and the language model work, and ChromaDB can persist to disk.
 
-Uso:
+Usage:
     python test_setup.py
 """
 

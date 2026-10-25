@@ -1,4 +1,4 @@
-"""Tests del chunker políglota (src/core/engine/chunker.py)."""
+"""Tests of the polyglot chunker (src/core/engine/chunker.py)."""
 
 import sys
 from pathlib import Path
@@ -16,7 +16,6 @@ from core.engine.chunker import (  # noqa: E402
 )
 
 
-# --- detect_language -------------------------------------------------------
 
 @pytest.mark.parametrize("path,expected", [
     ("app.py", "python"),
@@ -24,7 +23,7 @@ from core.engine.chunker import (  # noqa: E402
     ("Service.java", "java"),
     ("Component.tsx", "tsx"),
     ("lib.rs", "rust"),
-    ("index.PHP", "php"),  # extensión en mayúsculas también debe reconocerse
+    ("index.PHP", "php"),  # an uppercase extension must also be recognized
 ])
 def test_detect_language_known_extensions(path, expected):
     assert detect_language(path) == expected
@@ -35,7 +34,6 @@ def test_detect_language_unknown_extension_returns_none():
     assert detect_language("data.json") is None
 
 
-# --- chunk_with_treesitter: Python ------------------------------------------
 
 PYTHON_SOURCE = '''\
 import os
@@ -76,23 +74,21 @@ def test_python_function_becomes_own_chunk():
 def test_python_class_and_its_methods_are_separate_chunks():
     chunks = chunk_with_treesitter("mod.py", PYTHON_SOURCE, "python")
     classes = [c for c in chunks if c.chunk_type == "class" and c.name == "Greeter"]
-    # la gramática de Python no distingue "method_definition" de
-    # "function_definition" (a diferencia de JS/Java) — un método dentro de
-    # una clase se clasifica como "function", igual que uno top-level, solo
-    # que aparece como chunk propio en vez de quedar embebido en la clase.
+    # The Python grammar does not tell "method_definition" from "function_definition" (unlike JS/Java): a
+    # method inside a class is classified as "function", like a top-level one, but it appears as its own chunk
+    # instead of being embedded in the class.
     method_names = {c.name for c in chunks if c.chunk_type == "function" and c.name in ("__init__", "greet")}
 
     assert len(classes) == 1
     assert method_names == {"__init__", "greet"}
-    # el chunk de la clase debe incluir el cuerpo completo, no solo la firma
+    # the class chunk must include the full body, not just the signature
     assert "def greet" in classes[0].code
 
 
 def test_python_line_ranges_are_1_indexed_and_consistent():
     chunks = chunk_with_treesitter("mod.py", PYTHON_SOURCE, "python")
     func = next(c for c in chunks if c.name == "standalone")
-    # "def standalone(x):" está en la línea 6 del fixture (1-indexado, dos
-    # líneas en blanco de por medio tras TIMEOUT = 30)
+    # "def standalone(x):" is on line 6 of the fixture (1-indexed, two blank lines after TIMEOUT = 30)
     assert func.start_line == 6
     assert func.end_line >= func.start_line
     assert func.code.count("\n") + 1 >= (func.end_line - func.start_line + 1) - 1
@@ -113,7 +109,7 @@ def test_python_decorator_is_included_in_chunk_code_and_start_line():
     chunks = chunk_with_treesitter("mod.py", PYTHON_DECORATED, "python")
     decorated = next(c for c in chunks if c.name == "con_decorador")
     assert decorated.code.startswith("@decorador_auditoria")
-    assert decorated.start_line == 5  # línea del decorador, no de la def
+    assert decorated.start_line == 5  # decorator line, not the def
 
 
 PYTHON_WITH_DOC_COMMENT = '''\
@@ -139,7 +135,7 @@ def test_leading_comment_with_blank_line_is_not_attached():
     chunks = chunk_with_treesitter("mod.py", PYTHON_WITH_DOC_COMMENT, "python")
     no_documentada = next(c for c in chunks if c.name == "no_documentada")
     assert "Comentario suelto" not in no_documentada.code
-    # en cambio debe quedar en el chunk de nivel de módulo
+    # instead it must stay in the module-level chunk
     raw = next(c for c in chunks if c.chunk_type == "raw")
     assert "Comentario suelto" in raw.code
 
@@ -150,7 +146,6 @@ def test_no_duplicate_chunk_ids_for_python_file():
     assert len(ids) == len(set(ids))
 
 
-# --- chunk_with_treesitter: otros lenguajes (prueba que es "políglota") ----
 
 JS_SOURCE = '''\
 function suma(a, b) {
@@ -194,7 +189,6 @@ def test_go_type_declaration_is_classified_as_class():
     assert load_chunk.chunk_type == "function"
 
 
-# --- module_level sin duplicar lo que ya es chunk ----------------------------
 
 JS_EXPORTS = '''\
 import x from "y";
@@ -265,7 +259,7 @@ def test_tsx_arrow_and_function_expression_become_function_chunks():
     assert any(c.name == "helper" and c.chunk_type == "function" for c in chunks)
     raw = next(c for c in chunks if c.name == "module_level")
     assert "<button" not in raw.code
-    assert "const { a, b } = obj;" in raw.code  # destructuring no es función: queda a nivel de módulo
+    assert "const { a, b } = obj;" in raw.code  # destructuring is not a function: it stays at module level
 
 
 PYTHON_SCATTERED = '''\
@@ -287,11 +281,10 @@ CONST = 1
 def test_module_level_line_range_spans_its_real_pieces():
     chunks = chunk_with_treesitter("mod.py", PYTHON_SCATTERED, "python")
     raw = next(c for c in chunks if c.name == "module_level")
-    assert (raw.start_line, raw.end_line) == (1, 12)  # "CONST = 1" está en la línea 12
+    assert (raw.start_line, raw.end_line) == (1, 12)  # "CONST = 1" is on line 12
     assert raw.chunk_id() == "mod.py::module_level"
 
 
-# --- chunk_fallback ----------------------------------------------------------
 
 def test_chunk_fallback_splits_large_file_into_multiple_chunks():
     long_source = "\n".join(f"linea {i} " + "x" * 40 for i in range(200))
@@ -309,11 +302,10 @@ def test_chunk_fallback_single_chunk_for_small_file():
 def test_chunk_fallback_consecutive_chunks_overlap():
     long_source = "\n".join(f"linea {i} " + "x" * 40 for i in range(200))
     chunks = chunk_fallback("notas.txt", long_source)
-    # el fallback retrocede unas líneas entre chunk y chunk para no cortar contexto
+    # the fallback steps back a few lines between chunks so context is not cut
     assert chunks[1].start_line <= chunks[0].end_line
 
 
-# --- chunk_file (punto de entrada, vía filesystem real) ----------------------
 
 def test_chunk_file_dispatches_treesitter_for_known_extension(tmp_path):
     f = tmp_path / "mod.py"
@@ -342,12 +334,11 @@ def test_chunk_file_falls_back_when_treesitter_parser_raises(tmp_path, monkeypat
     f.write_text(PYTHON_SOURCE, encoding="utf-8")
     chunks = chunker_module.chunk_file(str(f))
 
-    # no se pierde el archivo: cae a chunking por tamaño en vez de propagar la excepción
+    # the file is not lost: it falls back to size-based chunking instead of propagating the exception
     assert len(chunks) >= 1
     assert chunks[0].language == "unknown"
 
 
-# --- CodeChunk -----------------------------------------------------------
 
 def test_code_chunk_to_metadata_and_chunk_id():
     chunks = chunk_with_treesitter("mod.py", PYTHON_SOURCE, "python")
@@ -362,7 +353,7 @@ def test_code_chunk_to_metadata_and_chunk_id():
 
 
 def test_chunk_source_never_repeats_chunk_ids_for_same_line_getter_and_setter():
-    # hallado indexando un repo real: getter y setter en la misma línea tenían el mismo id
+    # getter and setter on the same line must not share an id
     source = ("const anchor = { click: () => 1, set download(v) { this._d = v }, "
               "get download() { return this._d } }")
     chunks = chunk_source("web/anchor.test.js", source + chr(10))

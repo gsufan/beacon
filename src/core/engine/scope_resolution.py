@@ -1,8 +1,4 @@
-"""Desambiguación por scope al resolver un nombre de llamada a un chunk concreto.
-
-Usado por rag_engine.py para la expansión por grafo de llamadas al armar
-el contexto del RAG.
-"""
+"""Scope disambiguation when resolving a call name to a concrete chunk (call graph)."""
 
 from typing import Dict, List, Optional, Tuple
 
@@ -16,12 +12,9 @@ def resolve_candidate(
     name: str,
     caller_file_path: str,
 ) -> Optional[str]:
-    """Resuelve `name` a un id de nodo/chunk usando `candidates_by_name`.
-
-    `candidates_by_name` mapea name -> [(file_path, node_id), ...].
-    Si hay un solo candidato, se usa directo. Si hay varios, se desambigua
-    por scope (mismos primeros dos niveles de carpeta que el llamador);
-    si sigue siendo ambiguo, no se resuelve.
+    """Resolves `name` to a node/chunk id using `candidates_by_name` (name -> [(file_path, node_id), ...]).
+    A single candidate is used directly; with several, it is disambiguated by scope (same first two folder
+    levels as the caller); if still ambiguous, it is not resolved.
     """
     matches = candidates_by_name.get(name)
     if not matches:

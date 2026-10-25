@@ -1,17 +1,9 @@
-"""Llamadas al LLM con un contexto explícito y un presupuesto de tokens.
+"""LLM calls with an explicit context window and a token budget.
 
-Por qué existe: sin `num_ctx`, Ollama carga el modelo con una ventana por
-defecto (4.096 tokens en la versión usada) aunque llama3:8b admite 8.192, y
-cuando el prompt no cabe **descarta el comienzo sin avisar** — justo donde
-están las reglas del prompt de sistema. Medido con el repo psf/requests: una
-consulta con top_k=10 generaba un prompt de 6.525 tokens y el modelo solo
-procesaba 2.060. Este módulo:
-
-1. fija `num_ctx` en cada llamada;
-2. ofrece un presupuesto (cuántos tokens de contexto caben dejando espacio
-   para la respuesta) para que quien arma el prompt recorte *antes* de enviar;
-3. verifica después, con `prompt_eval_count`, que el modelo procesó todo lo
-   enviado y registra una advertencia si no fue así.
+Without `num_ctx`, Ollama loads the model with its default window and silently drops the start of
+the prompt when it does not fit, which is where the system rules are. This module sets `num_ctx` on
+every call, computes how many context tokens fit while leaving room for the answer (so the prompt
+builder trims before sending), and checks with `prompt_eval_count` that the whole prompt was processed.
 """
 
 import logging
@@ -24,39 +16,32 @@ from core.config import DEFAULT_LLM_NUM_CTX
 
 logger = logging.getLogger("beacon.llm")
 
-# Ventana por defecto: el máximo de llama3:8b. Con un modelo de más contexto
-# (ej. llama3.1 o uno de 32B) se sube con `llm_num_ctx` en config.yaml; con uno
-# de menos, se baja. La memoria de video que pide la ventana crece con su tamaño.
+# Default window: the maximum of llama3:8b. Change it with `llm_num_ctx` in config.yaml; the video
+# memory needed grows with its size.
 LLM_NUM_CTX = DEFAULT_LLM_NUM_CTX
 
-# Respuestas sobre código: se prefieren precisas y repetibles antes que
-# variadas. Con la temperatura por defecto de Ollama (0,8) la misma pregunta
-# daba respuestas distintas entre corridas (medido con tools/eval_answers.py:
-# el contenido correcto variaba entre 67% y 92%). Temperatura baja y semilla
-# fija hacen que la misma pregunta con el mismo contexto dé la misma respuesta.
+# Answers about code must be precise and repeatable: low temperature and a fixed seed.
 LLM_TEMPERATURE = 0.2
 LLM_SEED = 42
 
-# Estimación conservadora de caracteres por token para código y español.
-# Medido con llama3 sobre prompts reales de Beacon: ~4,3 caracteres/token;
-# se usa 3,5 para dejar margen y no quedarse corto nunca.
+# Conservative estimate of characters per token for code and Spanish (llama3 gives about 4.3).
 CHARS_PER_TOKEN = 3.5
 
-# Tope de tokens de una respuesta. Sin él, un modelo que cae en un bucle de repetición genera hasta llenar la
-# ventana (minutos con la GPU al 100 %). Coincide con el espacio que se reserva para la respuesta al armar el prompt.
+# Token cap for one answer, to stop repetition loops. It matches the space reserved for the answer when
+# the prompt is built.
 LLM_MAX_ANSWER_TOKENS = 1024
 
 
 class LLMStoppedError(RuntimeError):
-    """La generación se detuvo antes de terminar."""
+    pass
 
 
 class LLMTimeoutError(LLMStoppedError):
-    """La respuesta tardó más del tiempo máximo permitido."""
+    pass
 
 
 class LLMCancelledError(LLMStoppedError):
-    """Quien preguntó (o el cierre del servidor) pidió detener la respuesta."""
+    pass
 
 
 def estimate_tokens(text: str) -> int:
@@ -64,7 +49,6 @@ def estimate_tokens(text: str) -> int:
 
 
 def prompt_budget_tokens(reserve_for_answer: int, num_ctx: int = LLM_NUM_CTX) -> int:
-    """Tokens disponibles para el prompt completo (sistema + usuario)."""
     return num_ctx - reserve_for_answer
 
 
@@ -73,12 +57,11 @@ class ChatResult:
     content: str
     prompt_tokens: int
     answer_tokens: int
-    truncated: bool = False  # la respuesta llegó al tope de longitud y quedó cortada
+    truncated: bool = False  # the answer hit the length cap and was cut
 
 
 def _stream_chat(client, deadline: Optional[float], should_stop: Optional[Callable[[], bool]], **kwargs) -> dict:
-    """Chat en streaming para poder detenerlo: entre fragmentos revisa el tiempo máximo y la cancelación, y cerrar
-    el flujo corta la conexión con Ollama (que deja de generar)."""
+    """Streaming chat so it can be stopped: between chunks it checks the time limit and cancellation, and closing the stream drops the Ollama connection."""
     parts, last = [], {}
     stream = client.chat(stream=True, **kwargs)
     try:
@@ -101,10 +84,10 @@ def _stream_chat(client, deadline: Optional[float], should_stop: Optional[Callab
 def chat(client, model: str, system: str, user: str, num_ctx: int = LLM_NUM_CTX,
          max_tokens: int = LLM_MAX_ANSWER_TOKENS, max_seconds: Optional[float] = None,
          should_stop: Optional[Callable[[], bool]] = None) -> ChatResult:
-    """Una llamada de chat con `num_ctx` explícito. Advierte si el prompt no entró
-    completo (el modelo procesó menos tokens de los que se estiman enviados)
-    o si la respuesta llenó la ventana (pudo quedar cortada). La respuesta tiene un tope de `max_tokens`;
-    con `max_seconds` o `should_stop` se genera en streaming y se puede detener (LLMStoppedError)."""
+    """One chat call with an explicit `num_ctx`. Warns if the prompt did not fit (the model processed fewer
+    tokens than estimated) or if the answer filled the window (it may be cut). The answer is capped at
+    `max_tokens`; with `max_seconds` or `should_stop` it streams and can be stopped (LLMStoppedError).
+    """
     kwargs = dict(
         model=model,
         messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
@@ -117,9 +100,8 @@ def chat(client, model: str, system: str, user: str, num_ctx: int = LLM_NUM_CTX,
         response = client.chat(**kwargs)
     prompt_tokens = response.get("prompt_eval_count") or 0
     answer_tokens = response.get("eval_count") or 0
-    # El estimador es conservador (sobreestima), así que un prompt completo
-    # siempre queda por debajo de la estimación; uno truncado queda muy por
-    # debajo de la mitad. Umbral holgado para no dar falsas alarmas.
+    # The estimator overestimates: a complete prompt is below the estimate and a truncated one far below
+    # half. The threshold is loose to avoid false alarms.
     expected = estimate_tokens(system) + estimate_tokens(user)
     if prompt_tokens and prompt_tokens < expected * 0.5:
         logger.warning("El modelo procesó %d tokens de un prompt estimado en %d: probablemente se truncó.",

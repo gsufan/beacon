@@ -1,5 +1,6 @@
-"""Migración única: copia embeddings ya calculados a métrica coseno, sin re-embeber.
-Uso: python tools/migrate_to_cosine.py <project_id>"""
+"""One-time migration: copies already computed embeddings to cosine metric, without re-embedding.
+Usage: python tools/migrate_to_cosine.py <project_id>
+"""
 
 import sys
 from pathlib import Path
@@ -50,7 +51,7 @@ def migrate(project_id: str):
 
     client.delete_collection(COLLECTION_NAME)
     new.modify(name=COLLECTION_NAME)
-    bump_index_version(Path(project.chroma_dir).parent)  # un servidor levantado recarga el índice
+    bump_index_version(Path(project.chroma_dir).parent)  # a running server reloads the index
     print(f"Listo. {total} chunks migrados.")
 
 

@@ -1,4 +1,4 @@
-"""Espacio por proyecto y limpieza selectiva: nunca se toca la carpeta de un usuario, y lo borrado se vuelve a crear."""
+"""Per-project disk usage and selective cleanup: a user's folder is never touched, and what is deleted is recreated."""
 import sys
 from pathlib import Path
 
@@ -57,7 +57,7 @@ def test_cleaning_deletes_only_what_was_asked_and_reports_the_freed_space(env):
 
 
 def test_a_users_own_folder_is_never_deleted(env):
-    assert storage.clean_project("local", clone=True, index=True) == 700  # solo el índice: la carpeta es del usuario
+    assert storage.clean_project("local", clone=True, index=True) == 700  # only the index: the folder is the user's
     assert (env / "mi-carpeta" / "a.py").exists()
 
 
@@ -74,7 +74,7 @@ def test_a_deleted_clone_is_cloned_again_on_demand(env, monkeypatch):
     monkeypatch.setattr(services.git.Repo, "clone_from", lambda url, path: cloned.append((url, path)))
     assert services.ensure_clone(entry) is True and cloned == [("https://github.com/u/r", entry.repo_path)]
     (env / "data" / "clonado" / "repo").mkdir(parents=True)
-    assert services.ensure_clone(entry) is False  # ya existe: no se clona
+    assert services.ensure_clone(entry) is False  # already exists: not cloned
 
 
 def test_cli_space_and_clean(env, monkeypatch):
@@ -82,8 +82,8 @@ def test_cli_space_and_clean(env, monkeypatch):
     monkeypatch.setattr(cli_module, "_resolve_or_exit", lambda pid: None)
     out = runner.invoke(cli_module.app, ["space"])
     assert out.exit_code == 0 and "clonado" in out.output and "local" in out.output
-    assert runner.invoke(cli_module.app, ["clean", "clonado"]).exit_code == 1  # sin indicar qué borrar
-    out = runner.invoke(cli_module.app, ["clean", "clonado", "--index"], input="n" + chr(10))  # avisa y no borra si se dice que no
+    assert runner.invoke(cli_module.app, ["clean", "clonado"]).exit_code == 1  # without saying what to delete
+    out = runner.invoke(cli_module.app, ["clean", "clonado", "--index"], input="n" + chr(10))  # warns and does not delete if the answer is no
     assert out.exit_code == 0 and ("sigue registrado" in out.output or "stays registered" in out.output) and (env / "data" / "clonado" / "chroma_db" / "i.bin").exists()
     out = runner.invoke(cli_module.app, ["clean", "clonado", "--docs", "--yes"])
     assert out.exit_code == 0 and not (env / "data" / "clonado" / "docs" / "d.md").exists()

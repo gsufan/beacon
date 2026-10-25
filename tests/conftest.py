@@ -1,10 +1,8 @@
-"""Aísla los tests de la configuración real del desarrollador.
+"""Isolates the tests from the developer's real configuration.
 
-config/config.yaml no está versionado (cada instalación tiene sus propios
-proyectos), así que en un clon limpio o en la CI no existe. Antes de que
-cualquier test importe core.config, se apunta CONFIG_PATH y CREDENTIALS_PATH
-a copias temporales creadas desde config.example.yaml: los tests nunca leen
-ni escriben la configuración real de quien los ejecuta.
+config/config.yaml is not versioned, so it does not exist in a clean clone or in CI. Before any test
+imports core.config, CONFIG_PATH and CREDENTIALS_PATH point to temporary copies created from
+config.example.yaml: the tests never read or write the real configuration.
 """
 
 import os

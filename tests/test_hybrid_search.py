@@ -1,8 +1,7 @@
-"""Búsqueda híbrida (2026-10, medida con eval/*-identificadores.yaml): si la
-pregunta nombra un identificador, los fragmentos que se llaman así o lo usan
-entran como candidatos con un descuento de distancia. Ollama se reemplaza por
-un cliente falso que da el mismo vector a todo, así que el orden lo deciden
-solo los descuentos y la penalización a tests."""
+"""Hybrid search: when the question names an identifier, chunks named like it or using it become candidates
+with a distance discount. Ollama is replaced by a fake client that gives the same vector to everything,
+so the order is decided only by the discounts and the test penalty.
+"""
 
 import sys
 from pathlib import Path
@@ -78,7 +77,7 @@ def test_usage_question_prefers_the_code_that_uses_the_identifier(tmp_path):
     engine = _engine(tmp_path)
     top = engine.retrieve("¿Dónde se lanza TooManyRedirects?", top_k=1)[0]
     assert top.name == "resolve_redirects"
-    # Preguntar qué es, en cambio, apunta a la definición.
+    # Asking what it is, instead, points to the definition.
     assert engine.retrieve("¿Qué es TooManyRedirects?", top_k=1)[0].name == "TooManyRedirects"
 
 

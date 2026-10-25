@@ -1,4 +1,4 @@
-"""Endpoints /study/*: consentimientos, preguntas medidas por el servidor, valoración y archivo final."""
+"""Endpoints /study/*: consents, questions timed by the server, rating and final file."""
 import json
 import sys
 from pathlib import Path
@@ -40,7 +40,7 @@ def client(tmp_path, monkeypatch):
 
 
 def _ready(client, tmp_path):
-    """Sesión iniciada, participación aceptada y un repositorio listo (se marca directamente)."""
+    """Session started, participation accepted and a repository ready (marked directly)."""
     client.post("/study/start", json={"perfil": "abierto"})
     client.post("/study/consent", json={"tipo": "participacion", "aceptado": True})
     StudySession(tmp_path / "_study" / "sesion.json").set_repo("https://github.com/u/r", "abc", 10, 50, ["python"], 5.0)
@@ -61,19 +61,19 @@ def test_pilot_profile_requires_a_code(client):
 def test_hardware_is_previewed_but_only_saved_with_consent(client):
     client.post("/study/start", json={})
     assert client.get("/study/hardware-preview").json()["cpu_modelo"] == "cpu"
-    assert client.get("/study/state").json()["hardware"] is None  # ver no es guardar
-    assert client.post("/study/hardware").status_code == 400  # sin consentimiento
+    assert client.get("/study/state").json()["hardware"] is None  # viewing is not saving
+    assert client.post("/study/hardware").status_code == 400  # without consent
     client.post("/study/consent", json={"tipo": "hardware", "aceptado": True})
     assert client.post("/study/hardware").json()["cpu_modelo"] == "cpu"
     client.post("/study/consent", json={"tipo": "hardware", "aceptado": False})
-    assert client.get("/study/state").json()["hardware"] is None  # retirarlo lo borra
+    assert client.get("/study/state").json()["hardware"] is None  # withdrawing it deletes it
 
 
 def test_asking_needs_consent_and_a_ready_repository(client, tmp_path):
     client.post("/study/start", json={})
-    assert client.post("/study/ask", json={"pregunta": "¿qué hace f?"}).status_code == 409  # sin consentimiento
+    assert client.post("/study/ask", json={"pregunta": "¿qué hace f?"}).status_code == 409  # without consent
     client.post("/study/consent", json={"tipo": "participacion", "aceptado": True})
-    assert client.post("/study/ask", json={"pregunta": "¿qué hace f?"}).status_code == 409  # sin repositorio
+    assert client.post("/study/ask", json={"pregunta": "¿qué hace f?"}).status_code == 409  # without a repository
     StudySession(tmp_path / "_study" / "sesion.json").set_repo("https://github.com/u/r", "abc", 10, 50, ["python"], 5.0)
     out = client.post("/study/ask", json={"pregunta": "¿qué hace f?"}).json()
     assert out["n"] == 1 and out["segundos"] >= 0 and out["respuesta"].startswith("respuesta")
@@ -92,14 +92,14 @@ def test_rating_and_final_file_flow(client, tmp_path):
         n = client.post("/study/ask", json={"pregunta": f"pregunta {i}"}).json()["n"]
         assert client.post("/study/rate", json={"n": n, "correcta": "si", "fuentes_utiles": 5}).status_code == 200
     assert client.post("/study/rate", json={"n": 1, "correcta": "quizas"}).status_code == 400
-    assert client.get("/study/result").status_code == 409  # falta autorizar la generación
+    assert client.get("/study/result").status_code == 409  # submission generation not authorized yet
     client.post("/study/consent", json={"tipo": "envio", "aceptado": True})
     client.post("/study/identity", json={"github": "https://github.com/alguien", "presentacion": "hola"})
     out = client.get("/study/result").json()
     assert out["resultado"]["esquema"] == 1 and len(out["resultado"]["preguntas"]) == 3
     assert "alguien" not in json.dumps(out["resultado"]) and out["identidad"]["github"].endswith("alguien")
     sid = out["resultado"]["meta"]["id"]
-    assert len(sid) == 6 and out["identidad"]["id"] == sid  # el id corto enlaza los dos archivos
+    assert len(sid) == 6 and out["identidad"]["id"] == sid  # the short id links the two files
     assert out["archivos"] == [study_api.result_file(sid), study_api.identity_file(sid)]
     text = (tmp_path / study_api.result_file(sid)).read_text(encoding="utf-8")
     assert json.loads(text)["esquema"] == 1 and "alguien" not in text
@@ -171,7 +171,7 @@ def test_each_repository_gets_its_own_folder_and_the_previous_ones_are_removed(c
     for name in ("estudio-aaaa", "estudio-bbbb", "otro-proyecto"):
         (tmp_path / name).mkdir()
     monkeypatch.setattr(study_api.services, "unregister_project", lambda *a, **k: (_ for _ in ()).throw(RuntimeError("en uso")))
-    assert study_api.study_project_ids() == ["estudio-aaaa", "estudio-bbbb"]  # solo los del estudio
-    assert study_api.current_project_id() == "estudio-bbbb"  # el más reciente
-    study_api.remove_study_repos(keep="estudio-bbbb")  # aunque unregister falle, no se cae y se limpia lo que se puede
+    assert study_api.study_project_ids() == ["estudio-aaaa", "estudio-bbbb"]  # only the study ones
+    assert study_api.current_project_id() == "estudio-bbbb"  # the most recent
+    study_api.remove_study_repos(keep="estudio-bbbb")  # even if unregister fails, it does not crash and cleans up what it can
     assert not (tmp_path / "estudio-aaaa").exists() and (tmp_path / "estudio-bbbb").exists() and (tmp_path / "otro-proyecto").exists()

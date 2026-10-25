@@ -8,7 +8,7 @@ interface Props {
   onChange: (path: string) => void;
 }
 
-/** Explora el filesystem del SERVIDOR donde corre Beacon (no el del navegador). */
+/** Browses the filesystem of the SERVER running Beacon (not the browser's). */
 export default function DirBrowser({ value, onChange }: Props) {
   const { t } = useLanguage();
   const [path, setPath] = useState(value);

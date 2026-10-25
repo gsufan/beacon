@@ -1,19 +1,7 @@
-"""
-Git Watcher — Pilar 4B de la propuesta.
+"""Incremental change detection with git.
 
-Detecta qué archivos cambiaron entre dos commits (o entre el último commit
-indexado y el estado actual del working directory) para que el indexador
-NO tenga que re-procesar todo el repositorio en cada actualización.
-
-Estrategia:
-- Se guarda el hash del último commit indexado (en ChromaDB, como metadata
-  de una colección de control, o en un archivo de estado local).
-- Cada vez que se pide indexar, se compara ese hash contra HEAD.
-- Se devuelve una lista de archivos: añadidos, modificados, eliminados,
-  renombrados — cada categoría se maneja distinto en el indexador:
-    * añadido/modificado -> re-chunkear y re-embeber
-    * eliminado -> purgar sus chunks de ChromaDB
-    * renombrado -> purgar los chunks bajo el nombre viejo, re-indexar bajo el nuevo
+Compares the last indexed commit with HEAD (or the working tree) and returns the added, modified,
+deleted and renamed files, so the indexer only processes what changed.
 """
 
 from dataclasses import dataclass, field
@@ -23,25 +11,20 @@ from typing import List, Optional
 import git
 
 
-# Extensiones que nos interesa indexar (evita procesar binarios, imágenes, etc.)
 INDEXABLE_EXTENSIONS = {
     ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".go",
     ".cs", ".cpp", ".cc", ".hpp", ".c", ".h", ".rs", ".php",
 }
 
-# Fragmentos de ruta que indican código GENERADO automáticamente (protobuf,
-# gRPC stubs, vendor libs, node_modules, builds). Este código no tiene valor
-# semántico para el desarrollador (es boilerplate mecánico repetido en cada
-# servicio que consume el proto) y solo diluye la calidad de la búsqueda al
-# competir por espacio en el top-k contra la lógica de negocio real. Se
-# excluye desde el origen, no solo se ignora en la UI.
+# Path fragments that indicate generated code (protobuf and gRPC stubs, vendored dependencies,
+# node_modules, builds). Excluded when indexing because it dilutes search against the real logic.
 EXCLUDED_PATH_MARKERS = [
-    "_pb2.py", "_pb2_grpc.py",       # stubs generados de protobuf/gRPC en Python
-    ".pb.go", "_grpc.pb.go",         # stubs generados en Go
-    ".pb.h", ".pb.cc",               # stubs generados en C++
+    "_pb2.py", "_pb2_grpc.py",
+    ".pb.go", "_grpc.pb.go",
+    ".pb.h", ".pb.cc",
     "genproto/", "/generated/", "/gen/",
     "vendor/", "node_modules/", "/dist/", "/build/",
-    ".min.js",                        # JS minificado, no legible/parseable con sentido
+    ".min.js",
 ]
 
 
@@ -56,16 +39,14 @@ class ChangeSet:
     modified: List[str] = field(default_factory=list)
     deleted: List[str] = field(default_factory=list)
     renamed: List[tuple] = field(default_factory=list)  # (old_path, new_path)
-    # True cuando no hay un commit base válido y se listó el repo completo: lo
-    # que ya estaba en el índice puede ser de archivos que ya no existen.
+    # True when there is no valid base commit and the whole repository was listed: what was already in the
+    # index may belong to files that no longer exist.
     full_rescan: bool = False
 
     def files_to_reindex(self) -> List[str]:
-        """Archivos que hay que (re)chunkear y (re)embeber."""
         return self.added + self.modified + [new for _, new in self.renamed]
 
     def files_to_purge(self) -> List[str]:
-        """Archivos cuyos vectores viejos hay que eliminar de ChromaDB."""
         return self.deleted + [old for old, _ in self.renamed]
 
     def is_empty(self) -> bool:
@@ -83,7 +64,6 @@ def _is_indexable(path: str) -> bool:
 
 
 def _classify(changes: "ChangeSet", diff_item) -> None:
-    """Agrega un item de diff de GitPython a la categoría que corresponde."""
     kind, old, new = diff_item.change_type, diff_item.a_path, diff_item.b_path
     if kind in ("A", "C"):
         if _is_indexable(new):
@@ -95,8 +75,8 @@ def _classify(changes: "ChangeSet", diff_item) -> None:
         if _is_indexable(old):
             changes.deleted.append(old)
     elif kind == "R":
-        # Si el rename cruza la frontera de lo indexable (ej. .py -> .txt, o a
-        # vendor/), se trata como borrado o alta para no dejar chunks huérfanos.
+        # If a rename crosses the boundary of what is indexable (e.g. .py -> .txt, or into vendor/), it is
+        # treated as a deletion or an addition so no orphan chunks remain.
         old_ok, new_ok = _is_indexable(old), _is_indexable(new)
         if old_ok and new_ok:
             changes.renamed.append((old, new))
@@ -115,10 +95,9 @@ class GitWatcher:
         return self.repo.head.commit.hexsha
 
     def read_file_at(self, commit_hash: str, path: str) -> Optional[str]:
-        """Contenido de `path` tal como está en ese commit (no en el disco).
-        Indexar desde el commit garantiza que el índice corresponde exactamente
-        al hash que se registra, aunque haya cambios sin commitear en la
-        carpeta. None si no es un archivo regular (ej. un symlink)."""
+        """Content of `path` as it is in that commit (not on disk), so the index matches the recorded hash even
+        with uncommitted changes. None if it is not a regular file (e.g. a symlink).
+        """
         try:
             blob = self.repo.commit(commit_hash).tree / path
         except KeyError:
@@ -128,12 +107,9 @@ class GitWatcher:
         return blob.data_stream.read().decode("utf-8", errors="ignore")
 
     def get_changes_since(self, last_indexed_commit: Optional[str], target: Optional[str] = None) -> ChangeSet:
-        """
-        Compara el commit ya indexado contra `target` (por defecto, HEAD).
-        Si last_indexed_commit es None (primera vez), se considera que
-        TODO el repositorio está "añadido" (indexación inicial completa).
-        Quien sincroniza pasa el `target` que capturó al empezar, para que el
-        diff, el contenido leído y el hash registrado sean del mismo commit.
+        """Compares the already indexed commit with `target` (HEAD by default). If last_indexed_commit is
+        None (first run) the whole repository counts as "added". The caller passes the `target` captured at
+        the start so the diff, the content read and the recorded hash belong to the same commit.
         """
         head = self.repo.commit(target) if target else self.repo.head.commit
         changes = ChangeSet()
@@ -147,10 +123,9 @@ class GitWatcher:
 
         try:
             old_commit = self.repo.commit(last_indexed_commit)
-            old_commit.tree  # con un sha completo, repo.commit() no verifica que el objeto exista
+            old_commit.tree  # with a full sha, repo.commit() does not verify the object exists
         except (git.BadName, git.BadObject, ValueError):
-            # El commit guardado ya no existe (ej: rebase, historia reescrita).
-            # Forzamos re-indexación completa en vez de fallar silenciosamente.
+            # The stored commit no longer exists (rebase, rewritten history): force a full reindex.
             return self.get_changes_since(None, target=head.hexsha)
 
         for diff_item in old_commit.diff(head):
@@ -158,17 +133,12 @@ class GitWatcher:
         return changes
 
     def get_uncommitted_changes(self) -> ChangeSet:
-        """
-        Cambios en el working directory que AÚN no se han commiteado
-        (útil para indexar mientras se desarrolla, sin esperar a un commit).
-        """
+        """Changes in the working directory that are not committed yet."""
         changes = ChangeSet()
 
-        # Working dir vs HEAD: incluye archivos nuevos ya agregados al index y renames
         for diff_item in self.repo.head.commit.diff(None):
             _classify(changes, diff_item)
 
-        # Archivos nuevos sin trackear
         for path in self.repo.untracked_files:
             if _is_indexable(path):
                 changes.added.append(path)

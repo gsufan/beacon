@@ -1,4 +1,4 @@
-"""Modo estudio: consentimientos, datos del equipo, sesión, archivo de resultados y validación."""
+"""Study mode: consents, machine data, session, results file and validation."""
 import json
 import sys
 from pathlib import Path
@@ -28,7 +28,6 @@ def _complete(s, questions=3, rate=True):
             s.rate(n, "si", useful_sources=4, solved_alone=True)
 
 
-# ---- consentimientos -------------------------------------------------------
 
 def test_hardware_cannot_be_stored_without_consent(session):
     with pytest.raises(StudyError):
@@ -52,10 +51,9 @@ def test_unknown_consent_kind_and_profile_are_rejected(tmp_path, session):
     with pytest.raises(StudyError):
         StudySession(tmp_path / "x.json").start(profile="raro")
     with pytest.raises(StudyError):
-        StudySession(tmp_path / "y.json").start(profile="piloto")  # el piloto exige código
+        StudySession(tmp_path / "y.json").start(profile="piloto")  # the pilot requires a code
 
 
-# ---- resultados ------------------------------------------------------------
 
 def test_result_requires_consent_and_minimum_questions(session):
     with pytest.raises(StudyError):
@@ -120,7 +118,7 @@ def test_session_survives_a_restart_and_can_be_discarded(tmp_path):
     s = StudySession(path)
     s.start(profile="piloto", code="P3", order=2)
     s.add_question("p", "r", 1.5)
-    again = StudySession(path)  # como si se cerrara y abriera de nuevo
+    again = StudySession(path)  # as if it were closed and opened again
     assert again.state["meta"]["codigo"] == "P3" and len(again.state["preguntas"]) == 1
     again.discard()
     assert not path.exists() and not StudySession(path).started
@@ -134,7 +132,6 @@ def test_pilot_task_condition_is_checked(tmp_path):
         s.add_pilot_task("A2", "tal vez", 10, False, "", "")
 
 
-# ---- validación automática ---------------------------------------------------
 
 def test_a_good_file_passes_validation(session):
     _complete(session)
@@ -147,7 +144,7 @@ def test_validation_reports_problems_and_suspicious_files(session):
     data = session.build_result()
     data_bad = dict(data, preguntas=data["preguntas"][:1])
     assert "menos de 3 preguntas" in validate_result(data_bad)[0]
-    assert validate_result({"esquema": 1})[0]  # faltan campos
+    assert validate_result({"esquema": 1})[0]  # missing fields
     assert validate_result([])[0]
 
     suspicious = json.loads(json.dumps(data))
@@ -157,7 +154,7 @@ def test_validation_reports_problems_and_suspicious_files(session):
     warnings = validate_result(suspicious)[1]
     assert any("imposible" in w for w in warnings) and any("tokens/s" in w for w in warnings)
 
-    short_refusal = json.loads(json.dumps(data))  # una negativa corta y rápida es normal, no sospechosa
+    short_refusal = json.loads(json.dumps(data))  # a short, fast refusal is normal, not suspicious
     for q in short_refusal["preguntas"]:
         q["segundos_respuesta"], q["tokens_respuesta"] = 0.75, 16
     assert validate_result(short_refusal)[1] == []
@@ -168,7 +165,6 @@ def test_validation_reports_problems_and_suspicious_files(session):
     assert "preguntas repetidas" in validate_result(repeated)[1]
 
 
-# ---- datos del equipo ----------------------------------------------------------
 
 def test_nvidia_smi_output_is_parsed():
     out = "NVIDIA GeForce RTX 3060, 12288\nNVIDIA GeForce GTX 1650, 4096\nlinea rara"
@@ -182,7 +178,7 @@ def test_hardware_snapshot_has_only_the_expected_fields(tmp_path, monkeypatch):
     snapshot = hardware.collect_hardware(str(tmp_path))
     assert set(snapshot) == {"cpu_modelo", "cpu_nucleos", "ram_gb", "disco_libre_gb", "gpus", "so"}
     assert snapshot["gpus"] == [] and snapshot["cpu_nucleos"]
-    assert str(tmp_path) not in json.dumps(snapshot)  # la ruta no se guarda
+    assert str(tmp_path) not in json.dumps(snapshot)  # the path is not stored
 
 
 def test_windows_11_is_told_apart_from_windows_10(monkeypatch):

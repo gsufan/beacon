@@ -112,8 +112,7 @@ export default function Settings() {
 
   useEffect(() => {
     if (!aiConfig?.ollama_host) return;
-    // El aviso de "no hay modelos" se muestra solo cuando la consulta terminó:
-    // antes aparecía un instante en cada carga, mientras llegaba la respuesta.
+    // The "no models" warning is only shown once the request has finished.
     setModelsLoaded(false);
     api
       .availableModels(aiConfig.ollama_host)

@@ -10,8 +10,8 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
-    # Sin GPU por defecto (funciona en CPU, más lento). Para usar GPU NVIDIA,
-    # descomenta lo de abajo (requiere nvidia-container-toolkit instalado):
+    # CPU by default (slower). To use an NVIDIA GPU, uncomment the block below
+    # (requires nvidia-container-toolkit):
     # deploy:
     #   resources:
     #     reservations:
@@ -28,10 +28,8 @@ services:
       - ./config:/app/config
       - ./data:/app/data
     environment:
-      # Opcional: protege la API con un header X-API-Key. Sin esto, queda
-      # abierta (ver "Seguridad" en README). Si se activa aquí, también
-      # hay que cargar la misma clave en Configuración > (campo API Key)
-      # en la UI, o la SPA no va a poder llamar a la API.
+      # Optional: protects the API with the X-API-Key header (see docs/en/security.md). If enabled, enter the
+      # same key in Settings > Security in the interface.
       - BEACON_API_KEY=${BEACON_API_KEY:-}
     depends_on:
       ollama:

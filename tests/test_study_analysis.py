@@ -1,4 +1,4 @@
-"""Agregación de resultados del estudio: validación, duplicados y resumen por VRAM."""
+"""Study results aggregation: validation, duplicates and summary by VRAM."""
 import json
 import sys
 from pathlib import Path
@@ -27,7 +27,7 @@ def test_summary_groups_by_vram_and_rejects_bad_and_duplicate_files(tmp_path):
     folder.mkdir()
     (folder / "a.json").write_text(json.dumps(_result(tmp_path, "a", 8, 4.0)))
     (folder / "b.json").write_text(json.dumps(_result(tmp_path, "b", 6, 10.0, "otra")))
-    (folder / "dup.json").write_text(json.dumps(_result(tmp_path, "d", 8, 4.0)))  # mismas preguntas que a
+    (folder / "dup.json").write_text(json.dumps(_result(tmp_path, "d", 8, 4.0)))  # same questions as a
     (folder / "roto.json").write_text("{no es json")
     (folder / "x-identidad.json").write_text('{"github": "no debe leerse"}')
     out = study_analysis.summarize(study_analysis.load_files(folder))

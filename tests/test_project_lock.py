@@ -1,6 +1,6 @@
-"""Lock por proyecto entre procesos: el servidor (con su watcher) y la CLI
-no deben escribir el mismo índice al mismo tiempo. Los tests usan un
-proceso hijo real, porque justamente eso es lo que _claim_sync no cubría."""
+"""Per-project lock across processes: the server (with its watcher) and the CLI must not write the same index
+at the same time. The tests use a real child process, because that is exactly what _claim_sync did not cover.
+"""
 
 import subprocess
 import sys
@@ -23,7 +23,7 @@ AI = AIProviderConfig(provider="ollama", ollama_host="http://x", embedding_model
 
 
 class _Holder:
-    """Proceso hijo que toma el lock y lo mantiene hasta que se le cierra stdin."""
+    """Child process that takes the lock and keeps it until its stdin is closed."""
 
     def __init__(self, project_dir: Path):
         code = textwrap.dedent(f"""
@@ -55,16 +55,15 @@ def test_lock_is_exclusive_across_processes(tmp_path):
                 pass
     finally:
         holder.release()
-    with project_lock(tmp_path / "demo"):  # liberado: ahora sí se puede tomar
+    with project_lock(tmp_path / "demo"):  # released: it can be taken now
         pass
 
 
 def test_lock_is_released_if_holder_process_dies(tmp_path):
     holder = _Holder(tmp_path / "demo")
-    holder.kill()  # simula Ctrl+C / cierre de la consola a mitad de un sync
-    # Windows libera los locks de un proceso terminado de forma asíncrona
-    # ("puede demorar según los recursos del sistema"), así que se reintenta
-    # unos segundos; lo que importa es que se libera solo, sin borrar nada.
+    holder.kill()  # simulates Ctrl+C / closing the console in the middle of a sync
+    # Windows releases the locks of a finished process asynchronously ("it may take some time depending on system
+    # resources"), so it retries for a few seconds; what matters is that it is released on its own, with nothing deleted.
     import time
     deadline = time.monotonic() + 10
     while True:
@@ -83,7 +82,7 @@ def test_ensure_not_busy_on_missing_dir_does_not_create_it(tmp_path):
 
 
 def _fake_project(monkeypatch, project_dir, source_type="local"):
-    """Proyecto falso para los servicios: sin config real ni Ollama."""
+    """Fake project for the services: no real config or Ollama."""
     class FakeProject:
         name = "Demo"
         repo_path = str(project_dir)
@@ -141,8 +140,8 @@ def test_auto_watch_skips_project_locked_by_cli_without_pulling(monkeypatch, tmp
         api._auto_watch_tick()
     finally:
         holder.release()
-    assert calls == []  # ni git pull ni indexado: el pull va dentro del lock
-    assert "demo" not in api._sync_status  # claim liberado, sin marcar error
+    assert calls == []  # neither git pull nor indexing: the pull happens inside the lock
+    assert "demo" not in api._sync_status  # claim released, no error marked
 
 
 def test_git_project_sync_pulls_inside_the_lock(monkeypatch, tmp_path):
@@ -151,7 +150,7 @@ def test_git_project_sync_pulls_inside_the_lock(monkeypatch, tmp_path):
     seen = {}
 
     def pull(entry):
-        with pytest.raises(ProjectBusyError):  # otro proceso no puede entrar mientras se hace el pull
+        with pytest.raises(ProjectBusyError):  # another process cannot enter while the pull runs
             with project_lock(project_dir):
                 pass
         seen["pull"] = True

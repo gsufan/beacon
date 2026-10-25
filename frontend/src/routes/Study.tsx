@@ -1,5 +1,5 @@
-// Asistente del modo estudio (`beacon study`). Pantalla independiente: sin barra lateral ni proyectos.
-// Cada paso exige una acción del participante; nada se envía a ningún servidor, solo se generan archivos locales.
+// Study mode wizard (`beacon study`). Every step requires an action from the participant; nothing is sent
+// to any server, only local files are generated.
 import { useCallback, useEffect, useState } from "react";
 
 type Lang = "es" | "en";
@@ -121,7 +121,7 @@ type Key = keyof (typeof T)["es"];
 type Tr = (k: Key, v?: Record<string, string | number>) => string;
 
 const MIN_QUESTIONS = 3;
-// Repositorios públicos para quien no tiene uno en mente.
+// Public repositories for anyone without one in mind.
 const EXAMPLE_REPOS = [
   { name: "antirez/kilo", lang: "C", es: "Un editor de texto de terminal en un solo archivo. Ideal para una prueba rápida.", en: "A terminal text editor in a single file. Ideal for a quick try." },
   { name: "charmbracelet/glow", lang: "Go", es: "Lector de Markdown para la terminal, con interfaz de navegación.", en: "Markdown reader for the terminal, with a browsing interface." },
@@ -237,7 +237,6 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
   const questions = state.preguntas ?? [];
   const section = "flex flex-col gap-4 rounded-xl border border-line bg-surface p-5";
 
-  // Paso 1
   const [agree, setAgree] = useState(!!consent?.participacion);
   const [health, setHealth] = useState<HealthItem[] | null>(null);
   const loadHealth = useCallback(async () => {
@@ -250,20 +249,16 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
   }, []);
   useEffect(() => { if (step === 1) void loadHealth(); }, [step, loadHealth]);
   const healthBlocked = health === null || health.some((i) => i.estado === "error");
-  // Paso 2
   const [hw, setHw] = useState<Record<string, unknown> | null>(null);
   const [hwOk, setHwOk] = useState(!!consent?.hardware);
-  // Paso 3
   const [url, setUrl] = useState("");
   const [changing, setChanging] = useState(false);
   const [sawPreparing, setSawPreparing] = useState(false);
   const [workingOn, setWorkingOn] = useState("");
   const [closed, setClosed] = useState(false);
-  // Paso 4
   const [question, setQuestion] = useState("");
   const [pending, setPending] = useState<{ q: string; since: number } | null>(null);
   const [now, setNow] = useState(Date.now());
-  // Paso 5
   const [years, setYears] = useState(state.experiencia?.anios != null ? String(state.experiencia.anios) : "");
   const [usefulness, setUsefulness] = useState(state.experiencia?.likert?.util != null ? String(state.experiencia.likert.util) : "");
   const [sendOk, setSendOk] = useState(false);
@@ -285,8 +280,8 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
   const status = state.repo_status;
   const preparing = status?.estado === "clonando" || status?.estado === "indexando";
   useEffect(() => {
-    // El formulario de «elegir otro» se cierra cuando termina de prepararse el repositorio nuevo: no antes, porque el
-    // estado del anterior también dice «listo».
+    // The "choose another" form closes once the new repository is ready, not before: the previous one's
+    // state also says "ready".
     if (!changing) return;
     if (preparing) setSawPreparing(true);
     else if (status?.estado === "listo" && (sawPreparing || (workingOn !== "" && state.repo?.url === workingOn))) {
@@ -295,7 +290,6 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
     }
   }, [changing, preparing, sawPreparing, status?.estado, workingOn, state.repo?.url]);
 
-  // Cada paso define su acción principal (la que lo completa y avanza).
   let next: { label: string; disabled: boolean; run: () => Promise<void> | void } | null = null;
   let content: React.ReactNode = null;
 
@@ -343,7 +337,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
           await call("POST", "/consent", { tipo: "hardware", aceptado: true });
           await call("POST", "/hardware");
         } else if (consent?.hardware) {
-          await call("POST", "/consent", { tipo: "hardware", aceptado: false });  // retirarlo borra lo guardado
+          await call("POST", "/consent", { tipo: "hardware", aceptado: false });  // withdrawing it deletes what was saved
         }
         setStep(3);
       }),
@@ -389,7 +383,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
             </ul>
             <button className={btn + " self-start"} disabled={!url.trim() || busy || preparing}
               onClick={() => {
-                if (changing && url.trim() === state.repo?.url) { setChanging(false); return; }  // ya está preparado: no se repite el indexado
+                if (changing && url.trim() === state.repo?.url) { setChanging(false); return; }  // already prepared: do not index again
                 setWorkingOn(url.trim());
                 void act(() => call("POST", "/repo", { url: url.trim() }));
               }}>{t("prepare")}</button>
@@ -512,7 +506,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
         )}
         {state.carpeta_repo && <p className="text-xs text-muted">{t("storage_note", { dir: state.carpeta_repo })}</p>}
         <button className={btnGhost + " self-start"} disabled={busy} onClick={() => act(async () => {
-          await call("POST", "/quit");  // descarta la sesión y detiene el servidor
+          await call("POST", "/quit");  // discards the session and stops the server
           setClosed(true);
         })}>{t("discard")}</button>
       </>
@@ -521,7 +515,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
 
   if (closed) return <p role="status" className="rounded-xl border border-line bg-surface p-5 text-sm">{t("closed")}</p>;
 
-  // El repositorio con el que se trabaja: el ya listo o el que se está preparando.
+  // The repository being worked on: the ready one or the one being prepared.
   const preparingUrl = preparing && status?.detalle?.startsWith("http") ? status.detalle : "";
   const shownUrl = state.repo?.url || preparingUrl || workingOn;
 

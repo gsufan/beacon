@@ -1,18 +1,9 @@
-"""Casos de uso de Beacon, compartidos por la CLI, la API y el watcher.
+"""Beacon use cases, shared by the CLI, the API and the watcher.
 
-Antes, cada punto de entrada implementaba su propia versión de los flujos y
-se habían separado: la API aceptaba token para repos privados y la CLI no;
-la CLI purgaba código generado y la API no; solo el watcher hacía `git pull`,
-así que 'beacon sync' y el botón "Sincronizar" nunca traían cambios de un
-repo clonado por URL. Ahora la lógica vive aquí una sola vez, y la CLI y la
-API solo traducen entradas y errores (mensajes de consola o códigos HTTP).
-
-Errores que pueden lanzar estas funciones:
-  InvalidProjectIdError, InvalidRepoUrlError, InvalidRequestError  -> datos inválidos
-  ProjectAlreadyExistsError -> id ya registrado
-  ProjectNotFoundError      -> id no registrado
-  CloneError                -> no se pudo clonar o actualizar desde el remoto
-  ProjectBusyError          -> otro proceso está sincronizando el proyecto
+The logic lives here once; the CLI and the API only translate inputs and errors (console messages
+or HTTP codes). Errors raised by these functions: InvalidProjectIdError, InvalidRepoUrlError and
+InvalidRequestError (invalid data), ProjectAlreadyExistsError, ProjectNotFoundError, CloneError
+(clone or update from the remote failed) and ProjectBusyError (another process is syncing).
 """
 
 import shutil
@@ -52,24 +43,21 @@ ProgressCallback = Optional[Callable[[int, int, str], None]]
 
 
 class InvalidRequestError(ValueError):
-    """Datos de entrada que no permiten ejecutar la operación."""
+    pass
 
 
 class CloneError(RuntimeError):
-    """No se pudo clonar el repositorio remoto ni traer sus cambios."""
+    pass
 
 
-# ------------------------------------------------------------ proyectos ----
 
 def register_project(project_id: str, *, name: Optional[str] = None, repo_path: Optional[str] = None,
                      repo_url: Optional[str] = None, auth_token: Optional[str] = None,
                      auto_watch: bool = False) -> ProjectEntry:
-    """Registra un repo local ya clonado (`repo_path`) o clona uno remoto
-    (`repo_url`, con token opcional para repos privados)."""
+    """Registers an already cloned local repo (`repo_path`) or clones a remote one (`repo_url`, with an optional token for private repos)."""
     validate_project_id(project_id)
     if bool(repo_path) == bool(repo_url):
         raise InvalidRequestError("Indica la ruta de un repositorio local o la URL de uno remoto (solo una de las dos).")
-    # Antes de clonar: evita descargar un repo completo para después fallar.
     if any(p.id == project_id for p in load_config().projects):
         raise ProjectAlreadyExistsError(f"El proyecto '{project_id}' ya está registrado.")
 
@@ -89,8 +77,8 @@ def register_project(project_id: str, *, name: Optional[str] = None, repo_path: 
         except git.GitCommandError as e:
             raise CloneError(f"No se pudo clonar '{repo_url}': {e}")
         if auth_token:
-            # El token quedó en .git/config (remote origin): se deja la URL
-            # limpia para que el secreto viva solo en credentials.yaml.
+            # The token was left in .git/config (remote origin): restore the clean URL so the secret lives only
+            # in credentials.yaml.
             cloned.remotes.origin.set_url(repo_url)
 
     entry = add_project(ProjectEntry(
@@ -104,8 +92,7 @@ def register_project(project_id: str, *, name: Optional[str] = None, repo_path: 
 
 
 def unregister_project(project_id: str, *, purge_data: bool = False) -> None:
-    """Quita el proyecto de config.yaml y su token; con `purge_data`, borra
-    además data/<id>/ (índice, documentación y clon)."""
+    """Removes the project from config.yaml and its token; with `purge_data`, also deletes data/<id>/ (index, documentation and clone)."""
     trash = None
     if purge_data:
         try:
@@ -113,12 +100,10 @@ def unregister_project(project_id: str, *, purge_data: bool = False) -> None:
         except ValueError as e:
             raise InvalidRequestError(f"No se purgaron datos: {e}")
         if project_dir.exists():
-            ensure_not_busy(project_dir)  # no borrar data/<id>/ mientras otro proceso la escribe
+            ensure_not_busy(project_dir)  # do not delete data/<id>/ while another process writes it
             release_chroma_client(str(project_dir / "chroma_db"))
-            # Primero se renombra: en Windows falla si otro proceso (el
-            # servidor u otra consola) tiene abierto el índice, y entonces no
-            # se toca nada. Antes se desregistraba primero y el borrado fallaba
-            # después, dejando el proyecto fuera de config.yaml con sus datos.
+            # Rename first: on Windows it fails if another process has the index open, and then nothing is touched,
+            # so the project is never left out of config.yaml with its data still on disk.
             trash = project_dir.with_name(f".{project_dir.name}.borrando")
             if trash.exists():
                 shutil.rmtree(trash, ignore_errors=True)
@@ -130,14 +115,13 @@ def unregister_project(project_id: str, *, purge_data: bool = False) -> None:
                     "consola). Ciérralo e inténtalo de nuevo; no se borró nada.")
     if not remove_project(project_id):
         if trash is not None:
-            trash.rename(project_dir)  # no estaba registrado: se deja todo como estaba
+            trash.rename(project_dir)  # it was not registered: leave everything as it was
         raise ProjectNotFoundError(f"Proyecto '{project_id}' no encontrado en config.yaml.")
     delete_project_token(project_id)
     if trash is not None:
         shutil.rmtree(trash, ignore_errors=True)
 
 
-# ------------------------------------------------------ sincronización ----
 
 @dataclass
 class SyncResult:
@@ -155,7 +139,7 @@ def _project_entry(project_id: str) -> ProjectEntry:
 
 
 def ensure_clone(entry: ProjectEntry) -> bool:
-    """Vuelve a clonar un proyecto por URL cuyo clon se borró para liberar espacio. True si tuvo que clonar."""
+    """Clones again a URL project whose clone was deleted to free space. True if it had to clone."""
     if entry.source_type != "git" or not entry.repo_url or Path(entry.repo_path).exists():
         return False
     token = get_project_token(entry.id)
@@ -164,14 +148,14 @@ def ensure_clone(entry: ProjectEntry) -> bool:
     except git.GitCommandError as e:
         raise CloneError(f"No se pudo volver a clonar '{entry.repo_url}': {e}")
     if token:
-        cloned.remotes.origin.set_url(entry.repo_url)  # el token no se deja en .git/config
+        cloned.remotes.origin.set_url(entry.repo_url)
     return True
 
 
 def pull_from_remote(entry: ProjectEntry) -> None:
-    """Trae los cambios del remoto de un proyecto clonado por URL. Si tiene
-    token (repo privado), lo usa solo durante el pull y restaura la URL
-    limpia después, para no dejar el secreto en .git/config."""
+    """Pulls remote changes of a URL-cloned project. A token (private repo) is only used during the pull and
+    the clean URL is restored afterwards, so the secret is not left in .git/config.
+    """
     repo = git.Repo(entry.repo_path)
     token = get_project_token(entry.id)
     try:
@@ -189,8 +173,7 @@ def pull_from_remote(entry: ProjectEntry) -> None:
 
 
 def _purge_generated(indexer: CodebaseIndexer) -> int:
-    """Quita chunks de código generado/vendor que hayan quedado de índices
-    anteriores a ese filtro (el indexado actual ya no los agrega)."""
+    """Removes generated/vendor chunks left by indexes created before that filter (current indexing no longer adds them)."""
     data = indexer.collection.get(include=["metadatas"])
     to_delete = [cid for cid, m in zip(data["ids"], data["metadatas"])
                  if _is_generated_or_vendor(m.get("file_path", ""))]
@@ -203,15 +186,15 @@ def _purge_generated(indexer: CodebaseIndexer) -> int:
 def sync_project(project_id: str, *, docs: bool = True, full: bool = False, include_uncommitted: bool = False,
                  pull: bool = True, on_index_progress: ProgressCallback = None,
                  on_docs_progress: ProgressCallback = None) -> SyncResult:
-    """Pone al día un proyecto bajo el lock entre procesos: trae los cambios
-    del remoto (solo proyectos clonados por URL), actualiza el índice y,
-    con `docs`, la documentación. El `git pull` ocurre dentro del lock, así
-    que nunca cambia archivos a mitad del indexado de otra consola."""
+    """Brings a project up to date under the cross-process lock: pulls remote changes (URL projects only),
+    updates the index and, with `docs`, the documentation. The `git pull` happens inside the lock so it never
+    changes files in the middle of another console's indexing.
+    """
     project = get_project(project_id)
     entry = _project_entry(project_id)
     ai = load_config().ai_provider
     with project_lock(Path(project.chroma_dir).parent):
-        pulled = ensure_clone(entry)  # un clon recién hecho ya está al día
+        pulled = ensure_clone(entry)  # a fresh clone is already up to date
         if pull and not pulled and entry.source_type == "git" and not include_uncommitted:
             pull_from_remote(entry)
             pulled = True
@@ -219,13 +202,12 @@ def sync_project(project_id: str, *, docs: bool = True, full: bool = False, incl
         index_result = indexer.sync(include_uncommitted=include_uncommitted, on_progress=on_index_progress, full=full)
         purged = _purge_generated(indexer) if index_result.get("status") != "sin_cambios" else 0
         docs_result = None
-        if docs and not include_uncommitted:  # la documentación siempre refleja un commit
+        if docs and not include_uncommitted:  # documentation always reflects a commit
             docs_result = DocGenerator(project, ai).sync(on_progress=on_docs_progress, full=full)
     return SyncResult(index=index_result, docs=docs_result, pulled=pulled, generated_purged=purged)
 
 
 def generate_docs(project_id: str, *, full: bool = False, on_progress: ProgressCallback = None) -> dict:
-    """Actualiza solo la documentación (requiere el índice al día)."""
     project = get_project(project_id)
     ai = load_config().ai_provider
     with project_lock(Path(project.chroma_dir).parent):

@@ -1,7 +1,6 @@
-"""Regresión: typer==0.15.1 crasheaba al pedir --help con click>=8.2
-instalado (Parameter.make_metavar() missing 'ctx'). Se fijó a 0.15.4 en
-requirements.txt — estos tests evitan que la incompatibilidad vuelva a
-colarse sin que nadie lo note."""
+"""Regression: typer 0.15.1 failed on --help with click >= 8.2 (Parameter.make_metavar() missing 'ctx').
+These tests keep the incompatibility from going unnoticed.
+"""
 
 import sys
 from pathlib import Path
@@ -34,7 +33,7 @@ def test_configure_beacon_logging_formats_records_with_timestamp_and_level(capsy
     import logging
 
     beacon_logger = logging.getLogger("beacon")
-    beacon_logger.handlers.clear()  # no acumular handlers si el test corre más de una vez
+    beacon_logger.handlers.clear()  # do not accumulate handlers if the test runs more than once
 
     cli_module._configure_beacon_logging()
     logging.getLogger("beacon.api").warning("fallo de prueba en el watcher")
@@ -44,7 +43,7 @@ def test_configure_beacon_logging_formats_records_with_timestamp_and_level(capsy
     assert "WARNING" in err
     assert "beacon.api" in err
 
-    beacon_logger.handlers.clear()  # limpiar para no afectar otros tests
+    beacon_logger.handlers.clear()  # clean up so other tests are not affected
 
 
 def test_bare_command_shows_a_friendly_summary_and_version_flag():
@@ -60,7 +59,7 @@ def test_console_language_follows_the_os_locale_with_english_as_default(monkeypa
     for value, expected in (("es_CL.UTF-8", "es"), ("es-MX", "es"), ("ES_ES", "es"), ("en_US.UTF-8", "en"), ("de_DE", "en"), ("", "en")):
         monkeypatch.setattr(cli_lang, "_os_language", lambda v=value: v)
         assert cli_lang.detect_language() == expected, value
-    monkeypatch.setenv("BEACON_LANG", "es")  # el forzado manda sobre el sistema
+    monkeypatch.setenv("BEACON_LANG", "es")  # the forced value wins over the system
     monkeypatch.setattr(cli_lang, "_os_language", lambda: "en_US")
     assert cli_lang.detect_language() == "es"
 
@@ -71,7 +70,7 @@ def _close_study(tmp_path, monkeypatch, answer):
     (tmp_path / "estudio").mkdir()
 
     def fake_run(*args, **kwargs):
-        assert (tmp_path / "_study" / "sesion.json").exists()  # la sesión existía mientras corría
+        assert (tmp_path / "_study" / "sesion.json").exists()  # the session existed while it ran
         raise KeyboardInterrupt
 
     monkeypatch.setattr(subprocess, "run", fake_run)

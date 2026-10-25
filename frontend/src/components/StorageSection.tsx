@@ -19,7 +19,7 @@ export function formatBytes(n: number): string {
 
 const button = "rounded-lg border border-line px-2.5 py-1 text-xs text-ink-2 hover:bg-surface-2 disabled:opacity-50";
 
-// Espacio en disco por proyecto, con borrado selectivo: el proyecto sigue registrado y lo borrado se recrea al sincronizar.
+// Disk usage per project with selective deletion: the project stays registered and what was deleted is recreated on sync.
 export default function StorageSection() {
   const { t } = useLanguage();
   const [projects, setProjects] = useState<StorageProject[] | null>(null);

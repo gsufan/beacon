@@ -4,8 +4,8 @@ version = "0.3.0"
 description = "Plataforma local (RAG) para detectar y mitigar deuda técnica en repositorios de código"
 readme = "README.md"
 license = { file = "LICENSE" }
-# <3.13: tree-sitter-languages 1.10.2 (requirements.txt) no publica wheels
-# para Python 3.13+, así que la instalación fallaría. Docker y CI usan 3.11.
+# <3.13: tree-sitter-languages 1.10.2 (requirements.txt) publishes no wheels for Python 3.13+, so
+# installation would fail. Docker and CI use 3.11.
 requires-python = ">=3.10,<3.13"
 
 [project.scripts]

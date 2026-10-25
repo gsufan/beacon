@@ -1,7 +1,6 @@
-# Preguntas que nombran un identificador del código sobre microservices-demo
-# (ver requests-identificadores.yaml). Mide la búsqueda híbrida en un
-# repositorio con cinco lenguajes.
-# Uso: python tools/eval_retrieval.py <project_id> eval/microservices-demo-identificadores.yaml
+# Questions that name a code identifier on microservices-demo (see requests-identificadores.yaml).
+# Measures hybrid search on a repository with five languages.
+# Usage: python tools/eval_retrieval.py <project_id> eval/microservices-demo-identificadores.yaml
 
 questions:
   - q: "¿Qué hace CreateQuoteFromFloat?"

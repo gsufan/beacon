@@ -92,7 +92,7 @@ function Sidebar() {
 }
 
 export default function App() {
-  // El modo estudio (`beacon study`) es una pantalla independiente, sin barra lateral ni proyectos.
+  // Study mode (`beacon study`) is a standalone screen, without sidebar or projects.
   if (useLocation().pathname.startsWith("/study")) return <Study />;
   return (
     <LanguageProvider>

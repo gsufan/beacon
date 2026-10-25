@@ -1,4 +1,4 @@
-"""API REST multi-proyecto. La UI (frontend/dist) se sirve como estáticos, ver el final del archivo."""
+"""Beacon REST API. It also serves the compiled web interface (frontend/dist)."""
 
 import logging
 import os
@@ -42,15 +42,13 @@ _shutdown_hooks: list = []
 @asynccontextmanager
 async def _lifespan(_app):
     yield
-    for hook in _shutdown_hooks:  # al cerrar el servidor: detener lo que siga en curso (ej. una respuesta del modelo)
+    for hook in _shutdown_hooks:  # on shutdown: stop whatever is in progress (e.g. a model answer)
         hook()
 
 
 app = FastAPI(title="Beacon API", version="0.3.0", docs_url="/api/docs", redoc_url="/api/redoc", lifespan=_lifespan)
-# Beacon se sirve same-origin en producción (la UI compilada vive en el mismo
-# host:puerto que la API); el único caso legítimo de origen cruzado es el dev
-# server de Vite. No usar "*" — sin auth en la API (ver docs/es/seguridad.md),
-# un CORS abierto ampliaría la superficie de ataque sin necesidad real.
+# The compiled interface is served from the same origin as the API; the only legitimate cross-origin
+# is the Vite dev server. "*" is not used (see docs/en/security.md).
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
@@ -58,11 +56,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# API key opcional: si BEACON_API_KEY está seteada, se exige en el header
-# X-API-Key para los endpoints de datos/config (no para servir la SPA ni
-# para /healthz). Sin la env var (default), la API queda abierta — igual
-# que hoy — pensada para uso local/interno; ver el README para exponerla
-# de forma más segura.
+# Optional API key: with BEACON_API_KEY set, data and configuration endpoints require the X-API-Key
+# header (not the interface or /healthz). Without it, the API is open.
 API_KEY = os.environ.get("BEACON_API_KEY")
 _PROTECTED_PREFIXES = ("/projects", "/config", "/system")
 
@@ -77,7 +72,7 @@ async def api_key_middleware(request: Request, call_next):
 
 @app.get("/healthz", include_in_schema=False)
 def healthz():
-    """Sin autenticación ni dependencias externas — para healthchecks de Docker/orquestadores."""
+    """No authentication and no external dependencies, for Docker and orchestrator healthchecks."""
     return {"status": "ok"}
 
 
@@ -87,15 +82,15 @@ _sync_lock = threading.Lock()
 AUTO_WATCH_INTERVAL_SECONDS = 300
 
 
-_engines: dict = {}  # project_id -> (versión del índice, RAGEngine)
+_engines: dict = {}  # project_id -> (index version, RAGEngine)
 _engines_lock = threading.Lock()
 
 
 def _get_engine(project_id: str) -> RAGEngine:
-    """Una instancia de RAGEngine por proyecto, reutilizada entre requests
-    mientras el índice no cambie. Si cambió (un sync de este proceso o de otro,
-    ej. 'beacon sync' en una consola), se crea una nueva, que ve el índice
-    actualizado (ver chroma_utils)."""
+    """One RAGEngine per project, reused across requests while the index does not change. If it changed (a
+    sync in this process or in another, e.g. `beacon sync` in a console), a new one is created that sees
+    the updated index (see chroma_utils).
+    """
     project = get_project(project_id)
     version = read_index_version(Path(project.chroma_dir).parent)
     with _engines_lock:
@@ -108,9 +103,8 @@ def _get_engine(project_id: str) -> RAGEngine:
     return engine
 
 
-_get_engine.cache_clear = _engines.clear  # para config/proyecto modificados
+_get_engine.cache_clear = _engines.clear  # for modified config/project
 
-# Modo estudio (`beacon study`): los endpoints /study/* solo existen en ese modo.
 if os.environ.get("BEACON_STUDY") == "1":
     from core.study.api import build_router
 
@@ -146,16 +140,16 @@ class AIProviderUpdate(BaseModel):
     ollama_host: str
     embedding_model: str
     llm_model: str
-    llm_num_ctx: Optional[int] = Field(default=None, ge=2048, le=1_000_000)  # None conserva la ventana configurada
+    llm_num_ctx: Optional[int] = Field(default=None, ge=2048, le=1_000_000)  # None keeps the configured window
 
 
 class ProjectCreate(BaseModel):
     id: str = Field(..., min_length=1)
     name: str = Field(..., min_length=1)
     source_type: str = Field(default="local", pattern="^(local|git)$")
-    repo_path: Optional[str] = None  # requerido si source_type == "local"
-    repo_url: Optional[str] = None  # requerido si source_type == "git"
-    auth_token: Optional[str] = None  # opcional, solo para repos git privados
+    repo_path: Optional[str] = None  # required if source_type == "local"
+    repo_url: Optional[str] = None  # required if source_type == "git"
+    auth_token: Optional[str] = None  # optional, only for private git repos
     auto_watch: bool = False
 
 
@@ -265,13 +259,12 @@ def put_ai_provider(body: AIProviderUpdate):
 
 @app.get("/system/providers")
 def system_providers():
-    """Proveedores de IA soportados. Hoy solo Ollama está implementado."""
     return {"providers": [{"id": "ollama", "name": "Ollama (local)"}]}
 
 
 @app.get("/system/available-models")
 def system_available_models(ollama_host: Optional[str] = None):
-    """Modelos realmente instalados en el host de Ollama configurado (o el pasado por query)."""
+    """Models actually installed on the configured Ollama host (or the one passed in the query)."""
     host = ollama_host or load_config().ai_provider.ollama_host
     try:
         client = ollama.Client(host=host)
@@ -288,7 +281,6 @@ def _model_installed(name: str, installed: list) -> bool:
 
 @app.get("/system/ai-status")
 def system_ai_status():
-    """Whether Ollama answers and the configured models are installed."""
     ai = load_config().ai_provider
     try:
         client = ollama.Client(host=ai.ollama_host, timeout=3)
@@ -307,15 +299,9 @@ BROWSE_ROOT = Path.home().resolve()
 
 @app.get("/system/browse-dirs")
 def system_browse_dirs(path: Optional[str] = None):
-    """Explora el filesystem DEL SERVIDOR donde corre este backend (no el del navegador).
-
-    Beacon siempre lee repos desde el disco donde se ejecuta `beacon serve`; un
-    selector de archivos del navegador vería el filesystem equivocado si el
-    backend corre en otra máquina. Por eso el explorador vive acá.
-
-    Acotado a BROWSE_ROOT (home del usuario): sin esto, cualquiera con acceso
-    a la API podría enumerar cualquier carpeta del disco (la API no tiene
-    autenticación — ver limitaciones conocidas en el README).
+    """Browses the filesystem of the SERVER running this backend (not the browser's). Limited to
+    BROWSE_ROOT (the user's home): without that, anyone with API access could list any folder on disk
+    (see docs/en/security.md).
     """
     base = (Path(path) if path else BROWSE_ROOT).resolve()
     if not base.is_relative_to(BROWSE_ROOT):
@@ -364,7 +350,7 @@ def put_auto_watch(project_id: str, body: AutoWatchUpdate):
 
 @app.delete("/projects/{project_id}")
 def delete_project(project_id: str, purge_data: bool = False):
-    # Antes de borrar: las instancias en caché tienen abierto el índice.
+    # Cached instances have the index open.
     _get_engine.cache_clear()
     try:
         services.unregister_project(project_id, purge_data=purge_data)
@@ -381,7 +367,6 @@ def delete_project(project_id: str, purge_data: bool = False):
 
 @app.get("/system/storage")
 def system_storage():
-    """Espacio en disco por proyecto: clon (solo si Beacon lo clonó), índice y documentación."""
     from core import storage
     projects = [dict(id=u.id, name=u.name, source_type=u.source_type, clone_bytes=u.clone_bytes, index_bytes=u.index_bytes,
                      docs_bytes=u.docs_bytes, total_bytes=u.total_bytes, managed_clone=bool(u.clone_path))
@@ -391,11 +376,10 @@ def system_storage():
 
 @app.post("/projects/{project_id}/clean")
 def clean_project_storage(project_id: str, body: CleanRequest):
-    """Libera espacio sin quitar el proyecto: lo borrado se vuelve a crear en el siguiente sync."""
     from core import storage
     if not (body.clone or body.index or body.docs):
         raise HTTPException(status_code=400, detail="Indica qué borrar: clone, index y/o docs.")
-    _get_engine.cache_clear()  # las instancias en caché tienen abierto el índice
+    _get_engine.cache_clear()
     try:
         freed = storage.clean_project(project_id, clone=body.clone, index=body.index, docs=body.docs)
     except ProjectBusyError as e:
@@ -410,9 +394,9 @@ def clean_project_storage(project_id: str, body: CleanRequest):
 
 
 def _run_sync(project_id: str):
-    """Tarea en segundo plano del botón "Sincronizar" y del watcher: trae los
-    cambios del remoto (proyectos clonados por URL), actualiza el índice y la
-    documentación. El estado queda en _sync_status para que la UI lo consulte."""
+    """Background task of the "Sync" button and the watcher: pulls remote changes (URL-cloned projects),
+    updates the index and the documentation. The status is kept in _sync_status for the UI to poll.
+    """
     with _sync_lock:
         _sync_status[project_id] = {"status": "running", "detail": None}
     try:
@@ -433,7 +417,7 @@ def _run_sync(project_id: str):
 
 @app.post("/projects/{project_id}/sync", status_code=202)
 def trigger_sync(project_id: str, background_tasks: BackgroundTasks):
-    _require_project(project_id)  # 404 si no existe
+    _require_project(project_id)
     if not _claim_sync(project_id):
         raise HTTPException(status_code=409, detail="Ya hay un sync en curso para este proyecto.")
     background_tasks.add_task(_run_sync, project_id)
@@ -441,9 +425,9 @@ def trigger_sync(project_id: str, background_tasks: BackgroundTasks):
 
 
 def _claim_sync(project_id: str) -> bool:
-    """Marca el proyecto como 'running' si no lo estaba, en una sola operación
-    bajo el lock: evita que dos pedidos seguidos lancen dos syncs en paralelo
-    sobre la misma colección (la tarea en background arranca después)."""
+    """Marks the project as 'running' if it was not, in a single operation under the lock, so two
+    consecutive requests cannot start two parallel syncs on the same collection.
+    """
     with _sync_lock:
         if _sync_status.get(project_id, {}).get("status") == "running":
             return False
@@ -458,10 +442,8 @@ def sync_status(project_id: str):
 
 
 def _auto_watch_tick():
-    """Un ciclo del watcher: sincroniza los proyectos con auto_watch=True.
-    El sync es idempotente (no hace nada si no hay commits nuevos), así que
-    llamarlo periódicamente es seguro. Separado de _auto_watch_loop para
-    poder probarlo sin depender del sleep infinito.
+    """One watcher cycle: syncs the projects with auto_watch=True. Sync is idempotent (it does nothing
+    without new commits). Separate from _auto_watch_loop so it can be tested without the infinite sleep.
     """
     try:
         cfg = load_config()
@@ -475,15 +457,14 @@ def _auto_watch_tick():
             continue
         try:
             _run_sync(entry.id)
-        except Exception as e:  # _run_sync ya registra sus errores; esto es una red de seguridad
+        except Exception as e:  # _run_sync already logs its errors; this is a safety net
             logger.exception("auto-watch: falló el sync automático del proyecto '%s'", entry.id)
-            with _sync_lock:  # liberar el claim, o el proyecto quedaría "running" para siempre
+            with _sync_lock:  # release the claim, or the project would stay "running" forever
                 _sync_status[entry.id] = {"status": "error", "detail": str(e)}
             continue
         with _sync_lock:
             if _sync_status.get(entry.id, {}).get("busy"):
-                # Otra consola lo estaba sincronizando: no es un error del
-                # watcher; se libera sin marcar nada y se reintenta después.
+                # Another console was syncing it: not a watcher error; release without marking anything and retry later.
                 logger.info("auto-watch: '%s' se está sincronizando en otro proceso, se reintenta en el próximo ciclo", entry.id)
                 _sync_status.pop(entry.id, None)
 
@@ -498,17 +479,13 @@ _auto_watch_thread = threading.Thread(target=_auto_watch_loop, daemon=True)
 _auto_watch_thread.start()
 
 
-# --- Frontend (React/Vite compilado) ---
-# SPA con client-side routing: los assets se sirven directo desde dist/,
-# y cualquier otra ruta que no matchee una API ni un archivo real cae a
-# index.html (para que /docs, /settings, etc. funcionen al recargar).
 _FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 
 def _resolve_frontend_file(full_path: str, dist: Path = _FRONTEND_DIST) -> Optional[Path]:
-    """Archivo estático pedido por la SPA, o None si no existe o si la ruta
-    intenta salir de dist/ (ej. '/%2e%2e/config/credentials.yaml': uvicorn
-    decodifica el %2e pero no normaliza los '..')."""
+    """Static file requested by the SPA, or None if it does not exist or the path tries to leave dist/
+    (e.g. '/%2e%2e/config/credentials.yaml': uvicorn decodes %2e but does not normalize '..').
+    """
     if not full_path:
         return None
     root = dist.resolve()
@@ -528,8 +505,6 @@ if _FRONTEND_DIST.exists():
     def spa_fallback(full_path: str):
         return FileResponse(_resolve_frontend_file(full_path) or (_FRONTEND_DIST / "index.html"))
 else:
-    # Instalación recién clonada sin compilar la UI: en vez de un 404 mudo en
-    # la raíz, explicar qué falta (la API sigue funcionando igual).
     from fastapi.responses import HTMLResponse
 
     @app.get("/", include_in_schema=False)

@@ -1,11 +1,12 @@
-"""Agrega los archivos de resultados del modo estudio (`beacon study`).
+"""Aggregates the results files of study mode (`beacon study`).
 
-  python tools/study_analysis.py <carpeta con .json> [--csv respuestas.csv --columna "Pegue aquí..."]
+  python tools/study_analysis.py <folder with .json> [--csv responses.csv --columna "Pegue aquí..."]
 
-Valida cada archivo (mismas reglas que `core.study.validate`), descarta los inválidos y duplicados, y
-resume: tiempo de respuesta por tipo de GPU/VRAM, porcentaje de respuestas correctas, utilidad de las
-fuentes y experiencia. También acepta la exportación CSV de un formulario donde cada participante pegó su
-JSON en una columna. Nunca lee archivos de identidad."""
+Validates each file (same rules as `core.study.validate`), discards invalid and duplicate ones, and
+summarizes response time by GPU/VRAM, percentage of correct answers, usefulness of the sources and
+experience. It also accepts the CSV export of a form where each participant pasted their JSON in a
+column. It never reads identity files.
+"""
 
 import argparse
 import csv

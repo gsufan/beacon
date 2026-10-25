@@ -1,9 +1,8 @@
-# Preguntas que nombran un identificador del código (función, clase,
-# excepción o constante), como las hace un desarrollador que ya vio el nombre
-# en un error, un log o una revisión. Complementa a requests.yaml, cuyas
-# preguntas describen el comportamiento sin nombrarlo. Mide la búsqueda
-# híbrida (semántica + coincidencia exacta de identificadores).
-# Uso: python tools/eval_retrieval.py <project_id> eval/requests-identificadores.yaml
+# Questions that name a code identifier (function, class, exception or constant), as a developer who has
+# already seen the name in an error, a log or a review would ask. Complements requests.yaml, whose
+# questions describe the behavior without naming it. Measures hybrid search (semantic + exact identifier
+# match).
+# Usage: python tools/eval_retrieval.py <project_id> eval/requests-identificadores.yaml
 
 questions:
   - q: "¿Qué hace should_strip_auth?"

@@ -1,9 +1,7 @@
-"""Tests de los endpoints nuevos de core.api con FastAPI TestClient.
+"""Tests of the core.api endpoints with FastAPI's TestClient.
 
-Usa el config.yaml real del repo para los casos de solo lectura / 404
-(no mutan estado). Los casos que sí escribirían en config.yaml o
-dispararían indexado real se prueban con monkeypatch para no tocar
-datos reales del proyecto.
+Read-only cases and 404s use the repository's config.yaml; those that would write to config.yaml or
+trigger a real indexing are tested with monkeypatch so no real data is touched.
 """
 
 import sys
@@ -71,8 +69,8 @@ def test_create_project_non_git_repo_400():
 
 
 def test_create_project_duplicate_id_409():
-    # No depende de los proyectos de la config real: registra uno y lo duplica.
-    repo_root = str(Path(__file__).resolve().parents[1])  # el propio repo, es un git repo válido
+    # Independent of the real config projects: registers one and duplicates it.
+    repo_root = str(Path(__file__).resolve().parents[1])  # the repo itself, a valid git repo
     first = client.post("/projects", json={"id": "dup-test", "name": "Original", "repo_path": repo_root})
     assert first.status_code in (200, 201), first.text
     try:
@@ -108,7 +106,7 @@ def test_put_ai_provider_wiring(monkeypatch):
     })
     assert resp.status_code == 200
     assert calls["provider"] == "ollama"
-    assert calls["llm_num_ctx"] is None  # la pantalla de configuración no la envía: se conserva la configurada
+    assert calls["llm_num_ctx"] is None  # the settings screen does not send it: the configured one is kept
 
 
 def test_put_ai_provider_accepts_context_window(monkeypatch):
@@ -120,7 +118,7 @@ def test_put_ai_provider_accepts_context_window(monkeypatch):
 
     assert client.put("/config/ai-provider", json={**body, "llm_num_ctx": 32768}).status_code == 200
     assert calls["llm_num_ctx"] == 32768
-    assert client.put("/config/ai-provider", json={**body, "llm_num_ctx": 100}).status_code == 422  # demasiado chica
+    assert client.put("/config/ai-provider", json={**body, "llm_num_ctx": 100}).status_code == 422  # too small
 
 
 def test_query_unknown_project_404():
@@ -141,8 +139,8 @@ def test_system_available_models_bad_host():
 
 
 def test_system_browse_dirs_outside_allowed_root_403():
-    # El padre del directorio permitido está fuera en cualquier sistema operativo
-    # ("C:/..." en Linux sería una ruta relativa y quedaría dentro del home).
+    # The parent of the allowed directory is outside on any operating system ("C:/..." on Linux would
+    # be a relative path and stay inside the home).
     import core.api as api_module
     outside = str(Path(api_module.BROWSE_ROOT).resolve().parent)
     resp = client.get("/system/browse-dirs", params={"path": outside})
@@ -199,8 +197,8 @@ def test_create_project_rejects_dangerous_url_scheme():
 
 def test_docs_path_traversal_blocked():
     resp = client.get(f"/projects/{UNKNOWN_PROJECT}/docs", params={"file_path": "../../../../etc/passwd"})
-    # 404 (proyecto no existe) o 403 (traversal bloqueado) son ambos correctos
-    # acá; lo que no puede pasar es un 200 leyendo fuera de docs_dir.
+    # 404 (project does not exist) or 403 (traversal blocked) are both correct here; what cannot happen
+    # is a 200 reading outside docs_dir.
     assert resp.status_code in (403, 404)
 
 
@@ -239,7 +237,6 @@ def test_api_key_does_not_protect_healthz(monkeypatch):
     assert resp.status_code == 200
 
 
-# --- _auto_watch_tick: antes fallaba en silencio (except Exception: continue) ---
 
 def test_auto_watch_tick_logs_instead_of_swallowing_sync_failure(monkeypatch, caplog):
     entry = ProjectEntry(id="broken-project", name="Broken", repo_path="/tmp/x", auto_watch=True)
@@ -255,7 +252,7 @@ def test_auto_watch_tick_logs_instead_of_swallowing_sync_failure(monkeypatch, ca
     monkeypatch.setattr(api, "_run_sync", failing_sync)
 
     with caplog.at_level("ERROR", logger="beacon.api"):
-        api._auto_watch_tick()  # no debe propagar la excepción
+        api._auto_watch_tick()  # must not propagate the exception
 
     assert any("broken-project" in record.message for record in caplog.records)
 
@@ -267,7 +264,7 @@ def test_auto_watch_tick_logs_config_load_failure(monkeypatch, caplog):
     monkeypatch.setattr(api, "load_config", broken_load_config)
 
     with caplog.at_level("ERROR", logger="beacon.api"):
-        api._auto_watch_tick()  # no debe propagar la excepción
+        api._auto_watch_tick()  # must not propagate the exception
 
     assert any("config.yaml" in record.message for record in caplog.records)
 

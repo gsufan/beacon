@@ -1,7 +1,7 @@
-"""Endpoints del modo estudio (`/study/*`). Solo se montan cuando el servidor se levantó con `beacon study`
-(variable BEACON_STUDY=1): un servidor normal no los expone.
-
-El participante aprueba cada paso; los tiempos de las preguntas los mide el servidor, no el navegador."""
+"""Study mode endpoints (`/study/*`). They are only mounted when the server was started with `beacon study`
+(BEACON_STUDY=1): a regular server does not expose them. The participant approves each step; question
+timings are measured by the server, not the browser.
+"""
 
 import json
 import logging
@@ -28,8 +28,8 @@ from core.study.session import CORRECT_VALUES, StudyError, StudySession
 logger = logging.getLogger("beacon.study")
 
 STUDY_PROJECT_ID = "estudio"
-ASK_TIMEOUT_SECONDS = 180  # una respuesta que tarda más suele ser un bucle del modelo: se corta con un aviso
-MAX_FILES = 3000  # más que esto son horas de indexado: se pide un repositorio más chico
+ASK_TIMEOUT_SECONDS = 180  # an answer that takes longer is usually a model loop: it is cut with a notice
+MAX_FILES = 3000  # more than this is hours of indexing: a smaller repository is requested
 ALLOWED_HOSTS = ("github.com", "gitlab.com", "bitbucket.org", "codeberg.org")
 
 
@@ -38,7 +38,7 @@ def study_dir() -> Path:
 
 
 def output_dir() -> Path:
-    """Raíz del proyecto: ahí quedan los archivos finales, para que el participante los encuentre y los revise."""
+    """Project root: the final files are left there so the participant can find and review them."""
     return Path(__file__).resolve().parents[3]
 
 
@@ -51,7 +51,7 @@ def identity_file(study_id: str) -> str:
 
 
 def study_project_ids() -> list:
-    """Ids de los repositorios del estudio registrados en su configuración propia (el más reciente al final)."""
+    """Ids of the study repositories registered in its own configuration (the most recent last)."""
     import yaml
     try:
         raw = yaml.safe_load((study_dir() / "config.yaml").read_text(encoding="utf-8")) or {}
@@ -66,8 +66,7 @@ def current_project_id() -> str:
 
 
 def remove_study_repos(keep: Optional[str] = None):
-    """Borra los repositorios del estudio (todos menos `keep`). Lo que otro proceso o Windows tenga abierto se deja
-    para después: sigue registrado y la siguiente limpieza lo reintenta."""
+    """Deletes the study repositories (all but `keep`). Whatever another process or Windows has open is left for later: it stays registered and the next cleanup retries."""
     for project_id in study_project_ids():
         if project_id == keep:
             continue
@@ -121,8 +120,7 @@ class IdentityBody(BaseModel):
 
 
 def run_health_checks() -> list:
-    """Revisión previa al estudio: lo necesario para que no falle a mitad de camino. Cada ítem trae un id (la
-    pantalla lo traduce), un estado ("ok", "warn" o "error") y un valor para mostrar."""
+    """Pre-study checks, so it does not fail midway. Each item has an id (the screen translates it), a status ("ok", "warn" or "error") and a value to display."""
     items = []
     try:
         ai = load_config().ai_provider
@@ -161,7 +159,7 @@ def run_health_checks() -> list:
 
 
 def check_public_repo_url(url: str) -> str:
-    """Solo https y servidores de código conocidos: el estudio se hace con repositorios públicos."""
+    """Only https and known code hosts: the study uses public repositories."""
     from urllib.parse import urlparse
     parsed = urlparse(url.strip())
     if parsed.scheme != "https" or (parsed.hostname or "").lower() not in ALLOWED_HOSTS:
@@ -175,7 +173,7 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
     router = APIRouter(prefix="/study")
     status = {"repo": {"estado": "sin_repo", "detalle": None}}
     lock = threading.Lock()
-    cancel = threading.Event()  # detiene la respuesta en curso (botón «Cancelar» o cierre del servidor)
+    cancel = threading.Event()  # stops the answer in progress ("Cancel" button or server shutdown)
 
     def session() -> StudySession:
         return StudySession(session_path())
@@ -193,7 +191,6 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
     def health():
         return {"items": run_health_checks()}
 
-    # ---------- sesión ----------
     @router.get("/state")
     def state():
         s = session()
@@ -224,10 +221,9 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
             fail(e)
         return {"ok": True}
 
-    # ---------- datos del equipo ----------
     @router.get("/hardware-preview")
     def hardware_preview():
-        """Lo que se guardaría. No se guarda nada hasta que el participante lo autoriza."""
+        """What would be saved. Nothing is stored until the participant authorizes it."""
         return hardware.collect_hardware(str(DATA_ROOT))
 
     @router.post("/hardware")
@@ -247,11 +243,10 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
             fail(e)
         return s.state["hardware"]
 
-    # ---------- repositorio ----------
     def _prepare_repo(url: str):
         started = time.time()
-        # Cada repositorio va a una carpeta nueva: reemplazar la anterior en el mismo lugar falla en Windows si el
-        # índice (o una respuesta en curso) la tiene abierta. La anterior se borra al final, sin que importe si falla.
+        # Each repository goes to a new folder: replacing the previous one in place fails on Windows if the index (or an
+        # answer in progress) has it open. The previous one is deleted at the end, whether or not that succeeds.
         project_id = f"{STUDY_PROJECT_ID}-{secrets.token_hex(2)}"
         try:
             clear_engines()
@@ -286,7 +281,7 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
             with lock:
                 status["repo"] = {"estado": "listo", "detalle": None}
             clear_engines()
-            remove_study_repos(keep=project_id)  # el repositorio anterior, si lo había
+            remove_study_repos(keep=project_id)
         except services.CloneError:
             with lock:
                 status["repo"] = {"estado": "error", "detalle": "No se pudo clonar el repositorio. ¿Es público y la dirección es correcta?"}
@@ -315,7 +310,6 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
         with lock:
             return dict(status["repo"])
 
-    # ---------- preguntas ----------
     @router.post("/ask")
     def ask(body: AskBody):
         s = need_started()
@@ -357,7 +351,6 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
             fail(e)
         return {"ok": True}
 
-    # ---------- experiencia, identidad y cierre ----------
     @router.post("/experience")
     def experience(body: ExperienceBody):
         need_started().set_experience(body.datos)
@@ -370,7 +363,7 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
 
     @router.get("/result")
     def result():
-        """Archivo para revisar y descargar. Exige el consentimiento de envío y el mínimo de preguntas."""
+        """File to review and download. Requires the submission consent and the minimum number of questions."""
         s = need_started()
         if not s.has_consent("envio"):
             raise HTTPException(status_code=409, detail="Falta autorizar la generación del archivo.")
@@ -393,7 +386,7 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
             status["repo"] = {"estado": "sin_repo", "detalle": None}
         clear_engines()
         remove_study_repos()
-        shutil.rmtree(DATA_ROOT / STUDY_PROJECT_ID, ignore_errors=True)  # el clon de la versión anterior, si quedó
+        shutil.rmtree(DATA_ROOT / STUDY_PROJECT_ID, ignore_errors=True)  # the clone of the previous version, if left behind
 
     @router.post("/discard")
     def discard():
@@ -402,10 +395,10 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
 
     @router.post("/quit")
     def quit_study():
-        """Descarta todo y apaga el servidor del estudio (la consola que lo lanzó lo nota y termina)."""
+        """Discards everything and stops the study server (the console that launched it notices and exits)."""
         _discard_all()
-        threading.Timer(0.7, lambda: os._exit(0)).start()  # da tiempo a que la respuesta llegue al navegador
+        threading.Timer(0.7, lambda: os._exit(0)).start()  # gives the response time to reach the browser
         return {"ok": True}
 
-    router.shutdown = cancel.set  # lo llama el servidor al cerrarse, para que una respuesta en curso no lo deje colgado
+    router.shutdown = cancel.set  # called by the server on shutdown, so an answer in progress does not hang it
     return router

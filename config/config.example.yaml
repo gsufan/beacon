@@ -3,13 +3,13 @@ ai_provider:
   ollama_host: http://localhost:11434
   embedding_model: qwen3-embedding:0.6b
   llm_model: llama3:8b
-  # Ventana de contexto que se pide al modelo (opcional, 8192 por defecto). Con un modelo
-  # de más contexto y más memoria de video se puede subir, por ejemplo a 16384 o 32768.
+  # Context window requested from the model (optional, 8192 by default). With a model that supports
+  # more context and enough video memory it can be raised, for example to 16384 or 32768.
   # llm_num_ctx: 8192
 
-# Repos a analizar. Lo más simple es registrarlos con la CLI o la UI, que
-# editan esta lista por ti:
-#   beacon add mi-proyecto --repo-path ../mi-proyecto
-#   beacon add mi-proyecto --url https://github.com/usuario/repo.git
-# repo_path es relativo a la raíz de este proyecto (o una ruta absoluta).
+# Repositories to analyze. The simplest way is to register them with the CLI or the UI, which edit
+# this list for you:
+#   beacon add my-project --repo-path ../my-project
+#   beacon add my-project --url https://github.com/user/repo.git
+# repo_path is relative to the project root (or an absolute path).
 projects: []

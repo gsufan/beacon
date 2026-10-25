@@ -1,5 +1,4 @@
-"""Regresiones de la revisión de seguridad/integridad (path traversal, ids
-peligrosos, índice marcado como al día con Ollama caído)."""
+"""Security and integrity regressions: path traversal, dangerous project ids and an index marked up to date while Ollama is down."""
 
 import json
 import sys
@@ -24,7 +23,6 @@ client = TestClient(api.app)
 runner = CliRunner()
 
 
-# ------------------------------------------------ SPA fallback traversal ----
 
 def test_frontend_file_resolves_inside_dist(tmp_path):
     dist = tmp_path / "dist"
@@ -46,7 +44,6 @@ def test_frontend_file_missing_or_empty_returns_none(tmp_path):
     assert api._resolve_frontend_file("no-existe.js", tmp_path) is None
 
 
-# ------------------------------------------------------- ids de proyecto ----
 
 @pytest.mark.parametrize("bad_id", ["", ".", "..", "../x", "a/b", "a\\b", "C:/Users", "-x", "x" * 65])
 def test_validate_project_id_rejects(bad_id):
@@ -94,7 +91,6 @@ def test_cli_import_rejects_malicious_manifest_id(monkeypatch, tmp_path):
     assert not (tmp_path / "escaped").exists()
 
 
-# ------------------------------------------- Ollama caído durante el sync ----
 
 class _FailingOllama:
     def __init__(self, exc):
@@ -132,7 +128,7 @@ def test_sync_does_not_mark_commit_indexed_when_embeddings_fail(tmp_path, exc):
 
 
 def test_sync_still_skips_chunk_rejected_for_length(tmp_path):
-    """Un rechazo por contenido (no 404) sigue siendo tolerado: se omite ese chunk."""
+    """A rejection for content (not 404) is still tolerated: that chunk is skipped."""
     indexer = _indexer_for_small_repo(tmp_path)
     indexer.client_ollama = _FailingOllama(ollama.ResponseError("input length exceeds context length", 500))
 
@@ -141,10 +137,9 @@ def test_sync_still_skips_chunk_rejected_for_length(tmp_path):
 
 
 def test_chromadb_is_only_used_embedded():
-    # Los CVE de chromadb 0.5.x publicados en 2026 (CVE-2026-45830/45831/45833)
-    # afectan su modo servidor (API HTTP, permisos por tenant). Beacon usa la
-    # base embebida en el proceso; esta prueba falla si alguien introduce un
-    # cliente o un servidor HTTP de ChromaDB sin revisar esos riesgos.
+    # The chromadb 0.5.x CVEs published in 2026 (CVE-2026-45830/45831/45833) affect its server mode (HTTP API,
+    # per-tenant permissions). Beacon uses the embedded database; this test fails if someone introduces a
+    # ChromaDB client or HTTP server without reviewing those risks.
     src = Path(__file__).resolve().parents[1] / "src"
     offenders = [str(p) for p in src.rglob("*.py")
                  if any(t in p.read_text(encoding="utf-8") for t in ("HttpClient", "chromadb.Client(", "chroma run"))]

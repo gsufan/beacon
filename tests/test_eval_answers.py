@@ -1,4 +1,4 @@
-"""Tests de los criterios de tools/eval_answers.py (sin llamar al modelo)."""
+"""Tests of the criteria of tools/eval_answers.py (without calling the model)."""
 
 import sys
 from pathlib import Path

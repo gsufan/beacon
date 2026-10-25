@@ -1,15 +1,9 @@
-"""Bloqueo por proyecto que funciona entre procesos distintos.
+"""Per-project lock across processes.
 
-El servidor (`beacon serve`, con su watcher automático) y la CLI (`beacon
-sync`, `beacon docs`...) son procesos separados que escriben sobre el mismo
-índice de ChromaDB y la misma carpeta data/<id>/. El `_claim_sync` de la API
-solo coordina dentro del proceso del servidor; este lock coordina a todos.
-
-Se usa un bloqueo del sistema operativo sobre data/<id>/.sync.lock
-(`msvcrt.locking` en Windows, `fcntl.flock` en Linux/macOS). A diferencia de
-un archivo "bandera", el sistema operativo lo libera solo si el proceso muere
-(Ctrl+C, cierre de la consola, caída), así que nunca queda un lock huérfano
-que haya que borrar a mano.
+The server (with its watcher) and the CLI are separate processes that write to the same index and the
+same data/<id>/ folder. An operating system lock on data/<id>/.sync.lock is used (`msvcrt.locking` on
+Windows, `fcntl.flock` on Linux and macOS); the system releases it if the process dies, so a stale lock
+is never left behind.
 """
 
 import os
@@ -20,7 +14,7 @@ LOCK_FILENAME = ".sync.lock"
 
 
 class ProjectBusyError(RuntimeError):
-    """Otro proceso (u otra operación) ya está modificando este proyecto."""
+    pass
 
 
 if os.name == "nt":
@@ -34,7 +28,7 @@ if os.name == "nt":
             return False
 
     def _unlock(fd: int) -> None:
-        os.lseek(fd, 0, os.SEEK_SET)  # msvcrt desbloquea desde la posición actual
+        os.lseek(fd, 0, os.SEEK_SET)  # msvcrt unlocks from the current position
         msvcrt.locking(fd, msvcrt.LK_UNLCK, 1)
 else:
     import fcntl
@@ -52,8 +46,7 @@ else:
 
 @contextmanager
 def project_lock(project_dir):
-    """Toma el lock exclusivo de data/<id>/ sin esperar: si otro proceso lo
-    tiene, lanza ProjectBusyError de inmediato en vez de quedarse colgado."""
+    """Takes the exclusive lock of data/<id>/ without waiting: if another process holds it, it raises ProjectBusyError immediately."""
     lock_dir = Path(project_dir)
     lock_dir.mkdir(parents=True, exist_ok=True)
     fd = os.open(lock_dir / LOCK_FILENAME, os.O_RDWR | os.O_CREAT, 0o644)
@@ -72,8 +65,7 @@ def project_lock(project_dir):
 
 
 def ensure_not_busy(project_dir) -> None:
-    """Falla con ProjectBusyError si alguien tiene el lock ahora mismo; si no,
-    no deja nada tomado. Para operaciones cortas como borrar la carpeta."""
+    """Raises ProjectBusyError if someone holds the lock right now; otherwise it leaves nothing taken. For short operations such as deleting the folder."""
     if not Path(project_dir).exists():
         return
     with project_lock(project_dir):

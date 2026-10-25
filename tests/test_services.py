@@ -1,5 +1,4 @@
-"""Capa de servicios (core/services.py): los flujos compartidos por la CLI,
-la API y el watcher. Sin red ni Ollama: el clonado se reemplaza por uno falso."""
+"""Service layer (core/services.py): the flows shared by the CLI, the API and the watcher. No network or Ollama: cloning is replaced by a fake."""
 
 import sys
 from pathlib import Path
@@ -20,7 +19,7 @@ AI = AIProviderConfig(provider="ollama", ollama_host="http://x", embedding_model
 
 
 class _FakeClone:
-    """Registra la URL usada para clonar y la URL que queda en origin."""
+    """Records the URL used to clone and the URL left in origin."""
     def __init__(self):
         self.clone_url = None
         self.origin_url = None
@@ -50,7 +49,7 @@ def test_duplicate_id_is_rejected_before_cloning(monkeypatch):
     monkeypatch.setattr(services.git.Repo, "clone_from", fake.clone_from)
     with pytest.raises(ProjectAlreadyExistsError):
         services.register_project("demo", repo_url="https://github.com/psf/requests.git")
-    assert fake.clone_url is None  # no se descargó nada
+    assert fake.clone_url is None  # nothing was downloaded
 
 
 def test_private_repo_token_is_used_to_clone_but_not_left_in_git_config(monkeypatch, tmp_path):
@@ -66,8 +65,8 @@ def test_private_repo_token_is_used_to_clone_but_not_left_in_git_config(monkeypa
                                       auth_token="ghp_secreto", auto_watch=True)
 
     assert "ghp_secreto" in fake.clone_url
-    assert fake.origin_url == "https://github.com/org/privado.git"  # URL limpia en .git/config
-    assert saved == {"priv": "ghp_secreto"}  # el token vive en credentials.yaml
+    assert fake.origin_url == "https://github.com/org/privado.git"  # clean URL in .git/config
+    assert saved == {"priv": "ghp_secreto"}  # the token lives in credentials.yaml
     assert entry.source_type == "git" and entry.auto_watch is True
 
 
@@ -100,4 +99,4 @@ def test_cli_add_private_prompts_for_token_without_echo(monkeypatch):
                                 input="ghp_secreto\n")
     assert result.exit_code == 0, result.output
     assert captured["auth_token"] == "ghp_secreto"
-    assert "ghp_secreto" not in result.output  # no se muestra al escribirlo
+    assert "ghp_secreto" not in result.output  # not shown while typing

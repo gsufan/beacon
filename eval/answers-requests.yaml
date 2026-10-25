@@ -1,17 +1,15 @@
-# Conjunto de evaluación de las RESPUESTAS (no solo de la recuperación) sobre
-# psf/requests. Lo usa tools/eval_answers.py, que llama al modelo real.
+# Evaluation set for ANSWERS (not just retrieval) on psf/requests. Used by tools/eval_answers.py, which
+# calls the real model.
 #
-# Preguntas respondibles:
-#   must:  grupos de términos que la respuesta debe mencionar; cada grupo es
-#          una lista de alternativas y basta con una (sin distinguir
-#          mayúsculas). Son los datos que un desarrollador necesita para
-#          considerar útil la respuesta, no una redacción esperada.
-#   cites: archivo que la respuesta debe citar (regla 3 del prompt).
-# Preguntas no respondibles (answerable: false): tratan de algo que no está
-# en el repositorio; la respuesta correcta es decir que no hay información
-# suficiente en vez de inventar.
+# Answerable questions:
+#   must:  groups of terms the answer must mention; each group is a list of alternatives and one is
+#          enough (case-insensitive). They are the facts a developer needs to find the answer useful,
+#          not an expected wording.
+#   cites: file the answer must cite (prompt rule 3).
+# Unanswerable questions (answerable: false): about something that is not in the repository; the correct
+# answer is to say there is not enough information instead of inventing.
 #
-# Uso: python tools/eval_answers.py <project_id> eval/answers-requests.yaml
+# Usage: python tools/eval_answers.py <project_id> eval/answers-requests.yaml
 
 questions:
   - q: "¿Cómo se combinan los ajustes de la sesión con los de una petición puntual?"

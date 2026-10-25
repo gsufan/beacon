@@ -1,7 +1,5 @@
-"""Ventana de contexto del modelo de lenguaje configurable (`llm_num_ctx`).
-
-Por defecto es la de llama3:8b (8.192); un modelo de más contexto, con el hardware
-que lo soporte, se configura sin tocar el código.
+"""Configurable model context window (`llm_num_ctx`). The default is llama3:8b's (8,192); a model with more
+context, on hardware that supports it, is configured without touching the code.
 """
 import sys
 from dataclasses import replace
@@ -37,7 +35,6 @@ def _write_config(path, ai_extra=""):
         "  embedding_model: e\n  llm_model: m\n" + ai_extra + "projects: []\n", encoding="utf-8")
 
 
-# ---- configuración ---------------------------------------------------------
 
 def test_default_window_is_the_one_measured_so_far(tmp_path):
     cfg = tmp_path / "config.yaml"
@@ -59,7 +56,7 @@ def test_invalid_window_falls_back_to_default(tmp_path):
 
 
 def test_saving_provider_from_the_ui_keeps_the_configured_window(tmp_path):
-    # la pantalla de configuración no envía la ventana: no debe perderse al guardar
+    # the settings screen does not send the window: it must not be lost when saving
     cfg = tmp_path / "config.yaml"
     _write_config(cfg, "  llm_num_ctx: 16384\n")
     updated = update_ai_provider("ollama", "http://h:11434", "e2", "m2", path=cfg)
@@ -77,7 +74,6 @@ def test_window_can_be_changed_and_default_is_not_written(tmp_path):
     assert "llm_num_ctx" not in cfg.read_text(encoding="utf-8")
 
 
-# ---- uso en las llamadas ----------------------------------------------------
 
 def test_chat_sends_the_requested_window():
     fake = _FakeOllama()

@@ -1,25 +1,19 @@
-"""Pruebas de estrés: un repositorio de miles de archivos y consultas simultáneas.
+"""Stress tests: a repository of thousands of files and simultaneous queries.
 
-Dos pasos:
+  python tools/stress_test.py generar <folder> [--archivos 2000]
+      Creates a synthetic git repository (Python, Go and JavaScript) with varied function names and
+      bodies, always the same for the same seed, so the measurement can be repeated.
 
-  python tools/stress_test.py generar <carpeta> [--archivos 2000]
-      Crea un repositorio git sintético (Python, Go y JavaScript) con
-      funciones de nombres y cuerpos variados, siempre igual para la misma
-      semilla, para poder repetir la medición.
+  python tools/stress_test.py medir <folder> [--concurrencia 1 4 8] [--conservar]
+      Registers the repository as project `stress-test` and measures:
+        1. full indexing: chunks, time, chunks per second, peak process memory and disk usage;
+        2. incremental sync after modifying 20 files;
+        3. search latency (no LLM), with and without identifiers;
+        4. simultaneous full queries (search + LLM) against the real server, at each concurrency level;
+        5. queries while the index is fully rebuilt.
+      At the end it deletes the project and its data, unless --conservar is given.
 
-  python tools/stress_test.py medir <carpeta> [--concurrencia 1 4 8] [--conservar]
-      Registra el repositorio como proyecto `stress-test` y mide:
-        1. indexación completa: fragmentos, tiempo, fragmentos por segundo,
-           memoria máxima del proceso y espacio en disco;
-        2. sincronización incremental tras modificar 20 archivos;
-        3. latencia de la búsqueda (sin LLM), con y sin identificadores;
-        4. consultas completas (búsqueda + LLM) simultáneas contra el
-           servidor real, en cada nivel de concurrencia;
-        5. consultas mientras el índice se reconstruye por completo.
-      Al final borra el proyecto y sus datos, salvo con --conservar.
-
-Requiere Ollama con los modelos configurados. Los números dependen del
-equipo; el informe imprime el hardware relevante (GPU no incluida).
+Requires Ollama with the configured models. The numbers depend on the machine.
 """
 
 import argparse
@@ -52,7 +46,6 @@ OPERATIONS = ["create", "update", "delete", "validate", "calculate", "find", "li
 DETAILS = ["total", "status", "limit", "batch", "cache", "window", "threshold", "summary", "history"]
 
 
-# ------------------------------------------------------------------ generar ----
 
 def _names(rng, count):
     names = set()
@@ -137,10 +130,9 @@ def generate(target: Path, files: int, seed: int = 7):
     print(f"Generado {target}: {files} archivos.")
 
 
-# -------------------------------------------------------------------- medir ----
 
 def _peak_memory_mb() -> float:
-    """Memoria máxima (working set / RSS) usada hasta ahora por este proceso."""
+    """Peak memory (working set / RSS) used so far by this process."""
     if os.name == "nt":
         import ctypes
         from ctypes import wintypes
@@ -154,7 +146,7 @@ def _peak_memory_mb() -> float:
         counters = Counters()
         counters.cb = ctypes.sizeof(Counters)
         kernel32, psapi = ctypes.WinDLL("kernel32"), ctypes.WinDLL("psapi")
-        kernel32.GetCurrentProcess.restype = wintypes.HANDLE  # sin esto el handle se trunca a 32 bits
+        kernel32.GetCurrentProcess.restype = wintypes.HANDLE  # without this the handle is truncated to 32 bits
         psapi.GetProcessMemoryInfo.argtypes = [wintypes.HANDLE, ctypes.POINTER(Counters), wintypes.DWORD]
         psapi.GetProcessMemoryInfo(kernel32.GetCurrentProcess(), ctypes.byref(counters), counters.cb)
         return counters.PeakWorkingSetSize / 2**20
@@ -182,7 +174,7 @@ def _post(path, payload, timeout=600):
         raw = e.read()
         try:
             return e.code, json.loads(raw or b"null")
-        except ValueError:  # ej. un 500 con texto plano
+        except ValueError:  # e.g. a plain-text 500
             return e.code, raw.decode("utf-8", "replace")
 
 
@@ -203,7 +195,7 @@ def _wait_server():
 
 
 def _concurrent_queries(questions, level):
-    """`level` consultas a la vez, en dos tandas; devuelve latencias y errores."""
+    """`level` simultaneous queries, in two rounds; returns latencies and errors."""
     latencies, errors, lock = [], [], threading.Lock()
 
     def worker(question):
@@ -242,7 +234,6 @@ def measure(repo: Path, levels, keep: bool):
         services.register_project(project_id=PROJECT_ID, name="Prueba de estrés", repo_path=str(repo))
         project = get_project(PROJECT_ID)
 
-        # 1. Indexación completa
         print("1/5 indexación completa...", flush=True)
         t = time.perf_counter()
         result = services.sync_project(PROJECT_ID, docs=False, pull=False).index
@@ -254,7 +245,6 @@ def measure(repo: Path, levels, keep: bool):
             "memoria_maxima_mb": round(_peak_memory_mb()), "disco_mb": round(_dir_size_mb(Path(project.chroma_dir)), 1)}
         print("   ", report["indexacion"], flush=True)
 
-        # 2. Sincronización incremental
         print("2/5 sincronización incremental...", flush=True)
         repo_git = git.Repo(repo)
         changed = sorted(p for p in repo.rglob("*.py") if ".git" not in p.parts)[:20]
@@ -269,7 +259,6 @@ def measure(repo: Path, levels, keep: bool):
                                  "fragmentos_reindexados": inc["chunks_insertados"]}
         print("   ", report["incremental"], flush=True)
 
-        # 3. Latencia de la búsqueda
         print("3/5 latencia de la búsqueda...", flush=True)
         engine = RAGEngine(project, ai)
         sample = engine.collection.get(limit=400, include=["metadatas"])["metadatas"]
@@ -292,7 +281,6 @@ def measure(repo: Path, levels, keep: bool):
         report["busqueda"] = timings
         print("   ", timings, flush=True)
 
-        # 4. Consultas completas simultáneas contra el servidor real
         print("4/5 consultas simultáneas (servidor real)...", flush=True)
         server = subprocess.Popen([sys.executable, "-m", "core.cli", "serve", "--port", str(PORT)],
                                   cwd=ROOT, env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
@@ -308,10 +296,8 @@ def measure(repo: Path, levels, keep: bool):
                 "max_s": round(max(lat), 1) if lat else None}
             print(f"    {level} simultáneas:", report["concurrencia"][str(level)], flush=True)
 
-        # 5. Consultas durante una reconstrucción completa
         print("5/5 consultas durante una reconstrucción completa...", flush=True)
-        # El caso real: alguien corre `beacon sync --full` en una consola
-        # mientras el servidor atiende consultas desde la interfaz.
+        # The real case: someone runs `beacon sync --full` in a console while the server answers queries from the interface.
         rebuild = subprocess.Popen([sys.executable, "-m", "core.cli", "sync", PROJECT_ID, "--full", "--no-pull"],
                                    cwd=ROOT, env={**os.environ, "PYTHONPATH": str(ROOT / "src")},
                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -335,7 +321,7 @@ def measure(repo: Path, levels, keep: bool):
         if not keep:
             try:
                 services.unregister_project(PROJECT_ID, purge_data=True)
-            except Exception as e:  # el informe importa más que la limpieza
+            except Exception as e:  # the report matters more than the cleanup
                 print(f"No se pudo borrar el proyecto de prueba: {e}")
 
     out = ROOT / "eval" / "stress_report.json"

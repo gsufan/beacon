@@ -1,4 +1,4 @@
-"""Tests de 'beacon export'/'beacon import' con datos temporales (no toca config.yaml real)."""
+"""Tests of 'beacon export'/'beacon import' with temporary data (they do not touch the real config.yaml)."""
 
 import json
 import sys
@@ -33,7 +33,7 @@ def test_export_missing_project_in_config_fails(monkeypatch, tmp_path):
 def test_export_missing_data_dir_fails(monkeypatch, tmp_path):
     entry = _fake_entry()
     monkeypatch.setattr(cli_module, "load_config", lambda: AppConfig(ai_provider=FAKE_AI_CONFIG, projects=[entry]))
-    monkeypatch.setattr(cli_module, "DATA_ROOT", tmp_path / "data")  # no existe
+    monkeypatch.setattr(cli_module, "DATA_ROOT", tmp_path / "data")  # does not exist
     result = runner.invoke(cli_module.app, ["export", entry.id])
     assert result.exit_code == 1
 
@@ -60,7 +60,6 @@ def test_export_then_import_round_trip(monkeypatch, tmp_path):
         assert manifest["id"] == entry.id
         assert "data/chroma_db/fake_index_file.bin" in zf.namelist()
 
-    # --- import a un DATA_ROOT nuevo, simulando otra máquina ---
     new_data_root = tmp_path / "data-imported"
     monkeypatch.setattr(cli_module, "DATA_ROOT", new_data_root)
 
@@ -80,7 +79,7 @@ def test_export_then_import_round_trip(monkeypatch, tmp_path):
 
 
 def test_import_rejects_zip_slip(monkeypatch, tmp_path):
-    """Un .zip manipulado con rutas '../' no debe poder escribir fuera de DATA_ROOT/<id>/."""
+    """A tampered .zip with '../' paths must not be able to write outside DATA_ROOT/<id>/."""
     evil_zip = tmp_path / "evil.zip"
     with zipfile.ZipFile(evil_zip, "w") as zf:
         zf.writestr("manifest.json", json.dumps({

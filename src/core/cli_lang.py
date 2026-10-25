@@ -1,5 +1,4 @@
-"""Idioma de la consola: español si el sistema operativo está en español (cualquier variante), inglés en cualquier
-otro caso. `BEACON_LANG=es|en` fuerza uno. Solo afecta a los mensajes y la ayuda de la consola."""
+"""Console language: Spanish if the operating system is in Spanish (any variant), English otherwise. `BEACON_LANG=es|en` forces one. It only affects console messages and help."""
 
 import locale
 import os
@@ -35,5 +34,4 @@ LANG = detect_language()
 
 
 def tr(es: str, en: str) -> str:
-    """El texto en el idioma de la consola."""
     return es if LANG == "es" else en

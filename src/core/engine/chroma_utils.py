@@ -1,16 +1,10 @@
-"""Cliente ChromaDB compartido y coherencia entre procesos.
+"""Shared ChromaDB client and index coherence across processes.
 
-ChromaDB embebido mantiene el índice vectorial (HNSW) en memoria por proceso.
-Si otro proceso escribe el mismo índice (ej. 'beacon sync' en una consola
-mientras 'beacon serve' está arriba), el servidor sigue buscando en su copia
-vieja: el conteo se actualiza (viene de SQLite), pero la búsqueda no encuentra
-los vectores nuevos hasta reiniciar. Se reprodujo con dos procesos reales.
-
-Solución: cada escritura del índice actualiza data/<id>/.index_version. Al
-pedir un cliente, si ese marcador cambió desde la última vez que *este*
-proceso lo vio, se descarta la instancia en memoria de ese proyecto (solo
-esa) y ChromaDB la recarga desde disco. Las escrituras hechas por el propio
-proceso registran su versión, así que no provocan recargas innecesarias.
+Embedded ChromaDB keeps the vector index in memory per process: if another process modifies it (for
+example `beacon sync` while `beacon serve` is running), the server does not see the new vectors until
+it restarts. Every write updates data/<id>/.index_version and, when a client is requested, if the
+marker changed since this process last saw it, the in-memory instance of that project is discarded and
+ChromaDB reloads it from disk.
 """
 
 import gc
@@ -30,7 +24,7 @@ from chromadb.config import Settings
 INDEX_VERSION_FILENAME = ".index_version"
 _SEGMENT_DIR = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 
-_seen_versions: dict = {}  # chroma_dir -> versión que este proceso ya tiene en memoria
+_seen_versions: dict = {}  # chroma_dir -> version this process already has in memory
 _versions_lock = threading.Lock()
 
 
@@ -46,8 +40,7 @@ def read_index_version(project_dir) -> str:
 
 
 def bump_index_version(project_dir) -> str:
-    """Marca que el índice de data/<id>/ cambió. Escritura atómica (archivo
-    temporal + replace) para que otro proceso nunca lea un valor a medias."""
+    """Marks that the index in data/<id>/ changed. Atomic write (temp file + replace) so another process never reads a half-written value."""
     project_dir = Path(project_dir)
     project_dir.mkdir(parents=True, exist_ok=True)
     version = f"{time.time_ns()}-{os.getpid()}"
@@ -60,31 +53,29 @@ def bump_index_version(project_dir) -> str:
 
 
 def release_chroma_client(path: str) -> None:
-    """Cierra la instancia de ChromaDB de este proceso para data/<id>/chroma_db.
-    En Windows no se puede borrar una carpeta con archivos abiertos, y el
-    índice vectorial queda abierto mientras la instancia exista (probado: sin
-    esto, borrar el proyecto fallaba con WinError 32)."""
+    """Closes this process's ChromaDB instance for data/<id>/chroma_db. On Windows a folder with open files
+    cannot be deleted, and the vector index stays open while the instance exists.
+    """
     with _versions_lock:
         system = SharedSystemClient._identifier_to_system.pop(path, None)
         _seen_versions.pop(str(Path(path)), None)
     if system is not None:
         system.stop()
-    gc.collect()  # las colecciones que aún apunten a la instancia sueltan sus archivos
+    gc.collect()  # collections still pointing at the instance release their files
 
 
 def remove_orphan_segments(path: str) -> int:
-    """Borra las carpetas de índices vectoriales que ya no pertenecen a
-    ninguna colección. Al borrar una colección (reconstrucción del índice),
-    ChromaDB en Windows no puede eliminar su carpeta porque el proceso aún la
-    tiene abierta, y queda huérfana ocupando disco. Se consulta el catálogo
-    de ChromaDB (tabla `segments` de chroma.sqlite3, esquema de 0.5.23) y solo
-    se tocan carpetas con nombre de segmento que no figuran en él. Una que
-    siga bloqueada se deja para el próximo sync. Devuelve cuántas borró."""
+    """Deletes vector index folders that no longer belong to any collection. When a collection is deleted
+    (index rebuild), ChromaDB on Windows cannot remove its folder because the process still has it open,
+    and it stays orphaned on disk. The ChromaDB catalog (`segments` table of chroma.sqlite3, 0.5.23 schema)
+    is queried and only folders named like segments absent from it are touched. A folder that is still
+    locked is left for the next sync. Returns how many were deleted.
+    """
     try:
         with closing(sqlite3.connect(os.path.join(path, "chroma.sqlite3"))) as conn:
             live = {row[0] for row in conn.execute("SELECT id FROM segments")}
     except sqlite3.Error:
-        return 0  # sin catálogo legible no se borra nada
+        return 0  # without a readable catalog nothing is deleted
     removed = 0
     for entry in os.listdir(path):
         full = os.path.join(path, entry)
@@ -98,22 +89,18 @@ def remove_orphan_segments(path: str) -> int:
 
 
 def get_chroma_client(path: str) -> chromadb.PersistentClient:
-    """Cliente para data/<id>/chroma_db, recargado desde disco si otro
-    proceso modificó el índice desde la última vez."""
+    """Client for data/<id>/chroma_db, reloaded from disk if another process modified the index since the last time."""
     project_dir = Path(path).parent
     with _versions_lock:
         current = read_index_version(project_dir)
         known = _seen_versions.get(str(Path(path)))
         if known is not None and known != current:
-            # ChromaDB comparte una instancia por ruta dentro del proceso
-            # (SharedSystemClient, API interna de chromadb==0.5.23, fijada en
-            # requirements.txt; tests/test_index_freshness.py falla si cambia).
-            # Quitarla fuerza a que el próximo cliente la recree desde disco.
+            # ChromaDB shares one instance per path inside the process (SharedSystemClient, an internal API of
+            # chromadb==0.5.23, pinned in requirements.txt; tests/test_context_and_freshness.py fails if it changes).
+            # Removing it forces the next client to recreate it from disk.
             SharedSystemClient._identifier_to_system.pop(path, None)
         _seen_versions[str(Path(path))] = current
-    # anonymized_telemetry=False: evita el error de compatibilidad
-    # ChromaDB/posthog en consola (capture() takes 1 positional argument...),
-    # y de paso no manda ningún dato de uso a servidores externos.
+    # No telemetry: avoids a compatibility error with posthog and sends no data to external servers.
     return chromadb.PersistentClient(
         path=path,
         settings=Settings(anonymized_telemetry=False),

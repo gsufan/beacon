@@ -2,11 +2,8 @@ import { cleanup } from "@testing-library/react";
 import { afterEach } from "vitest";
 import "@testing-library/jest-dom/vitest";
 
-// Node 22+ define un `localStorage` global propio (Web Storage API nativa)
-// que pisa al de jsdom pero no funciona sin el flag `--localstorage-file`
-// (queda como stub roto: "localStorage.getItem is not a function"). Se
-// reemplaza por una implementación en memoria simple para no depender de
-// esa flag ni de qué versión de Node/jsdom corre en cada máquina o en CI.
+// Node 22+ defines a global `localStorage` that overrides jsdom's and does not work without the
+// `--localstorage-file` flag; it is replaced by an in-memory implementation.
 class MemoryStorage implements Storage {
   private store = new Map<string, string>();
 
@@ -41,8 +38,7 @@ Object.defineProperty(globalThis, "localStorage", {
   configurable: true,
 });
 
-// jsdom no implementa matchMedia (lo usa ThemeToggle para el tema del
-// sistema): se simula un sistema en modo claro.
+// jsdom does not implement matchMedia (ThemeToggle uses it): a light-mode system is simulated.
 if (!window.matchMedia) {
   Object.defineProperty(window, "matchMedia", {
     configurable: true,
@@ -54,10 +50,7 @@ if (!window.matchMedia) {
   });
 }
 
-// No usamos `test.globals: true`, así que @testing-library/react no detecta
-// automáticamente un framework de test para desmontar entre pruebas —
-// sin esto, cada render() se acumula y los queries por rol/texto empiezan
-// a matchear contra el DOM de tests anteriores.
+// Without `test.globals: true`, @testing-library/react does not unmount between tests on its own: done here.
 afterEach(() => {
   cleanup();
 });

@@ -1,7 +1,4 @@
-"""Limpieza de respuestas de LLM: modelos chicos a veces anteponen una frase
-reconociendo las instrucciones (ej. "La respuesta completa en español es:")
-antes del contenido real. Esta heurística la descarta.
-"""
+"""Model answer cleanup: drops the courtesy phrase that sometimes precedes the content."""
 
 _PREAMBLE_MARKERS = (
     "respuesta completa", "en español", "en inglés", "in english", "the response",
@@ -11,11 +8,9 @@ _PREAMBLE_MARKERS = (
 
 
 def strip_preamble(text: str, heading_marker: str = "##") -> str:
-    """Descarta preámbulos de meta-comentario antes del contenido real.
-
-    Heurística en dos pasos: (1) si hay un encabezado markdown cerca del
-    inicio, todo lo anterior es preámbulo; (2) si la primera línea es corta y
-    menciona el idioma/la respuesta en vez de contenido real, se descarta.
+    """Drops meta-commentary preambles before the real content. Two steps: (1) if a markdown heading appears
+    near the start, everything before it is preamble; (2) if the first line is short and mentions the
+    language or the answer instead of content, it is dropped.
     """
     heading_idx = text.find(heading_marker)
     if 0 < heading_idx < 300:

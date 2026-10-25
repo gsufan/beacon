@@ -1,14 +1,12 @@
-# Conjunto de evaluación de la recuperación sobre psf/requests.
+# Retrieval evaluation set on psf/requests.
 #
-# Cada pregunta está escrita como la haría un desarrollador (en español,
-# sobre código en inglés) y lista los fragmentos que la responden, como
-# "ruta::nombre". Una pregunta se considera acertada en k si al menos uno de
-# sus fragmentos esperados aparece entre los k primeros resultados.
-# Uso: python tools/eval_retrieval.py <project_id> eval/requests.yaml
+# Each question is written as a developer would ask it (in Spanish, about code in English) and lists the
+# chunks that answer it as "path::name". A question counts as a hit at k if at least one of its expected
+# chunks appears among the first k results.
+# Usage: python tools/eval_retrieval.py <project_id> eval/requests.yaml
 #
-# Criterio para elegir el fragmento esperado: la función o clase que un
-# desarrollador senior señalaría como "aquí está la respuesta" al leer el
-# código de requests. Varias preguntas aceptan más de un fragmento.
+# Criterion for choosing the expected chunk: the function or class a senior developer would point to as
+# "the answer is here" when reading the requests code. Several questions accept more than one chunk.
 
 questions:
   - q: "¿Cómo se combinan los ajustes de la sesión con los de una petición puntual?"

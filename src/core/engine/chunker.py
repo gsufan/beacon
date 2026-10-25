@@ -1,14 +1,4 @@
-"""
-Chunker Políglota — Pilar 4A de la propuesta.
-
-En vez de dividir el código por líneas o caracteres (lo que rompe funciones
-y clases a la mitad), este módulo usa tree-sitter para parsear el AST real
-de cada lenguaje y extraer bloques semánticamente completos.
-
-Cada chunk resultante contiene: código completo del bloque, tipo (función,
-clase, método), nombre, lenguaje, archivo de origen y rango de líneas.
-Estos metadatos son los que luego se guardan junto al embedding en ChromaDB.
-"""
+"""Polyglot AST-based chunking (tree-sitter): splits code into whole functions, classes and methods."""
 
 import re
 import warnings
@@ -16,14 +6,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import List, Optional
 
-# Ruido inofensivo: tree-sitter-languages usa una API antigua de tree-sitter
-# (funciona bien, solo avisa). No es información accionable para el usuario.
+# tree-sitter-languages uses an old tree-sitter API and emits a harmless warning.
 warnings.filterwarnings("ignore", message=r"Language\(path, name\) is deprecated.*")
 
 from tree_sitter_languages import get_parser
 
 
-# Extensión de archivo -> nombre de lenguaje reconocido por tree-sitter-languages
 EXTENSION_TO_LANGUAGE = {
     ".py": "python",
     ".js": "javascript",
@@ -42,8 +30,6 @@ EXTENSION_TO_LANGUAGE = {
     ".php": "php",
 }
 
-# Tipos de nodos AST que consideramos "unidades de chunk" por lenguaje.
-# Estos son los nombres de nodo que expone la gramática de cada lenguaje.
 CHUNKABLE_NODE_TYPES = {
     "python": {"function_definition", "class_definition"},
     "javascript": {"function_declaration", "class_declaration", "method_definition"},
@@ -58,24 +44,20 @@ CHUNKABLE_NODE_TYPES = {
     "php": {"function_definition", "class_declaration", "method_declaration"},
 }
 
-# Algunos lenguajes envuelven una función/clase decorada en un nodo contenedor
-# aparte (en vez de que el decorador cuelgue como hermano suelto). Si no se
-# maneja, el chunker corta el decorador fuera del rango de la función.
+# Some languages wrap a decorated function or class in a container node; it is included whole
+# so the decorator stays inside the chunk.
 DECORATOR_WRAPPER_TYPE = {
     "python": "decorated_definition",
 }
 
-# `const Boton = () => {...}` (el estilo de casi todo componente React) no es
-# un function_declaration: se reconoce por el valor asignado al declarador.
+# `const Button = () => {...}` is not a function_declaration: it is recognized by the value assigned to the declarator.
 ASSIGNED_FUNCTION_LANGUAGES = {"javascript", "typescript", "tsx"}
 ASSIGNED_FUNCTION_VALUE_TYPES = {"arrow_function", "function", "function_expression"}
 
-# Lo que queda de un `export ...` o `namespace X { ... }` al restarle los
-# chunks que contiene: envoltorio sin contenido propio, no vale la pena indexarlo.
+# What remains of an `export ...` or `namespace X { ... }` after subtracting the chunks it contains is an
+# empty wrapper and is not worth indexing.
 _TRIVIAL_WRAPPER_RE = re.compile(r"^(export( default)?|(declare )?(namespace|module) [\w.\"']+)?$")
 
-# Tamaño máximo de un chunk "fallback" (para archivos sin lenguaje soportado
-# o fragmentos de código fuera de cualquier función/clase, como imports globales)
 FALLBACK_CHUNK_SIZE = 1500
 FALLBACK_OVERLAP = 200
 
@@ -84,14 +66,13 @@ FALLBACK_OVERLAP = 200
 class CodeChunk:
     file_path: str
     language: str
-    chunk_type: str          # "function", "class", "method", "raw"
+    chunk_type: str
     name: Optional[str]
     code: str
     start_line: int
     end_line: int
 
     def to_metadata(self) -> dict:
-        """Metadata a guardar junto al embedding en ChromaDB."""
         return {
             "file_path": self.file_path,
             "language": self.language,
@@ -102,9 +83,9 @@ class CodeChunk:
         }
 
     def chunk_id(self) -> str:
-        """ID determinístico: mismo archivo+rango => mismo id (clave para re-indexación incremental)."""
+        """Deterministic id: same file and range, same id (needed for incremental reindexing)."""
         if self.name == MODULE_LEVEL_NAME:
-            # su rango puede compartir líneas con un chunk real (`const a = 1; function f() {}`)
+            # its range may share lines with a real chunk (`const a = 1; function f() {}`)
             return f"{self.file_path}::{MODULE_LEVEL_NAME}"
         return f"{self.file_path}::{self.start_line}-{self.end_line}"
 
@@ -118,9 +99,9 @@ def detect_language(file_path: str) -> Optional[str]:
 
 
 def _extract_name(node, source_bytes: bytes) -> Optional[str]:
-    """Busca un nodo de tipo 'identifier' o similar para nombrar el chunk.
-    Primero en los hijos directos; si no aparece, un nivel más profundo
-    (necesario en Go: type_declaration -> type_spec -> type_identifier)."""
+    """Finds the identifier node that names the chunk: in the direct children first, then one level
+    deeper (needed in Go: type_declaration -> type_spec -> type_identifier).
+    """
     identifier_types = ("identifier", "type_identifier", "property_identifier", "field_identifier")
 
     for child in node.children:
@@ -136,10 +117,8 @@ def _extract_name(node, source_bytes: bytes) -> Optional[str]:
 
 
 def _node_type_to_chunk_type(node_type: str) -> str:
-    # Casos explícitos por nombre exacto de nodo, para lenguajes cuyo nodo
-    # contenedor no incluye la palabra clave en su propio nombre (ej: Go
-    # usa "type_declaration" tanto para structs como interfaces/alias, sin
-    # que el string contenga "struct").
+    # Explicit cases by exact node name, for languages whose container node does not include the keyword
+    # in its own name (Go uses "type_declaration" for structs, interfaces and aliases alike).
     if node_type == "type_declaration":
         return "class"
     if "class" in node_type or "struct" in node_type or "interface" in node_type or "impl" in node_type or "enum" in node_type:
@@ -149,27 +128,17 @@ def _node_type_to_chunk_type(node_type: str) -> str:
     return "function"
 
 
-# Tipos de nodo de comentario reconocidos por las distintas gramáticas
-# (todas las soportadas usan el mismo nombre "comment").
 COMMENT_NODE_TYPE = "comment"
 
 
 def _collect_leading_comment_nodes(node) -> list:
-    """
-    Recolecta los nodos de comentario que preceden INMEDIATAMENTE a 'node'
-    (sin línea en blanco de por medio), el patrón estándar de un docstring/
-    doc-comment en Go, Java, JS/TS, C/C++ (ej: '// CreateQuoteFromCount
-    takes...' justo antes de 'func CreateQuoteFromCount(...)').
-
-    Si hay una línea en blanco entre el comentario y el nodo, NO se
-    considera documentación de ese nodo (podría ser un comentario suelto
-    sobre otra cosa), y se deja tal cual en el chunk 'module_level'.
-
-    Devuelve los nodos en orden de aparición (de arriba hacia abajo).
+    """Comment nodes immediately preceding `node` (no blank line in between), the usual doc-comment
+    pattern in Go, Java, JS/TS and C/C++. A comment separated by a blank line is not documentation of
+    the node and stays in the module-level chunk. Returned in source order.
     """
     comments = []
     current = node.prev_sibling
-    expected_end_line = node.start_point[0] - 1  # línea inmediatamente anterior
+    expected_end_line = node.start_point[0] - 1
 
     while current is not None and current.type == COMMENT_NODE_TYPE:
         if current.end_point[0] != expected_end_line:
@@ -187,8 +156,7 @@ def _byte_to_line(source_bytes: bytes, offset: int) -> int:
 
 
 def _is_overload_stub(decorated, source_bytes: bytes) -> bool:
-    """Firma `@overload` de Python (`def f(x: int) -> str: ...`): solo declara
-    tipos y no tiene cuerpo; la implementación real viene después."""
+    """Python `@overload` signature: it only declares types and has no body."""
     for child in decorated.children:
         if child.type == "decorator":
             text = source_bytes[child.start_byte:child.end_byte].decode("utf-8", errors="ignore")
@@ -199,8 +167,7 @@ def _is_overload_stub(decorated, source_bytes: bytes) -> bool:
 
 
 def _with_export(node):
-    """`export function f` / `export class C`: el chunk incluye el `export` y el
-    JSDoc que va antes, que en el AST cuelgan del export_statement, no de la función."""
+    """For `export function f` / `export class C`: the chunk includes the `export` and the JSDoc, which hang from the export_statement in the AST."""
     parent = node.parent
     return parent if parent is not None and parent.type == "export_statement" else node
 
@@ -208,7 +175,7 @@ def _with_export(node):
 def _assigned_function_name(declarator, source_bytes: bytes) -> Optional[str]:
     name_node = declarator.child_by_field_name("name")
     if name_node is None or name_node.type != "identifier":
-        return None  # destructuring (`const {a, b} = ...`), no es una función con nombre
+        return None  # destructuring (`const {a, b} = ...`): not a named function
     return source_bytes[name_node.start_byte:name_node.end_byte].decode("utf-8", errors="ignore")
 
 
@@ -220,11 +187,11 @@ def chunk_with_treesitter(file_path: str, source_code: str, language: str) -> Li
     chunkable_types = CHUNKABLE_NODE_TYPES.get(language, set())
     wrapper_type = DECORATOR_WRAPPER_TYPE.get(language)
     chunks: List[CodeChunk] = []
-    covered_ranges: List[tuple] = []  # (start_byte, end_byte) ya incluidos en algún chunk
+    covered_ranges: List[tuple] = []  # (start_byte, end_byte) already included in some chunk
 
     def emit(range_node, name: Optional[str], chunk_type: str):
-        # range_node abarca todo lo que va al chunk (decoradores, `export`); los
-        # comentarios pegados justo encima se suman como su documentación.
+        # range_node covers everything that goes into the chunk (decorators, `export`); comments right above
+        # are added as its documentation.
         leading = _collect_leading_comment_nodes(range_node)
         first = leading[0] if leading else range_node
         chunks.append(CodeChunk(
@@ -239,16 +206,11 @@ def chunk_with_treesitter(file_path: str, source_code: str, language: str) -> Li
         covered_ranges.append((first.start_byte, range_node.end_byte))
 
     def walk(node):
-        # Función/clase decorada: el contenedor abarca decoradores + definición;
-        # nombre y tipo salen de la definición interna.
         if wrapper_type and node.type == wrapper_type:
             inner = next((c for c in node.children if c.type in chunkable_types), None)
             if inner is not None and _is_overload_stub(node, source_bytes):
-                # No se indexa: con el mismo nombre que la implementación y sin
-                # cuerpo, ocupaba lugares del contexto sin aportar (medido en
-                # psf/requests: tres firmas de __init__ desplazaban a
-                # get_netrc_auth fuera del contexto). Se marca como cubierta
-                # para que tampoco vaya al fragmento de nivel de módulo.
+                # Not indexed: it has the implementation's name and no body, so it would only take up context.
+                # It is marked as covered so it does not end up in the module-level chunk either.
                 covered_ranges.append((node.start_byte, node.end_byte))
                 return
             if inner is not None:
@@ -262,8 +224,7 @@ def chunk_with_treesitter(file_path: str, source_code: str, language: str) -> Li
         if node.type in chunkable_types:
             chunk_type = _node_type_to_chunk_type(node.type)
             emit(_with_export(node), _extract_name(node, source_bytes), chunk_type)
-            # Dentro de una función no se sigue bajando; dentro de una clase sí,
-            # para capturar sus métodos como chunks propios.
+            # Do not descend into functions; do descend into classes to capture their methods as separate chunks.
             if chunk_type != "class":
                 return
 
@@ -288,7 +249,6 @@ def chunk_with_treesitter(file_path: str, source_code: str, language: str) -> Li
     if module_chunk is not None:
         chunks.insert(0, module_chunk)
 
-    # Si no se encontró NADA chunkeable ni a nivel de módulo, guardamos el archivo entero
     if not chunks:
         chunks.append(CodeChunk(
             file_path=file_path,
@@ -304,12 +264,10 @@ def chunk_with_treesitter(file_path: str, source_code: str, language: str) -> Li
 
 
 def _module_level_chunk(file_path, language, source_bytes: bytes, root, covered_ranges) -> Optional[CodeChunk]:
-    """Código fuera de toda función/clase (imports, constantes, configuración),
-    agrupado en un chunk "raw" para no perder ese contexto en la búsqueda.
-
-    Se calcula RESTANDO los rangos ya cubiertos por otros chunks, no por tipo de
-    nodo: así lo que vive dentro de un `export ...` o de un `namespace X { ... }`
-    no se duplica acá."""
+    """Code outside any function or class (imports, constants, configuration) as a single "raw" chunk.
+    Computed by subtracting the ranges already covered by other chunks, not by node type, so what lives
+    inside an `export ...` or a `namespace X { ... }` is not duplicated.
+    """
     covered = sorted(covered_ranges)
 
     def uncovered(start: int, end: int) -> List[tuple]:
@@ -353,14 +311,14 @@ def _module_level_chunk(file_path, language, source_bytes: bytes, root, covered_
         chunk_type="raw",
         name=MODULE_LEVEL_NAME,
         code="\n".join(pieces),
-        # rango real que abarca las piezas (no son contiguas, pero la cita apunta al lugar correcto)
+        # real range spanned by the pieces (not contiguous, but the citation points to the right place)
         start_line=_byte_to_line(source_bytes, spans[0][0]),
         end_line=_byte_to_line(source_bytes, spans[-1][1]),
     )
 
 
 def chunk_fallback(file_path: str, source_code: str) -> List[CodeChunk]:
-    """Para lenguajes sin gramática tree-sitter soportada: chunking por tamaño con overlap."""
+    """Size-based chunking with overlap, for languages without a supported grammar."""
     lines = source_code.split("\n")
     chunks: List[CodeChunk] = []
     start = 0
@@ -382,23 +340,20 @@ def chunk_fallback(file_path: str, source_code: str) -> List[CodeChunk]:
         ))
         if end >= len(lines):
             break
-        # overlap: retrocedemos algunas líneas para no cortar contexto
         overlap_lines = max(1, FALLBACK_OVERLAP // 80)
         start = end - overlap_lines
     return chunks
 
 
 def chunk_file(file_path: str) -> List[CodeChunk]:
-    """Punto de entrada desde el disco: lee el archivo y lo fragmenta."""
     source_code = Path(file_path).read_text(encoding="utf-8", errors="ignore")
     return chunk_source(file_path, source_code)
 
 
 def chunk_source(file_path: str, source_code: str) -> List[CodeChunk]:
-    """Fragmenta un contenido ya leído (ej. desde un commit de git). `file_path`
-    solo se usa para detectar el lenguaje y como identidad de los chunks."""
+    """`file_path` is only used to detect the language and as the identity of the chunks."""
     if not source_code.strip():
-        return []  # archivo vacío (ej. un __init__.py): nada que buscar ni documentar
+        return []  # empty file (e.g. an __init__.py): nothing to search or document
     language = detect_language(file_path)
 
     if language is None:
@@ -407,14 +362,14 @@ def chunk_source(file_path: str, source_code: str) -> List[CodeChunk]:
     try:
         return _unique_ids(chunk_with_treesitter(file_path, source_code, language))
     except Exception:
-        # Si el parser falla (sintaxis rota, versión de gramática, etc.) no perdemos el archivo
+        # If the parser fails (broken syntax, grammar version) the file is not lost
         return chunk_fallback(file_path, source_code)
 
 
 def _unique_ids(chunks: List[CodeChunk]) -> List[CodeChunk]:
-    """Descarta los chunks cuyo id ya salió antes. Dos funciones en las mismas líneas
-    (`{ get x() {}, set x(v) {} }` en una sola línea) comparten rango y, por lo tanto,
-    id; Chroma rechaza el upsert completo si hay ids repetidos y el sync del repo falla."""
+    """Drops chunks whose id was already seen. Two definitions on the same line share a range and
+    therefore an id, and Chroma rejects the whole upsert when ids repeat.
+    """
     seen = set()
     unique = []
     for chunk in chunks:

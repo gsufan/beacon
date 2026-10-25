@@ -1,4 +1,4 @@
-// Asistente del modo estudio: pasos con navegación, barra de avance, progreso del indexado y valoración.
+// Study mode wizard: steps with navigation, progress bar, indexing progress and rating.
 import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { MemoryRouter } from "react-router";
@@ -74,10 +74,10 @@ describe("modo estudio", () => {
     ];
     open();
     expect(await screen.findByText(/ollama pull qwen3-embedding:0\.6b/)).toBeInTheDocument();
-    expect(screen.getByText(/No se detectó una GPU|No NVIDIA GPU/)).toBeInTheDocument();  // aviso, no bloquea
+    expect(screen.getByText(/No se detectó una GPU|No NVIDIA GPU/)).toBeInTheDocument();  // a warning, it does not block
     await userEvent.click(screen.getByRole("checkbox"));
     expect(screen.getByRole("button", { name: /Comenzar|Start/ })).toBeDisabled();
-    health = HEALTHY;  // el participante instala el modelo y reintenta
+    health = HEALTHY;  // the participant installs the model and retries
     await userEvent.click(screen.getByRole("button", { name: /Reintentar|Retry/ }));
     await waitFor(() => expect(screen.getByRole("button", { name: /Comenzar|Start/ })).toBeEnabled());
   });
@@ -108,11 +108,11 @@ describe("modo estudio", () => {
     state = started();
     open();
     expect(await screen.findByText(/cpu-prueba/)).toBeInTheDocument();
-    expect(bar()).toHaveAttribute("aria-valuenow", "40");  // paso 2 de 5
+    expect(bar()).toHaveAttribute("aria-valuenow", "40");  // step 2 of 5
     await userEvent.click(screen.getByRole("button", { name: /Atrás|Back/ }));
     expect(bar()).toHaveAttribute("aria-valuenow", "20");
-    expect(screen.getByRole("checkbox")).toBeChecked();  // el consentimiento ya dado se conserva
-    expect(screen.getByRole("button", { name: /Atrás|Back/ })).toBeDisabled();  // no hay paso previo
+    expect(screen.getByRole("checkbox")).toBeChecked();  // a consent already given is kept
+    expect(screen.getByRole("button", { name: /Atrás|Back/ })).toBeDisabled();  // there is no previous step
   });
 
   it("el equipo se omite si no se marca la casilla y no se guarda nada", async () => {
@@ -133,10 +133,10 @@ describe("modo estudio", () => {
     expect(screen.getByText(/Lector de Markdown|Markdown reader/)).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: /charmbracelet\/glow/ }));
     expect(screen.getByRole("textbox", { name: "URL" })).toHaveValue("https://github.com/charmbracelet/glow");
-    expect(screen.getByText(/\/datos\/estudio/)).toBeInTheDocument();  // dónde se guardan los repos clonados
+    expect(screen.getByText(/\/datos\/estudio/)).toBeInTheDocument();  // where cloned repos are stored
     await userEvent.click(screen.getByRole("button", { name: /Preparar repositorio|Prepare repository/ }));
     await waitFor(() => expect(calls.some((c) => c.path === "/study/repo" && (c.body as { url: string }).url.endsWith("/glow"))).toBe(true));
-    expect(await screen.findByRole("link", { name: "https://github.com/charmbracelet/glow" })).toBeInTheDocument();  // «Trabajando en»
+    expect(await screen.findByRole("link", { name: "https://github.com/charmbracelet/glow" })).toBeInTheDocument();  // "Working on"
   });
 
   it("descartar y salir detiene el servidor y avisa que ya se puede cerrar la pestaña", async () => {
@@ -153,13 +153,13 @@ describe("modo estudio", () => {
     state = started({ hardware: { cpu_modelo: "x" }, repo: { url: "https://github.com/u/r", archivos_indexados: 3 },
       repo_status: { estado: "listo", detalle: null }, carpeta_repo: "/datos/estudio" });
     open();
-    await userEvent.click(await screen.findByRole("button", { name: /Atrás|Back/ }));  // del paso 4 al 3
+    await userEvent.click(await screen.findByRole("button", { name: /Atrás|Back/ }));  // from step 4 to 3
     await userEvent.click(await screen.findByRole("button", { name: /Elegir otro repositorio|Pick another repository/ }));
     expect(await screen.findByRole("textbox", { name: "URL" })).toBeInTheDocument();
-    await new Promise((r) => setTimeout(r, 50));  // el efecto que cerraba el formulario corría justo después
+    await new Promise((r) => setTimeout(r, 50));  // the effect that closed the form ran right after
     expect(screen.getByRole("textbox", { name: "URL" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /^Siguiente$|^Next$/ })).toBeDisabled();  // hasta que el nuevo esté listo
-    expect(screen.getByRole("textbox", { name: "URL" })).toHaveValue("");  // parte vacío, sin repetir el anterior
+    expect(screen.getByRole("button", { name: /^Siguiente$|^Next$/ })).toBeDisabled();  // until the new one is ready
+    expect(screen.getByRole("textbox", { name: "URL" })).toHaveValue("");  // starts empty, not repeating the previous one
   });
 
   it("elegir el mismo repositorio que ya está listo no vuelve a indexarlo", async () => {
@@ -194,7 +194,7 @@ describe("modo estudio", () => {
     await userEvent.click(screen.getByRole("button", { name: /En parte|Partly/ }));
     await waitFor(() => expect(calls.some((c) => c.path === "/study/rate" && (c.body as { correcta: string }).correcta === "parcial")).toBe(true));
     state.preguntas = [{ n: 1, pregunta: "p", respuesta: "resp", segundos: 2, fuentes: [{ archivo: "a.go", lineas: "1-9" }], valoracion: { correcta: "parcial", fuentes_utiles: null } }];
-    await userEvent.click(screen.getByRole("button", { name: /En parte|Partly/ }));  // fuerza otra carga del estado
+    await userEvent.click(screen.getByRole("button", { name: /En parte|Partly/ }));  // forces another state load
     await userEvent.click(await screen.findByRole("button", { name: /útiles fueron las fuentes.* 4|were the sources.* 4/ }));
     await waitFor(() => expect(calls.some((c) => c.path === "/study/rate" && (c.body as { fuentes_utiles: number }).fuentes_utiles === 4)).toBe(true));
     expect(screen.getByRole("button", { name: /Terminar|Finish/ })).toBeDisabled();
