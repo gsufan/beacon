@@ -22,7 +22,7 @@ tools/                   # scripts de diagnóstico
 
 ## Backends de modelos
 
-El motor nunca habla directamente con un servidor de modelos: usa un `Backend` (`src/core/engine/backends/`) que expone `chat`, `embed`, `list_models` y `health`, y lanza sus propios errores (`BackendUnavailableError`, `ModelNotFoundError`, `InputRejectedError`). Hoy el único adaptador es el de Ollama. Para agregar un servidor se escribe un adaptador que traduzca su protocolo y sus errores a ese contrato y se registra en `backends/__init__.py`; las claves `provider` y `host` de `ai_provider` en `config.yaml` lo seleccionan. Los backends deben ejecutar los modelos en infraestructura controlada por la organización.
+El motor nunca habla directamente con un servidor de modelos: usa un `Backend` (`src/core/engine/backends/`) que expone `chat`, `embed`, `list_models` y `health`, y lanza sus propios errores (`BackendUnavailableError`, `ModelNotFoundError`, `InputRejectedError`). Hay dos adaptadores: Ollama y uno genérico compatible con OpenAI (LM Studio, llama.cpp, vLLM). Solo se aceptan servidores en esta máquina o en una red privada; una versión con consentimiento, límite de gasto y clave de API para APIs comerciales vive en la rama `experimental/paid-apis`.
 
 Cada proyecto indexado vive aislado en `data/<project_id>/` (su propio índice ChromaDB y su propia documentación generada): varios repositorios conviven sin pisarse.
 

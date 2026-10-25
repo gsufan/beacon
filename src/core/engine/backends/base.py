@@ -25,6 +25,18 @@ class ModelNotFoundError(BackendError):
         self.model = model
 
 
+class BackendAuthError(BackendError):
+    """The server rejected the credentials (missing, invalid or without access to the model)."""
+
+
+class BackendRateLimitError(BackendError):
+    """The server asked to slow down and the retries were exhausted."""
+
+
+class ExternalServerError(BackendError):
+    """The server is outside this machine and the local network, which this version does not support."""
+
+
 class InputRejectedError(BackendError):
     """The server rejected the input, typically because the text does not fit in the model."""
 

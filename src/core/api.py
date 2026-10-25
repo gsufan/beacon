@@ -30,7 +30,7 @@ from core.projects import (
     ProjectNotFoundError,
 )
 from core.project_lock import ProjectBusyError
-from core.engine.backends import BackendUnavailableError, available_providers, create_backend
+from core.engine.backends import BackendAuthError, BackendUnavailableError, ExternalServerError, available_providers, create_backend
 from core.engine.chroma_utils import read_index_version
 from core.engine.indexer import IndexModelMismatchError
 from core.engine.rag_engine import RAGEngine
@@ -193,6 +193,10 @@ def query(project_id: str, req: QueryRequest):
         # 503 lets the UI tell "the model server is down" apart from other engine errors.
         ai = engine.ai_config
         raise HTTPException(status_code=503, detail=f"No se pudo conectar al servidor de modelos ({ai.provider}) en '{ai.host}'. Verifica que esté ejecutándose.")
+    except ExternalServerError as e:
+        raise HTTPException(status_code=409, detail=str(e))
+    except BackendAuthError as e:
+        raise HTTPException(status_code=502, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el motor RAG: {e}")
     return result.to_dict()
@@ -241,7 +245,7 @@ def docs(project_id: str, file_path: str):
 def get_config():
     cfg = load_config()
     return {
-        "ai_provider": cfg.ai_provider.__dict__,
+        "ai_provider": cfg.ai_provider.public_dict(),
         "projects": [p.__dict__ for p in cfg.projects],
     }
 

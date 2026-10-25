@@ -44,7 +44,7 @@ def _chat(backend):
 
 
 def test_registry_lists_providers_and_rejects_unknown_ones():
-    assert [p["id"] for p in available_providers()] == ["ollama"]
+    assert [p["id"] for p in available_providers()] == ["ollama", "lmstudio", "llamacpp", "vllm", "openai"]
     assert create_backend("ollama", "http://h:1").host == "http://h:1"
     with pytest.raises(BackendError):
         create_backend("nope", "http://h:1")

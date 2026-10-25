@@ -8,7 +8,7 @@ from typing import List, Optional
 
 import yaml
 
-from core.engine.backends import DEFAULT_HOSTS
+from core.engine.backends import DEFAULT_HOSTS, create_backend
 
 # Looked up relative to the project root, not the user's cwd
 _DEFAULT_CONFIG_PATH = Path(__file__).resolve().parents[2] / "config" / "config.yaml"
@@ -34,6 +34,12 @@ class AIProviderConfig:
     embedding_model: str
     llm_model: str
     llm_num_ctx: int = DEFAULT_LLM_NUM_CTX
+
+    def public_dict(self) -> dict:
+        return dict(self.__dict__)
+
+    def backend(self):
+        return create_backend(self.provider, self.host)
 
 
 @dataclass

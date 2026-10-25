@@ -22,7 +22,7 @@ tools/                   # diagnostic scripts
 
 ## Model backends
 
-The engine never talks to a model server directly: it uses a `Backend` (`src/core/engine/backends/`) that exposes `chat`, `embed`, `list_models` and `health`, and raises its own errors (`BackendUnavailableError`, `ModelNotFoundError`, `InputRejectedError`). Ollama is the only adapter today. To add a server, write an adapter that translates its protocol and errors to that contract and register it in `backends/__init__.py`; the `provider` and `host` keys of `ai_provider` in `config.yaml` select it. Backends must run models on infrastructure controlled by the organization.
+The engine never talks to a model server directly: it uses a `Backend` (`src/core/engine/backends/`) that exposes `chat`, `embed`, `list_models` and `health`, and raises its own errors (`BackendUnavailableError`, `ModelNotFoundError`, `InputRejectedError`). There are two adapters: Ollama and a generic OpenAI-compatible one (LM Studio, llama.cpp, vLLM). Only servers on this machine or on a private network are accepted; a version with consent, spending limit and API key for commercial APIs lives in the branch `experimental/paid-apis`.
 
 Each indexed project lives isolated in `data/<project_id>/` (its own ChromaDB index and its own generated documentation): several repositories coexist without overwriting each other.
 

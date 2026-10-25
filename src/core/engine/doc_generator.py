@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import Callable, List, Optional
 
 from core.engine.chroma_utils import get_chroma_client
-from core.engine.backends import create_backend
 
 from core.config import AIProviderConfig
 from core.projects import ProjectContext
@@ -75,7 +74,7 @@ class DocGenerator:
         self.project = project
         self.ai_config = ai_config
         self.watcher = GitWatcher(project.repo_path)
-        self.backend = create_backend(ai_config.provider, ai_config.host)
+        self.backend = ai_config.backend()
         self.client = get_chroma_client(project.chroma_dir)
         self.control = self.client.get_or_create_collection(name=CONTROL_COLLECTION_NAME)
 

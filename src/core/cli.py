@@ -32,7 +32,7 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from core.cli_lang import tr
-from core.engine.backends import BackendError, BackendUnavailableError, ModelNotFoundError, create_backend
+from core.engine.backends import BackendAuthError, BackendError, BackendUnavailableError, ExternalServerError, ModelNotFoundError, create_backend
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -269,8 +269,7 @@ def cmd_docs(
                             "Ask a natural-language question about an already indexed project."))
 def cmd_ask(project_id: str, question: str, top_k: int = 5):
     project = _resolve_or_exit(project_id)
-    cfg = load_config()
-    engine = RAGEngine(project, cfg.ai_provider)
+    engine = RAGEngine(project, load_config().ai_provider)
 
     if engine.collection.count() == 0:
         console.print(tr(f"[red]El índice de '{project_id}' está vacío. Corre 'beacon sync {project_id}' primero.[/red]",
@@ -397,11 +396,11 @@ def cmd_import(
                                "Show the state of a project's index and documentation."))
 def cmd_status(project_id: str):
     project = _resolve_or_exit(project_id)
-    cfg = load_config()
+    ai = load_config().ai_provider
 
     def _do_status():
-        indexer = CodebaseIndexer(project, cfg.ai_provider)
-        generator = DocGenerator(project, cfg.ai_provider)
+        indexer = CodebaseIndexer(project, ai)
+        generator = DocGenerator(project, ai)
         return indexer.stats(), generator.stats()
 
     index_stats, doc_stats = _run_safely(_do_status, repo_path=project.repo_path)
@@ -716,6 +715,9 @@ def _run_safely(fn, *, repo_path: str = ""):
         console.print(tr("[red]El servidor de modelos no tiene el modelo pedido:[/red] ", "[red]The model server does not have the requested model:[/red] ") + f"{e.model}")
         console.print(tr("[dim]Revisa 'llm_model' y 'embedding_model' en config.yaml y descarga el modelo que falte.[/dim]",
                          "[dim]Check 'llm_model' and 'embedding_model' in config.yaml and download the missing model.[/dim]"))
+        raise typer.Exit(code=1)
+    except (ExternalServerError, BackendAuthError) as e:
+        console.print(f"[red]{e}[/red]")
         raise typer.Exit(code=1)
     except BackendUnavailableError as e:
         console.print(tr("[red]No se pudo conectar con el servidor de modelos.[/red]", "[red]Could not connect to the model server.[/red]"))
