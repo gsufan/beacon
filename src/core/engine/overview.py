@@ -156,7 +156,7 @@ def build_overview(docs_dir: Path, llm: Llm, budget_chars: int, on_step: Optiona
 
     for d in sorted((d for d in dirs if d), key=depth, reverse=True):
         f = [(Path(p).name, files[p]) for p in sorted(dirs[d])]
-        s = [(Path(c).name, summaries[c], count(c)) for c in sorted(subdirs[d])]
+        s = sorted(((Path(c).name, summaries[c], count(c)) for c in subdirs[d]), key=lambda e: (-e[2], e[0]))  # the largest first
         if (len(f) == 1 and not s) or (not f and len(s) == 1):
             # A single file or a single subfolder: its text is already the folder's summary.
             summaries[d] = _shorten(f[0][1] if f else s[0][1], MAX_PURPOSE_CHARS)
@@ -176,7 +176,7 @@ def build_overview(docs_dir: Path, llm: Llm, budget_chars: int, on_step: Optiona
         state_dirs[d] = {"hash": h, "summary": summaries[d]}
 
     root_files = [(Path(p).name, files[p]) for p in sorted(dirs[""])]
-    root_subs = [(Path(c).name, summaries[c], count(c)) for c in sorted(subdirs[""])]
+    root_subs = sorted(((Path(c).name, summaries[c], count(c)) for c in subdirs[""]), key=lambda e: (-e[2], e[0]))
     root_text = _folder_text("", root_files, root_subs, budget_chars - 200)
     root_text += f"\nLenguajes (extensión y cantidad de archivos): {_language_stats(files)}"
     h = _hash(root_text)
