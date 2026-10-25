@@ -80,7 +80,8 @@ The assistant opens in the browser and guides you: you accept participation, cho
 | [Measured quality](docs/en/measured-quality.md) | Results for search, answers and load tests |
 | [Security](docs/en/security.md) | Known limitations and the API key |
 | [Study mode](docs/en/study-mode.md) | Taking part in the study and analysing the results received |
-| [External models](docs/en/external-models.md) | Optional model servers outside your network (consent, spending limit); local mode stays the default |
+| [Model servers](docs/en/model-servers.md) | Ollama (default, recommended) and optional alternatives: LM Studio, llama.cpp, vLLM |
+| [External models](docs/en/external-models.md) | Experimental, untested: servers outside your network (consent, spending limit) |
 | [Development](docs/en/development.md) | Code structure, frontend and tests |
 
 The documentation is also available in Spanish under [docs/es/](docs/es/).

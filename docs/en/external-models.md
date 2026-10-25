@@ -1,6 +1,8 @@
 [Español](../es/modelos-externos.md) | **English**
 
-# External model servers (optional)
+# External model servers (optional, experimental)
+
+> **Status: not tested with any commercial provider.** The adapter is covered by unit tests against simulated servers and a real run against Ollama's OpenAI-compatible endpoint, but it has never been tried against a paid API. Ollama stays the default and the recommended server ([model servers](model-servers.md)); treat everything here as experimental.
 
 Beacon runs its models locally by default, and **local mode with Ollama is the recommended one**: the code never leaves your machine or your network and there is no cost per query. For a given project you can opt into a model server that is not local, for example a commercial API, to get a more capable model. The most visible gain is on open questions about the whole repository, where `llama3:8b` is limited.
 

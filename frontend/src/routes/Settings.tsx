@@ -437,7 +437,13 @@ export default function Settings() {
               <Field label={t("settings_provider")}>
                 <select
                   value={aiConfig.provider}
-                  onChange={(e) => setAiConfig({ ...aiConfig, provider: e.target.value })}
+                  onChange={(e) =>
+                    setAiConfig({
+                      ...aiConfig,
+                      provider: e.target.value,
+                      host: providers.find((p) => p.id === e.target.value)?.default_host ?? aiConfig.host,
+                    })
+                  }
                   className={inputClass}
                 >
                   {providers.map((p) => (

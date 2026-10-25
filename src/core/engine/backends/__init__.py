@@ -24,17 +24,29 @@ from core.engine.backends.ollama_backend import OllamaBackend
 from core.engine.backends.openai_backend import DEFAULT_HOST as OPENAI_DEFAULT_HOST
 from core.engine.backends.openai_backend import OpenAICompatibleBackend
 
-# provider id -> (display name, factory(host, api_key) -> Backend)
+def _openai_like(provider_id: str, default_host: str, model_hint: str, start_hint: str):
+    return lambda host, api_key: OpenAICompatibleBackend(host or default_host, api_key, provider_id=provider_id, model_hint=model_hint, start_hint=start_hint)
+
+
+# provider id -> (display name, default host, factory(host, api_key) -> Backend). Local servers first.
 _REGISTRY: Dict[str, tuple] = {
-    "ollama": ("Ollama", lambda host, api_key: OllamaBackend(host=host or OLLAMA_DEFAULT_HOST)),
-    "openai": ("OpenAI-compatible API", lambda host, api_key: OpenAICompatibleBackend(host or OPENAI_DEFAULT_HOST, api_key)),
+    "ollama": ("Ollama", OLLAMA_DEFAULT_HOST, lambda host, api_key: OllamaBackend(host=host or OLLAMA_DEFAULT_HOST)),
+    "lmstudio": ("LM Studio", "http://localhost:1234/v1",
+                 _openai_like("lmstudio", "http://localhost:1234/v1", "download and load the model '{model}' in LM Studio",
+                              "start the local server in LM Studio (Developer tab)")),
+    "llamacpp": ("llama.cpp server", "http://localhost:8080/v1",
+                 _openai_like("llamacpp", "http://localhost:8080/v1", "start llama-server with the model '{model}' (embeddings need --embeddings)",
+                              "start llama-server")),
+    "vllm": ("vLLM", "http://localhost:8000/v1",
+             _openai_like("vllm", "http://localhost:8000/v1", "serve the model '{model}' with vLLM", "start the vLLM server")),
+    "openai": ("OpenAI-compatible API (other)", OPENAI_DEFAULT_HOST, _openai_like("openai", OPENAI_DEFAULT_HOST, "", "")),
 }
 
-DEFAULT_HOSTS = {"ollama": OLLAMA_DEFAULT_HOST, "openai": OPENAI_DEFAULT_HOST}
+DEFAULT_HOSTS = {pid: default for pid, (_, default, _f) in _REGISTRY.items()}
 
 
 def available_providers() -> List[dict]:
-    return [{"id": pid, "name": name} for pid, (name, _) in _REGISTRY.items()]
+    return [{"id": pid, "name": name, "default_host": host} for pid, (name, host, _) in _REGISTRY.items()]
 
 
 def external_problems(host: str, api_key: str, cloud) -> List[str]:
@@ -60,7 +72,7 @@ def create_backend(provider: str, host: str, *, api_key: str = "", cloud=None, d
     """The backend for a provider. A server outside the local network additionally requires consent, a spending
     limit, prices and an API key (see external_problems); its calls are metered in `data_dir`."""
     try:
-        _, factory = _REGISTRY[provider]
+        _, _, factory = _REGISTRY[provider]
     except KeyError:
         raise BackendError(f"unknown provider '{provider}' (available: {', '.join(_REGISTRY)})") from None
     host = host or DEFAULT_HOSTS.get(provider, "")

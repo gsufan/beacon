@@ -33,9 +33,10 @@ _REJECTABLE = ("temperature", "seed")
 
 
 class OpenAICompatibleBackend:
-    id = "openai"
-
-    def __init__(self, host: str = DEFAULT_HOST, api_key: str = "", transport=None, sleep: Callable[[float], None] = time.sleep):
+    def __init__(self, host: str = DEFAULT_HOST, api_key: str = "", transport=None, sleep: Callable[[float], None] = time.sleep,
+                 provider_id: str = "openai", model_hint: str = "", start_hint: str = ""):
+        self.id = provider_id
+        self._model_hint, self._start_hint = model_hint, start_hint
         self.host = host.rstrip("/")
         self._api_key = api_key
         self._transport = transport  # injectable for tests
@@ -189,7 +190,7 @@ class OpenAICompatibleBackend:
             return BackendHealth(False, error=str(e))
 
     def install_hint(self, model: str) -> str:
-        return f"enable the model '{model}' in your account or server"
+        return self._model_hint.format(model=model) if self._model_hint else f"make the model '{model}' available in the server"
 
     def start_hint(self) -> str:
-        return "check the host and the API key"
+        return self._start_hint or "check the host and, if the server asks for one, the API key"

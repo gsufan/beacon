@@ -22,6 +22,7 @@ export interface ProjectCreatePayload {
 export interface SystemProvider {
   id: string;
   name: string;
+  default_host?: string;
 }
 
 export interface BrowseDirsResponse {

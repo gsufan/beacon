@@ -80,7 +80,8 @@ El asistente se abre en el navegador y te guía: aceptas la participación, elig
 | [Calidad medida](docs/es/calidad-medida.md) | Resultados de la búsqueda, de las respuestas y de las pruebas de carga |
 | [Seguridad](docs/es/seguridad.md) | Limitaciones conocidas y clave de API |
 | [Modo estudio](docs/es/estudio.md) | Participar en el estudio y analizar los resultados recibidos |
-| [Modelos externos](docs/es/modelos-externos.md) | Servidores de modelos fuera de tu red, opcionales (consentimiento, límite de gasto); el modo local sigue por defecto |
+| [Servidores de modelos](docs/es/servidores-de-modelos.md) | Ollama (por defecto, recomendado) y alternativas opcionales: LM Studio, llama.cpp, vLLM |
+| [Modelos externos](docs/es/modelos-externos.md) | Experimental, sin probar: servidores fuera de tu red (consentimiento, límite de gasto) |
 | [Desarrollo](docs/es/desarrollo.md) | Estructura del código, frontend y pruebas |
 
 ## Resultados en breve
