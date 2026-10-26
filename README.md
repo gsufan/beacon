@@ -58,14 +58,8 @@ If you were invited to try Beacon for the evaluation study, you need Python 3.10
 ```bash
 git clone https://github.com/gsufan/beacon.git
 cd beacon
-python -m venv .venv
-# Windows: .venv\Scripts\activate     Linux/macOS: source .venv/bin/activate
-pip install -r requirements.txt
-pip install -e .
-ollama pull qwen3-embedding:0.6b
-ollama pull llama3:8b
-cd frontend && npm install && npm run build && cd ..
-beacon study
+python tools/install.py    # environment, dependencies, web interface and models
+.\beacon study             # Linux/macOS: ./beacon study (no need to activate the environment)
 ```
 
 The assistant opens in the browser and guides you: you accept participation, choose whether or not to share your machine's details, paste the address of a public repository, ask at least 3 questions rating each answer, and review the result. When you finish, `beacon-estudio-resultados-<id>.json` is left in the project folder (without code, paths or your name); send it through the channel given in the invitation. Details in [docs/en/study-mode.md](docs/en/study-mode.md).
