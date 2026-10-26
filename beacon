@@ -1,2 +1,7 @@
 #!/bin/sh
-exec "$(dirname "$0")/.venv/bin/beacon" "$@"
+# Without arguments: opens a shell with the environment active. With arguments: runs beacon directly.
+dir="$(cd "$(dirname "$0")" && pwd)"
+if [ $# -eq 0 ]; then
+    exec bash --rcfile <(echo "[ -f ~/.bashrc ] && . ~/.bashrc; . '$dir/.venv/bin/activate'") -i
+fi
+exec "$dir/.venv/bin/beacon" "$@"

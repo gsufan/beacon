@@ -59,7 +59,8 @@ Si te invitaron a probar Beacon para el estudio de evaluación, necesitas Python
 git clone https://github.com/gsufan/beacon.git
 cd beacon
 python tools/install.py    # entorno, dependencias, interfaz web y modelos
-.\beacon study             # Linux/macOS: ./beacon study (no hace falta activar el entorno)
+.\beacon                   # abre una consola con el entorno activo (Linux/macOS: ./beacon)
+beacon study
 ```
 
 El asistente se abre en el navegador y te guía: aceptas la participación, eliges (o no) compartir los datos de tu equipo, pegas la dirección de un repositorio público, haces al menos 3 preguntas valorando cada respuesta y revisas el resultado. Al terminar, `beacon-estudio-resultados-<id>.json` queda en la carpeta del proyecto (sin código, rutas ni tu nombre); envíalo por el canal de la invitación. Detalle en [docs/es/estudio.md](docs/es/estudio.md).
