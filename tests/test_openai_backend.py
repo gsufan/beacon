@@ -215,3 +215,14 @@ def test_the_engine_indexes_and_answers_through_an_openai_compatible_server(tmp_
         assert chat_body["model"] == "chat" and chat_body["messages"][0]["role"] == "system"
     finally:
         server.shutdown()
+
+
+@pytest.mark.parametrize("host, expected", [
+    ("http://localhost:1234/v1", "http://127.0.0.1:1234/v1"),
+    ("http://localhost/v1", "http://127.0.0.1/v1"),
+    ("http://192.168.1.5:1234/v1", "http://192.168.1.5:1234/v1"),
+    ("http://my-server.local:8000/v1", "http://my-server.local:8000/v1"),
+])
+def test_localhost_is_requested_over_ipv4(host, expected):
+    from core.engine.backends.openai_backend import _ipv4_loopback
+    assert _ipv4_loopback(host) == expected

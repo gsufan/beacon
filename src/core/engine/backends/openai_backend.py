@@ -7,6 +7,7 @@ It uses plain HTTP (httpx) so no vendor SDK is needed.
 import json
 import time
 from typing import Callable, List, Optional
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -32,6 +33,16 @@ MAX_WAIT_SECONDS = 20
 _REJECTABLE = ("temperature", "seed")
 
 
+def _ipv4_loopback(host: str) -> str:
+    """Uses 127.0.0.1 instead of `localhost`: on Windows, resolving `localhost` tries ::1 first and, when the server only
+    listens on IPv4 (LM Studio does), every new connection waits about 2 seconds before falling back."""
+    parts = urlsplit(host)
+    if parts.hostname != "localhost":
+        return host
+    netloc = "127.0.0.1" + (f":{parts.port}" if parts.port else "")
+    return urlunsplit(parts._replace(netloc=netloc))
+
+
 class OpenAICompatibleBackend:
     def __init__(self, host: str = DEFAULT_HOST, api_key: str = "", transport=None, sleep: Callable[[float], None] = time.sleep,
                  provider_id: str = "openai", model_hint: str = "", start_hint: str = ""):
@@ -49,7 +60,7 @@ class OpenAICompatibleBackend:
 
     def _client(self, timeout: Optional[float]) -> httpx.Client:
         headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
-        return httpx.Client(base_url=self.host, headers=headers, timeout=timeout, transport=self._transport)
+        return httpx.Client(base_url=_ipv4_loopback(self.host), headers=headers, timeout=timeout, transport=self._transport)
 
     @staticmethod
     def _message(response: httpx.Response) -> str:

@@ -9,7 +9,7 @@ Se puede elegir otro servidor con las claves `provider` y `host` de `ai_provider
 | `provider` | Servidor | Dirección por defecto | Estado |
 |---|---|---|---|
 | `ollama` | [Ollama](https://ollama.com) | `http://localhost:11434` | Por defecto, recomendado, probado |
-| `lmstudio` | LM Studio | `http://localhost:1234/v1` | Opcional, mismo adaptador que la API compatible con OpenAI |
+| `lmstudio` | LM Studio | `http://localhost:1234/v1` | Opcional, probado a mano (ver abajo) |
 | `llamacpp` | Servidor de llama.cpp | `http://localhost:8080/v1` | Opcional, mismo adaptador |
 | `vllm` | vLLM | `http://localhost:8000/v1` | Opcional, mismo adaptador |
 | `openai` | Cualquier otro servidor compatible con OpenAI en tu equipo o tu red | `http://localhost:8000/v1` | Opcional, mismo adaptador |
@@ -27,7 +27,8 @@ ai_provider:
 
 - **Ollama** con su API nativa: todo (tests unitarios, las mediciones de este proyecto, Docker).
 - **El adaptador compatible con OpenAI**: tests unitarios contra servidores simulados y una corrida real contra el endpoint compatible con OpenAI del propio Ollama (`http://localhost:11434/v1`): listado de modelos, embeddings, chat con y sin streaming, un modelo inexistente y una pregunta completa sobre un índice existente.
-- **LM Studio, llama.cpp y vLLM** **no** se han probado: implementan la misma API, así que deberían funcionar, pero no está verificado en esos servidores.
+- **LM Studio** (0.4.26, Windows): probado a mano con `meta-llama-3-8b-instruct` y `nomic-embed-text-v1.5`. `beacon doctor` encuentra el servidor y los dos modelos; `beacon sync --docs` indexó psf/requests (736 fragmentos), generó la documentación (36 archivos) y armó el resumen del repositorio en unos 9 minutos; una pregunta concreta y una general («¿qué hace este proyecto?», respondida desde el resumen) funcionaron. No se midió la calidad de las respuestas.
+- **llama.cpp y vLLM** **no** se han probado: implementan la misma API, así que deberían funcionar, pero no está verificado en esos servidores.
 - **Las APIs comerciales** no están soportadas en esta versión: los servidores fuera de tu equipo o de tu red privada se rechazan. Una implementación experimental y sin probar (consentimiento, límite de gasto, clave de API) vive en la rama `experimental/paid-apis`.
 
 ## A tener en cuenta
