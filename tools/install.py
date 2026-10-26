@@ -22,6 +22,7 @@ def run(cmd, cwd=ROOT):
 def main() -> int:
     if not (3, 10) <= sys.version_info[:2] <= (3, 12):
         print(f"Python 3.10, 3.11 or 3.12 is required (found {sys.version.split()[0]}).")
+        print("Run this script with a supported version, for example: py -3.11 tools/install.py")
         return 1
 
     print("1/4 Virtual environment and dependencies")
@@ -30,6 +31,10 @@ def main() -> int:
     python = VENV / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
     run([python, "-m", "pip", "install", "-r", "requirements.txt"])
     run([python, "-m", "pip", "install", "-e", "."])
+
+    config = ROOT / "config" / "config.yaml"
+    if not config.exists():
+        shutil.copy(ROOT / "config" / "config.example.yaml", config)
 
     print("2/4 Web interface")
     if shutil.which("npm"):
