@@ -20,6 +20,7 @@ Usage:
 
 import json
 import logging
+import sys
 import zipfile
 from contextlib import nullcontext
 from pathlib import Path
@@ -61,6 +62,11 @@ app = typer.Typer(
     help=tr("Beacon — plataforma de mitigación de deuda técnica", "Beacon — platform to mitigate technical debt"),
     invoke_without_command=True,
 )
+# Redirected output on Windows defaults to a legacy code page that cannot encode the check marks.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 console = Console()
 
 
