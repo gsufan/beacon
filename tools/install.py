@@ -51,7 +51,7 @@ def main() -> int:
         print("  Ollama not found: install it from https://ollama.com and pull", ", ".join(MODELS))
 
     print("4/4 Done. Open a console with the environment active:")
-    print("  Windows:     .\beacon")
+    print("  Windows:     .\\beacon")
     print("  Linux/macOS: ./beacon")
     print("Then use beacon directly (beacon study, beacon doctor...).")
     return 0
