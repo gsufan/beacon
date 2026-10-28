@@ -6,13 +6,13 @@ and the generated documentation. The project stays registered: what was deleted 
 next `sync`.
 """
 
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
 
 from core.config import ProjectEntry, load_config
 from core.engine.chroma_utils import bump_index_version, release_chroma_client
+from core.fs import remove_tree
 from core.project_lock import ensure_not_busy
 from core.projects import DATA_ROOT, ProjectNotFoundError, ensure_project_dirs, safe_project_dir
 
@@ -70,7 +70,7 @@ def list_usage(data_root: Path | None = None) -> List[ProjectUsage]:
 
 def _remove_dir(path: Path):
     """On Windows, deleting fails if another process has it open: report it instead of leaving things half done."""
-    shutil.rmtree(path)
+    remove_tree(path)
 
 
 def clean_project(project_id: str, *, clone: bool = False, index: bool = False, docs: bool = False) -> int:

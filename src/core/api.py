@@ -509,7 +509,8 @@ if _FRONTEND_DIST.exists():
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa_fallback(full_path: str):
-        return FileResponse(_resolve_frontend_file(full_path) or (_FRONTEND_DIST / "index.html"))
+        # no-cache: a browser that kept the old index.html would load assets of a previous build after an update
+        return FileResponse(_resolve_frontend_file(full_path) or (_FRONTEND_DIST / "index.html"), headers={"Cache-Control": "no-cache"})
 else:
     from fastapi.responses import HTMLResponse
 

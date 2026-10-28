@@ -53,6 +53,7 @@ from core.projects import (
 )
 from core.project_lock import LOCK_FILENAME, ProjectBusyError
 from core.engine.chroma_utils import bump_index_version
+from core.fs import remove_tree
 from core import services
 from core.engine.indexer import CodebaseIndexer, IndexModelMismatchError
 from core.engine.doc_generator import DocGenerator, IndexOutOfDateError
@@ -577,11 +578,24 @@ def cmd_clean(
     console.print(tr(f"[green]OK[/green] Liberados {storage.human_size(freed)}.", f"[green]OK[/green] Freed {storage.human_size(freed)}."))
 
 
+def _remove_orphan_study_clones(keep: tuple = ()):
+    """Deletes study clones left behind by a process that was killed mid-clone. Only folders named like a study clone
+    that are not one of the user's own projects are touched."""
+    import re
+    try:
+        own = {p.id for p in load_config().projects}
+    except Exception:  # noqa: BLE001
+        own = set()
+    for folder in DATA_ROOT.glob("estudio-*"):
+        if re.fullmatch(r"estudio-[0-9a-f]{4}", folder.name) and folder.name not in own and folder.name not in keep:
+            remove_tree(folder, ignore_errors=True)
+
+
 def _remove_study_data():
-    import shutil
     from core.study.api import study_project_ids
     for project_id in study_project_ids() + ["estudio"]:
-        shutil.rmtree(DATA_ROOT / project_id, ignore_errors=True)
+        remove_tree(DATA_ROOT / project_id, ignore_errors=True)
+    _remove_orphan_study_clones()
 
 
 @app.command("study", help=tr("Modo estudio: una sesión guiada, con tu aprobación en cada paso, que genera dos archivos locales que puedes "
@@ -601,7 +615,6 @@ def cmd_study(
     no_browser: bool = typer.Option(False, "--no-browser", help=tr("No abrir el navegador automáticamente.", "Do not open the browser automatically.")),
 ):
     import os
-    import shutil
     import subprocess
     import sys
     import threading
@@ -618,6 +631,7 @@ def cmd_study(
     if new:
         session.discard()
         _remove_study_data()
+    resumed = session.started
     if not session.started:
         try:
             session.start(profile={"open": "abierto", "pilot": "piloto"}.get(profile, profile), code=code, order=order,
@@ -635,12 +649,13 @@ def cmd_study(
                   "llm_model": "llama3:8b"}
     study_config = study_dir / "config.yaml"
     projects = []
-    if study_config.exists() and session.started:  # resumed session: the prepared repository stays registered
+    if study_config.exists() and resumed:  # resumed session: the prepared repository stays registered
         try:
             projects = (yaml.safe_load(study_config.read_text(encoding="utf-8")) or {}).get("projects") or []
         except yaml.YAMLError:
             projects = []
     study_config.write_text(yaml.safe_dump({"ai_provider": ai_cfg, "projects": projects}, allow_unicode=True), encoding="utf-8")
+    _remove_orphan_study_clones(keep=tuple(p["id"] for p in projects))
     env = dict(os.environ, BEACON_STUDY="1", DEUDA_TECNICA_CONFIG=str(study_config))
     url = f"http://127.0.0.1:{port}/study"
     console.print(tr(f"[bold]Modo estudio[/bold] en {url}", f"[bold]Study mode[/bold] at {url}"))

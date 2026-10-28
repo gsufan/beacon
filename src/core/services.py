@@ -6,7 +6,6 @@ InvalidRequestError (invalid data), ProjectAlreadyExistsError, ProjectNotFoundEr
 (clone or update from the remote failed) and ProjectBusyError (another process is syncing).
 """
 
-import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional
@@ -27,6 +26,7 @@ from core.config import (
 from core.engine.chroma_utils import bump_index_version, release_chroma_client
 from core.engine.doc_generator import DocGenerator
 from core.engine.git_watcher import _is_generated_or_vendor
+from core.fs import remove_tree
 from core.engine.indexer import CodebaseIndexer
 from core.project_lock import ProjectBusyError, ensure_not_busy, project_lock
 from core.projects import (
@@ -106,7 +106,7 @@ def unregister_project(project_id: str, *, purge_data: bool = False) -> None:
             # so the project is never left out of config.yaml with its data still on disk.
             trash = project_dir.with_name(f".{project_dir.name}.borrando")
             if trash.exists():
-                shutil.rmtree(trash, ignore_errors=True)
+                remove_tree(trash, ignore_errors=True)
             try:
                 project_dir.rename(trash)
             except OSError:
@@ -119,7 +119,7 @@ def unregister_project(project_id: str, *, purge_data: bool = False) -> None:
         raise ProjectNotFoundError(f"Proyecto '{project_id}' no encontrado en config.yaml.")
     delete_project_token(project_id)
     if trash is not None:
-        shutil.rmtree(trash, ignore_errors=True)
+        remove_tree(trash, ignore_errors=True)
 
 
 

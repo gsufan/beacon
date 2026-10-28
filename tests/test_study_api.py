@@ -175,3 +175,122 @@ def test_each_repository_gets_its_own_folder_and_the_previous_ones_are_removed(c
     assert study_api.current_project_id() == "estudio-bbbb"  # the most recent
     study_api.remove_study_repos(keep="estudio-bbbb")  # even if unregister fails, it does not crash and cleans up what it can
     assert not (tmp_path / "estudio-aaaa").exists() and (tmp_path / "estudio-bbbb").exists() and (tmp_path / "otro-proyecto").exists()
+
+
+class _Collector:
+    """Minimal collector on this machine: records what it receives, like tools/study_collector.gs would."""
+
+    def __init__(self, reply=b'{"ok": true, "recibo": "abc123"}', status=200):
+        import threading
+        from http.server import BaseHTTPRequestHandler, HTTPServer
+        received, outer = [], self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_POST(self):
+                received.append(self.rfile.read(int(self.headers["Content-Length"])))
+                self.send_response(status)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(reply)
+
+            def log_message(self, *args):
+                pass
+
+        self.received = received
+        self.server = HTTPServer(("127.0.0.1", 0), Handler)
+        self.url = f"http://127.0.0.1:{self.server.server_port}/"
+        threading.Thread(target=self.server.serve_forever, daemon=True).start()
+
+    def close(self):
+        self.server.shutdown()
+
+
+def _finished(client, tmp_path):
+    _ready(client, tmp_path)
+    for i in range(3):
+        n = client.post("/study/ask", json={"pregunta": f"pregunta {i}"}).json()["n"]
+        client.post("/study/rate", json={"n": n, "correcta": "si", "fuentes_utiles": 4})
+    client.post("/study/consent", json={"tipo": "envio", "aceptado": True})
+    client.post("/study/identity", json={"github": "https://github.com/alguien", "presentacion": ""})
+
+
+def test_submit_is_unavailable_without_a_destination(client, tmp_path, monkeypatch):
+    monkeypatch.delenv("BEACON_STUDY_SUBMIT_URL", raising=False)
+    monkeypatch.setattr(study_api.submit, "DEFAULT_SUBMIT_URL", "")
+    _finished(client, tmp_path)
+    assert client.get("/study/state").json()["envio"]["disponible"] is False
+    assert client.post("/study/submit", json={}).status_code == 409
+
+
+def test_submit_sends_the_results_and_records_the_receipt(client, tmp_path, monkeypatch):
+    collector = _Collector()
+    try:
+        monkeypatch.setenv("BEACON_STUDY_SUBMIT_URL", collector.url)
+        _finished(client, tmp_path)
+        assert client.get("/study/state").json()["envio"] == {"disponible": True, "destino": "127.0.0.1", "enviado": None}
+        out = client.post("/study/submit", json={"con_identidad": False})
+        assert out.status_code == 200 and out.json()["recibo"] == "abc123"
+        body = json.loads(collector.received[0])
+        assert len(body["resultado"]["preguntas"]) == 3 and body["identidad"] is None
+        assert "alguien" not in collector.received[0].decode("utf-8")  # identity only travels if asked for
+        assert client.get("/study/state").json()["envio"]["enviado"]["recibo"] == "abc123"
+    finally:
+        collector.close()
+
+
+def test_submit_includes_identity_only_when_requested(client, tmp_path, monkeypatch):
+    collector = _Collector()
+    try:
+        monkeypatch.setenv("BEACON_STUDY_SUBMIT_URL", collector.url)
+        _finished(client, tmp_path)
+        assert client.post("/study/submit", json={"con_identidad": True}).status_code == 200
+        body = json.loads(collector.received[0])
+        assert body["identidad"]["github"].endswith("alguien") and body["identidad"]["id"] == body["resultado"]["meta"]["id"]
+    finally:
+        collector.close()
+
+
+def test_submit_needs_consent_and_reports_collector_failures(client, tmp_path, monkeypatch):
+    collector = _Collector(reply=b'{"ok": false, "error": "tama\xc3\xb1o inv\xc3\xa1lido"}')
+    try:
+        monkeypatch.setenv("BEACON_STUDY_SUBMIT_URL", collector.url)
+        _ready(client, tmp_path)
+        assert client.post("/study/submit", json={}).status_code == 409  # not authorized yet
+        client.post("/study/consent", json={"tipo": "envio", "aceptado": True})
+        assert client.post("/study/submit", json={}).status_code == 409  # fewer than the minimum questions
+        for i in range(3):
+            n = client.post("/study/ask", json={"pregunta": f"pregunta {i}"}).json()["n"]
+            client.post("/study/rate", json={"n": n, "correcta": "no"})
+        failed = client.post("/study/submit", json={})
+        assert failed.status_code == 502 and "rechazó" in failed.json()["detail"]
+        assert client.get("/study/state").json()["envio"]["enviado"] is None
+    finally:
+        collector.close()
+
+
+def test_submit_reports_an_unreachable_collector(client, tmp_path, monkeypatch):
+    monkeypatch.setenv("BEACON_STUDY_SUBMIT_URL", "http://127.0.0.1:9/")
+    _finished(client, tmp_path)
+    failed = client.post("/study/submit", json={})
+    assert failed.status_code == 502 and "conectar" in failed.json()["detail"]
+
+
+def test_submit_url_only_accepts_https_or_local_http(monkeypatch):
+    for url, ok in (("https://script.google.com/macros/s/x/exec", True), ("http://127.0.0.1:8001/", True),
+                    ("http://example.com/", False), ("ftp://example.com/", False), ("", False)):
+        monkeypatch.setenv("BEACON_STUDY_SUBMIT_URL", url)
+        assert bool(study_api.submit.submit_url()) is ok, url
+
+
+def test_cleanup_removes_orphan_study_clones_but_not_other_folders(tmp_path, monkeypatch):
+    from core import cli
+    monkeypatch.setattr(cli, "DATA_ROOT", tmp_path)
+    monkeypatch.setattr(study_api, "DATA_ROOT", tmp_path)
+    monkeypatch.setattr(cli, "load_config", lambda: SimpleNamespace(projects=[SimpleNamespace(id="estudio-ffff")]))
+    for name in ("estudio", "estudio-ab12", "estudio-cd34", "estudio-ffff", "estudio-notes", "requests"):
+        (tmp_path / name).mkdir()
+    cli._remove_orphan_study_clones(keep=("estudio-cd34",))
+    left = sorted(p.name for p in tmp_path.iterdir())
+    assert left == ["estudio", "estudio-cd34", "estudio-ffff", "estudio-notes", "requests"]  # the kept one, the user's own and unrelated folders
+    cli._remove_study_data()
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["estudio-ffff", "estudio-notes", "requests"]

@@ -1,5 +1,5 @@
-// Study mode wizard (`beacon study`). Every step requires an action from the participant; nothing is sent
-// to any server, only local files are generated.
+// Study mode wizard (`beacon study`). Every step requires an action from the participant; local files are
+// generated and nothing leaves the machine unless the participant presses "Send" at the end.
 import { useCallback, useEffect, useState } from "react";
 
 type Lang = "es" | "en";
@@ -26,6 +26,7 @@ interface StudyState {
   preguntas?: StudyQuestion[];
   puede_terminar?: boolean;
   experiencia?: { anios?: number; likert?: { util?: number } } | null;
+  envio?: { disponible: boolean; destino: string; enviado: { recibo: string } | null };
 }
 
 const T = {
@@ -34,7 +35,7 @@ const T = {
     s1: "Participación", s2: "Tu equipo", s3: "Repositorio", s4: "Preguntas", s5: "Cierre",
     step_of: "Paso {n} de {total}", back: "Atrás", next: "Siguiente",
     intro: "Beacon responde preguntas sobre un repositorio usando un modelo que corre en tu equipo. Este estudio mide qué tan bien funciona en equipos reales.",
-    intro_files: "Este programa no envía nada a ninguna parte. Solo generará dos archivos en la carpeta de Beacon: uno con tus resultados (preguntas, respuestas, tiempos y valoraciones) y otro, opcional, con tu identidad. Podrás abrirlos y auditarlos antes de decidir si los subes. No incluyen tu código ni rutas de tu equipo, y subirlos es voluntario.",
+    intro_files: "Este programa no envía nada por su cuenta. Generará dos archivos en la carpeta de Beacon: uno con tus resultados (preguntas, respuestas, tiempos y valoraciones) y otro, opcional, con tu identidad. Podrás abrirlos y auditarlos antes de decidir si los envías, y enviarlos es voluntario. No incluyen tu código ni rutas de tu equipo.",
     consent_part: "Acepto participar en el estudio y que se guarden en este equipo mis preguntas, las respuestas, los tiempos y mis valoraciones.",
     start: "Comenzar",
     hw_text: "Para interpretar los tiempos necesitamos saber qué equipo usas. Estos son los datos que Beacon detectó en TU equipo en este momento, y es exactamente lo que se guardaría si lo autorizas (no incluye tu nombre ni rutas):",
@@ -59,7 +60,11 @@ const T = {
     generate: "Generar archivos", dl_results: "Descargar resultados", copy: "Copiar resultados", copied: "Copiado",
     dl_identity: "Descargar identidad (opcional)", saved: "Se guardaron en la carpeta de Beacon: {f}.",
     review: "Revisa el contenido antes de enviarlo:", sent_note: "Envía el archivo de resultados por el canal indicado en la invitación.",
+    send: "Enviar mis resultados", sending: "Enviando...", sent_ok: "Enviado. Tu código de recibo es {id}. ¡Gracias por participar!",
+    send_note: "Se enviará exactamente el contenido que ves arriba a {host}, y nada más.", send_identity: "Incluir también mi identidad (archivo aparte, opcional)",
+    send_manual: "Si prefieres no enviarlo desde aquí, descarga el archivo y envíalo por el canal indicado en la invitación.",
     discard: "Descartar todo y salir", error: "Error",
+    warming: "Cargando el modelo de respuestas (solo la primera vez)...",
     cancel: "Cancelar", cancelled_hint: "Si tarda demasiado, puedes cancelarla (se detiene sola a los 3 minutos).",
     health_title: "Revisión previa", health_retry: "Reintentar", health_checking: "Revisando tu equipo...",
     health_blocked: "Resuelve lo marcado con ✗ y pulsa Reintentar para poder comenzar.",
@@ -77,7 +82,7 @@ const T = {
     s1: "Participation", s2: "Your machine", s3: "Repository", s4: "Questions", s5: "Wrap-up",
     step_of: "Step {n} of {total}", back: "Back", next: "Next",
     intro: "Beacon answers questions about a repository using a model that runs on your machine. This study measures how well it works on real hardware.",
-    intro_files: "This program sends nothing anywhere. It will only generate two files in the Beacon folder: one with your results (questions, answers, timings and ratings) and an optional one with your identity. You can open and audit them before deciding whether to upload them. They contain no code or paths from your machine, and uploading them is entirely up to you.",
+    intro_files: "This program sends nothing on its own. It will generate two files in the Beacon folder: one with your results (questions, answers, timings and ratings) and an optional one with your identity. You can open and audit them before deciding whether to send them, and sending is entirely up to you. They contain no code or paths from your machine.",
     consent_part: "I agree to take part in the study and to have my questions, the answers, timings and my ratings stored on this machine.",
     start: "Start",
     hw_text: "To interpret timings we need to know what machine you use. This is the data Beacon just detected on YOUR machine, and exactly what would be stored if you allow it (no name or paths):",
@@ -102,7 +107,11 @@ const T = {
     generate: "Generate files", dl_results: "Download results", copy: "Copy results", copied: "Copied",
     dl_identity: "Download identity (optional)", saved: "Saved in the Beacon folder: {f}.",
     review: "Review the content before sending it:", sent_note: "Send the results file through the channel given in the invitation.",
+    send: "Send my results", sending: "Sending...", sent_ok: "Sent. Your receipt code is {id}. Thank you for taking part!",
+    send_note: "Exactly the content shown above will be sent to {host}, and nothing else.", send_identity: "Also include my identity (separate file, optional)",
+    send_manual: "If you prefer not to send it from here, download the file and send it through the channel given in the invitation.",
     discard: "Discard everything and quit", error: "Error",
+    warming: "Loading the answer model (first time only)...",
     cancel: "Cancel", cancelled_hint: "If it takes too long you can cancel it (it stops by itself after 3 minutes).",
     health_title: "Pre-check", health_retry: "Retry", health_checking: "Checking your machine...",
     health_blocked: "Fix what is marked with ✗ and press Retry to be able to start.",
@@ -135,6 +144,7 @@ const EXAMPLE_REPOS = [
   { name: "BurntSushi/ripgrep", lang: "Rust", es: "Buscador de texto recursivo muy rápido; buen ejemplo de proyecto con varios módulos.", en: "Very fast recursive text search; a good multi-crate example." },
   { name: "GoogleCloudPlatform/microservices-demo", lang: "Go, Python, Java, C#, JS", es: "Tienda en línea de ejemplo con 11 microservicios en distintos lenguajes.", en: "Sample online shop made of 11 microservices in different languages." },
 ] as const;
+const isPreparing = (estado?: string) => estado === "clonando" || estado === "indexando" || estado === "calentando";
 const STEPS: Key[] = ["s1", "s2", "s3", "s4", "s5"];
 const btn = "rounded-lg bg-accent px-4 py-2 text-sm font-semibold text-accent-on disabled:opacity-50";
 const btnGhost = "rounded-lg border border-line px-4 py-2 text-sm text-ink-2 hover:bg-surface-2 disabled:opacity-50";
@@ -179,7 +189,8 @@ export default function Study() {
     Object.entries(v).reduce((s: string, [key, val]) => s.split(`{${key}}`).join(String(val)), T[lang][k] as string);
   const [state, setState] = useState<StudyState | null>(null);
   const [error, setError] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [busyCount, setBusyCount] = useState(0);
+  const busy = busyCount > 0;
 
   const refresh = useCallback(async () => {
     try {
@@ -190,7 +201,7 @@ export default function Study() {
   }, []);
 
   useEffect(() => { void refresh(); }, [refresh]);
-  const preparing = state?.repo_status?.estado === "clonando" || state?.repo_status?.estado === "indexando";
+  const preparing = isPreparing(state?.repo_status?.estado);
   useEffect(() => {
     if (!preparing) return;
     const id = setInterval(() => void refresh(), 1000);
@@ -198,9 +209,9 @@ export default function Study() {
   }, [preparing, refresh]);
 
   const act = async (fn: () => Promise<unknown>) => {
-    setBusy(true);
+    setBusyCount((n) => n + 1);
     setError("");
-    try { await fn(); await refresh(); } catch (e) { setError((e as Error).message); } finally { setBusy(false); }
+    try { await fn(); await refresh(); } catch (e) { setError((e as Error).message); } finally { setBusyCount((n) => n - 1); }
   };
 
   if (!state) return <p className="p-8 text-muted">{error || "..."}</p>;
@@ -257,6 +268,8 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
   const [workingOn, setWorkingOn] = useState("");
   const [closed, setClosed] = useState(false);
   const [question, setQuestion] = useState("");
+  const [sending, setSending] = useState(false);
+  const [sendIdentity, setSendIdentity] = useState(false);
   const [pending, setPending] = useState<{ q: string; since: number } | null>(null);
   const [now, setNow] = useState(Date.now());
   const [years, setYears] = useState(state.experiencia?.anios != null ? String(state.experiencia.anios) : "");
@@ -266,6 +279,8 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
   const [intro, setIntro] = useState("");
   const [copied, setCopied] = useState(false);
   const [files, setFiles] = useState<{ resultado: unknown; identidad: unknown; archivos?: string[] } | null>(null);
+
+  useEffect(() => { window.scrollTo(0, 0); }, [step]);
 
   useEffect(() => {
     if (step === 2 && !hw) void call<Record<string, unknown>>("GET", "/hardware-preview").then(setHw).catch(() => undefined);
@@ -278,7 +293,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
   }, [pending]);
 
   const status = state.repo_status;
-  const preparing = status?.estado === "clonando" || status?.estado === "indexando";
+  const preparing = isPreparing(status?.estado);
   useEffect(() => {
     // The "choose another" form closes once the new repository is ready, not before: the previous one's
     // state also says "ready".
@@ -362,8 +377,8 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
           <>
             <p className="text-sm text-ink-2">{t("repo_text")}</p>
             <input aria-label="URL" className={input} placeholder={t("repo_ph")} value={url} onChange={(e) => setUrl(e.target.value)} disabled={preparing} />
-            <p className="text-sm font-semibold">{t("examples")}</p>
-            <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto pr-1" aria-label={t("examples")}>
+            {!preparing && <p className="text-sm font-semibold">{t("examples")}</p>}
+            {!preparing && <ul className="flex max-h-80 flex-col gap-2 overflow-y-auto pr-1" aria-label={t("examples")}>
               {EXAMPLE_REPOS.map((r) => {
                 const repoUrl = `https://github.com/${r.name}`;
                 return (
@@ -380,7 +395,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
                   </li>
                 );
               })}
-            </ul>
+            </ul>}
             <button className={btn + " self-start"} disabled={!url.trim() || busy || preparing}
               onClick={() => {
                 if (changing && url.trim() === state.repo?.url) { setChanging(false); return; }  // already prepared: do not index again
@@ -397,6 +412,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
           </>
         )}
         {status?.estado === "clonando" && <ProgressBar value={0} indeterminate label={t("cloning")} />}
+        {status?.estado === "calentando" && <ProgressBar value={0} indeterminate label={t("warming")} />}
         {status?.estado === "indexando" && progress && (
           <ProgressBar value={progress.total ? (100 * progress.actual) / progress.total : 0}
             label={`${t("indexing", { a: progress.actual, t: progress.total })} · ${t("elapsed", { s: progress.segundos })}${progress.archivo ? ` · ${progress.archivo}` : ""}`} />
@@ -422,7 +438,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
           void act(() => call("POST", "/ask", { pregunta: q, idioma: lang })).finally(() => setPending(null));
         }}>
           <input aria-label={t("q_ph")} className={input} placeholder={t("q_ph")} value={question} onChange={(e) => setQuestion(e.target.value)} disabled={busy} />
-          <button className={btn} disabled={busy || question.trim().length < 3}>{busy ? t("asking") : t("ask")}</button>
+          <button className={btn} disabled={busy || question.trim().length < 3}>{pending ? t("asking") : t("ask")}</button>
         </form>
         <ol className="flex flex-col gap-4">
           {pending && (
@@ -443,7 +459,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
               <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("correct")}>
                 <span className="text-xs text-muted">{t("correct")}</span>
                 {(["si", "parcial", "no", "no_se"] as Correct[]).map((c) => (
-                  <button key={c} disabled={busy}
+                  <button key={c}
                     className={`rounded-md border px-2 py-1 text-xs ${q.valoracion?.correcta === c ? "border-accent bg-accent-tint font-semibold text-accent-ink" : "border-line text-ink-2"}`}
                     onClick={() => rate(q, c, q.valoracion?.fuentes_utiles ?? null)}>{t(`c_${c}` as Key)}</button>
                 ))}
@@ -452,7 +468,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
                 <div className="flex flex-wrap items-center gap-2" role="group" aria-label={t("useful")}>
                   <span className="text-xs text-muted">{t("useful")}</span>
                   {[1, 2, 3, 4, 5].map((k) => (
-                    <button key={k} disabled={busy} aria-label={`${t("useful")} ${k}`}
+                    <button key={k} aria-label={`${t("useful")} ${k}`}
                       className={`h-7 w-7 rounded-md border text-xs ${q.valoracion?.fuentes_utiles === k ? "border-accent bg-accent-tint font-semibold text-accent-ink" : "border-line text-ink-2"}`}
                       onClick={() => rate(q, q.valoracion!.correcta, k)}>{k}</button>
                   ))}
@@ -501,7 +517,28 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
                 <button className={btnGhost} onClick={() => download(files.archivos?.[1] ?? "beacon-estudio-identidad.json", files.identidad)}>{t("dl_identity")}</button>
               )}
             </div>
-            <p className="text-sm text-muted">{t("sent_note")}</p>
+            {state.envio?.disponible && (
+              <div className="flex flex-col gap-3 rounded-lg border border-line p-3">
+                {state.envio.enviado ? (
+                  <p role="status" className="text-sm font-semibold text-accent-ink">{t("sent_ok", { id: state.envio.enviado.recibo })}</p>
+                ) : (
+                  <>
+                    <p className="text-sm">{t("send_note", { host: state.envio.destino })}</p>
+                    {files.identidad !== null && (
+                      <label className="flex items-start gap-2 text-sm">
+                        <input type="checkbox" checked={sendIdentity} onChange={(e) => setSendIdentity(e.target.checked)} className="mt-1" />
+                        {t("send_identity")}
+                      </label>
+                    )}
+                    <button className={btn + " self-start"} disabled={sending} onClick={() => {
+                      setSending(true);
+                      void act(() => call("POST", "/submit", { con_identidad: sendIdentity })).finally(() => setSending(false));
+                    }}>{sending ? t("sending") : t("send")}</button>
+                  </>
+                )}
+              </div>
+            )}
+            <p className="text-sm text-muted">{state.envio?.disponible ? t("send_manual") : t("sent_note")}</p>
           </div>
         )}
         {state.carpeta_repo && <p className="text-xs text-muted">{t("storage_note", { dir: state.carpeta_repo })}</p>}

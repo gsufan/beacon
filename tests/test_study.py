@@ -186,3 +186,17 @@ def test_windows_11_is_told_apart_from_windows_10(monkeypatch):
     for build, expected in ((19045, "Windows 10"), (22631, "Windows 11"), (26200, "Windows 11")):
         monkeypatch.setattr(sys, "getwindowsversion", lambda b=build: type("V", (), {"build": b})(), raising=False)
         assert hardware._os_name() == expected
+
+
+def test_a_stale_copy_of_the_session_does_not_overwrite_newer_changes(tmp_path):
+    """A rating saved while an answer was being generated must survive the new question being recorded."""
+    path = tmp_path / "_study" / "sesion.json"
+    a = StudySession(path)
+    a.start(profile="abierto")
+    a.consent("participacion", True)
+    a.add_question("primera", "respuesta", 1.0)
+    stale = StudySession(path)  # a request that loaded the session before the rating
+    StudySession(path).rate(1, "si", 4)
+    stale.add_question("segunda", "respuesta", 2.0)
+    saved = StudySession(path).state["preguntas"]
+    assert [q["n"] for q in saved] == [1, 2] and saved[0]["valoracion"]["correcta"] == "si"

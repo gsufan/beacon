@@ -7,7 +7,6 @@ import json
 import logging
 import os
 import secrets
-import shutil
 import threading
 import time
 from pathlib import Path
@@ -21,10 +20,12 @@ from core import services
 from core.config import load_config
 from core.engine.backends import BackendUnavailableError, create_backend
 from core.engine.indexer import IndexModelMismatchError
-from core.engine.llm import LLMCancelledError, LLMTimeoutError
+from core.engine.llm import LLMCancelledError, LLMTimeoutError, chat
+from core.fs import remove_tree
 from core.projects import DATA_ROOT, InvalidRepoUrlError, ProjectNotFoundError
-from core.study import hardware
+from core.study import hardware, submit
 from core.study.session import CORRECT_VALUES, StudyError, StudySession
+from core.study.validate import validate_result
 
 logger = logging.getLogger("beacon.study")
 
@@ -75,7 +76,7 @@ def remove_study_repos(keep: Optional[str] = None):
             services.unregister_project(project_id, purge_data=True)
         except Exception:  # noqa: BLE001
             pass
-        shutil.rmtree(DATA_ROOT / project_id, ignore_errors=True)
+        remove_tree(DATA_ROOT / project_id, ignore_errors=True)
 
 
 def session_path() -> Path:
@@ -113,6 +114,10 @@ class RateBody(BaseModel):
 
 class ExperienceBody(BaseModel):
     datos: dict
+
+
+class SubmitBody(BaseModel):
+    con_identidad: bool = False
 
 
 class IdentityBody(BaseModel):
@@ -158,6 +163,14 @@ def run_health_checks() -> list:
     return items
 
 
+def warm_up_model(engine):
+    """Loads the answer model into memory so the first question is not timed with the load (several seconds on a cold start)."""
+    try:
+        chat(engine.backend, engine.ai_config.llm_model, "", "ok", engine.ai_config.llm_num_ctx, max_tokens=1, max_seconds=60)
+    except Exception:  # noqa: BLE001
+        logger.info("no se pudo precargar el modelo de respuestas; la primera pregunta puede tardar más")
+
+
 def check_public_repo_url(url: str) -> str:
     """Only https and known code hosts: the study uses public repositories."""
     from urllib.parse import urlparse
@@ -201,7 +214,8 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
                 "hardware": st["hardware"], "repo": st["repo"], "repo_status": status["repo"],
                 "preguntas": [{"n": q["n"], "pregunta": q["pregunta"], "respuesta": q["respuesta"], "segundos": q["segundos_respuesta"],
                                "fuentes": q["fuentes"], "valoracion": q["valoracion"]} for q in st["preguntas"]],
-                "puede_terminar": s.can_finish(), "experiencia": st["experiencia"], "identidad": st["identidad"]}
+                "puede_terminar": s.can_finish(), "experiencia": st["experiencia"], "identidad": st["identidad"],
+                "envio": {"disponible": bool(submit.submit_url()), "destino": submit.destination_host(), "enviado": st.get("envio")}}
 
     @router.post("/start")
     def start(body: StartBody):
@@ -273,6 +287,9 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
             result = services.sync_project(project_id, docs=False, pull=False, on_index_progress=on_progress)
             clear_engines()
             engine = get_engine(project_id)
+            with lock:
+                status["repo"] = {"estado": "calentando", "detalle": None}
+            warm_up_model(engine)
             import git
             commit = git.Repo(repo_path).head.commit.hexsha[:10]
             langs = sorted({detect_language(str(p)) for p in files})
@@ -299,7 +316,7 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
         except InvalidRepoUrlError as e:
             raise HTTPException(status_code=400, detail=str(e))
         with lock:
-            if status["repo"]["estado"] in ("clonando", "indexando"):
+            if status["repo"]["estado"] in ("clonando", "indexando", "calentando"):
                 raise HTTPException(status_code=409, detail="Ya se está preparando un repositorio.")
             status["repo"] = {"estado": "clonando", "detalle": url}
         threading.Thread(target=_prepare_repo, args=(url,), daemon=True).start()
@@ -380,13 +397,36 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
             files.append(identity_file(study_id))
         return {"resultado": result, "identidad": identity, "archivos": files, "carpeta": str(out)}
 
+    @router.post("/submit")
+    def submit_results(body: SubmitBody):
+        """Sends the reviewed results file (and, if asked, the identity file) to the collector. Only the participant triggers it."""
+        s = need_started()
+        if not s.has_consent("envio"):
+            raise HTTPException(status_code=409, detail="Falta autorizar la generación del archivo.")
+        if not submit.submit_url():
+            raise HTTPException(status_code=409, detail="Este estudio no tiene un destino de envío configurado.")
+        try:
+            result = s.build_result()
+        except StudyError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        problems, _ = validate_result(result)
+        if problems:
+            raise HTTPException(status_code=409, detail="El archivo no es válido: " + "; ".join(problems))
+        identity = s.build_identity() if body.con_identidad else None
+        try:
+            receipt = submit.send(submit.build_payload(result, identity))
+        except submit.SubmitError as e:
+            raise HTTPException(status_code=502, detail=str(e))
+        s.mark_sent(receipt, identity is not None)
+        return {"ok": True, "recibo": receipt or result["meta"]["id"]}
+
     def _discard_all():
         session().discard()
         with lock:
             status["repo"] = {"estado": "sin_repo", "detalle": None}
         clear_engines()
         remove_study_repos()
-        shutil.rmtree(DATA_ROOT / STUDY_PROJECT_ID, ignore_errors=True)  # the clone of the previous version, if left behind
+        remove_tree(DATA_ROOT / STUDY_PROJECT_ID, ignore_errors=True)  # the clone of the previous version, if left behind
 
     @router.post("/discard")
     def discard():
