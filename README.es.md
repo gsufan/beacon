@@ -58,7 +58,7 @@ Si te invitaron a probar Beacon para el estudio de evaluación, necesitas Python
 ```bash
 git clone https://github.com/gsufan/beacon.git
 cd beacon
-python tools/install.py    # entorno, dependencias, interfaz web y modelos
+python tools/install.py    # entorno, dependencias, interfaz web y modelos (Linux/macOS: python3)
 .\beacon                   # abre una consola con el entorno activo (Linux/macOS: ./beacon)
 beacon study
 ```

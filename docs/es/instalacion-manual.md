@@ -23,14 +23,14 @@ Un solo script hace toda la preparación: entorno virtual, dependencias, `config
 ```bash
 git clone https://github.com/gsufan/beacon.git
 cd beacon
-python tools/install.py    # con Python 3.10-3.12, por ejemplo py -3.11 tools/install.py
+python tools/install.py    # Python 3.10-3.12; por ejemplo py -3.11 (Windows) o python3.11 (Linux/macOS)
 .\beacon                   # abre una consola con el entorno activo (Linux/macOS: ./beacon)
 beacon doctor
 ```
 
 El lanzador (`beacon.cmd` en Windows, `beacon` en Linux/macOS) está en la raíz del proyecto. Sin argumentos abre una consola con el entorno virtual ya activo, para usar `beacon ...` directamente; con argumentos ejecuta ese comando (por ejemplo `.\beacon doctor`). Nunca hace falta activar el entorno a mano.
 
-Si prefieres hacer cada paso tú, o el script falla, sigue el proceso largo de abajo.
+En Debian y Ubuntu puede hacer falta antes `sudo apt install python3-venv`. Si prefieres hacer cada paso tú, o el script falla, sigue el proceso largo de abajo.
 
 ## Paso a paso (Windows, PowerShell)
 

@@ -58,7 +58,7 @@ If you were invited to try Beacon for the evaluation study, you need Python 3.10
 ```bash
 git clone https://github.com/gsufan/beacon.git
 cd beacon
-python tools/install.py    # environment, dependencies, web interface and models
+python tools/install.py    # environment, dependencies, web interface and models (Linux/macOS: python3)
 .\beacon                   # opens a console with the environment active (Linux/macOS: ./beacon)
 beacon study
 ```

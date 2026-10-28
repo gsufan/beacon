@@ -22,13 +22,22 @@ def run(cmd, cwd=ROOT):
 def main() -> int:
     if not (3, 10) <= sys.version_info[:2] <= (3, 12):
         print(f"Python 3.10, 3.11 or 3.12 is required (found {sys.version.split()[0]}).")
-        print("Run this script with a supported version, for example: py -3.11 tools/install.py")
+        print("Run this script with a supported version, for example: py -3.11 tools/install.py (Windows) or python3.11 tools/install.py (Linux/macOS)")
         return 1
 
     print("1/4 Virtual environment and dependencies")
-    if not VENV.exists():
-        run([sys.executable, "-m", "venv", VENV])
     python = VENV / ("Scripts/python.exe" if sys.platform == "win32" else "bin/python")
+    usable = python.exists() and subprocess.run([str(python), "-m", "pip", "--version"], capture_output=True).returncode == 0
+    if not usable:
+        shutil.rmtree(VENV, ignore_errors=True)  # leftover of an earlier failed run
+        try:
+            run([sys.executable, "-m", "venv", VENV])
+        except subprocess.CalledProcessError:
+            shutil.rmtree(VENV, ignore_errors=True)
+            print("The virtual environment could not be created.")
+            if sys.platform.startswith("linux"):
+                print("On Debian/Ubuntu install the missing package first: sudo apt install python3-venv")
+            return 1
     run([python, "-m", "pip", "install", "-r", "requirements.txt"])
     run([python, "-m", "pip", "install", "-e", "."])
 

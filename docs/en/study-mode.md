@@ -15,7 +15,7 @@ Requirements: Python 3.10, 3.11 or 3.12 (3.13 or later does not work yet), Git, 
 ```bash
 git clone https://github.com/gsufan/beacon.git
 cd beacon
-python tools/install.py    # environment, dependencies, web interface and Ollama models
+python tools/install.py    # environment, dependencies, web interface and Ollama models (Linux/macOS: python3)
 .\beacon                   # opens a console with the environment active (Linux/macOS: ./beacon)
 beacon study
 ```
