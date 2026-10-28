@@ -18,7 +18,7 @@ Proyecto de título — INACAP, 2026.
 
 ## Modos de uso
 
-- **Una persona:** instalación local desde el repositorio y la consola (`beacon ask`, `beacon sync`). Ver [instalación manual](docs/es/instalacion-manual.md).
+- **Una persona:** instalación local desde el repositorio y la consola (`beacon ask`, `beacon sync`). Ejecuta `python tools/install.py` para prepararlo todo en un paso y usa después el lanzador `beacon`; la [instalación manual](docs/es/instalacion-manual.md) incluye también el proceso largo paso a paso.
 - **Un equipo:** un servidor con Docker Compose, con un único índice compartido, al que se accede desde el navegador, la consola o la API REST. Es la forma recomendada y se describe a continuación.
 
 ## Inicio rápido con Docker (recomendado)
@@ -63,7 +63,7 @@ python tools/install.py    # entorno, dependencias, interfaz web y modelos
 beacon study
 ```
 
-El asistente se abre en el navegador y te guía: aceptas la participación, eliges (o no) compartir los datos de tu equipo, pegas la dirección de un repositorio público, haces al menos 3 preguntas valorando cada respuesta y revisas el resultado. Al terminar, `beacon-estudio-resultados-<id>.json` queda en la carpeta del proyecto (sin código, rutas ni tu nombre); envíalo por el canal de la invitación. Detalle en [docs/es/estudio.md](docs/es/estudio.md).
+El asistente se abre en el navegador y te guía: aceptas la participación, eliges (o no) compartir los datos de tu equipo, pegas la dirección de un repositorio público, haces al menos 3 preguntas valorando cada respuesta y revisas el resultado. Al terminar, `beacon-estudio-resultados-<id>.json` queda en la carpeta del proyecto (sin código, rutas ni tu nombre); envíalo con el botón «Enviar mis resultados» (si está disponible) o por el canal de la invitación. Detalle en [docs/es/estudio.md](docs/es/estudio.md).
 
 ## Documentación
 

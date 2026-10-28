@@ -18,7 +18,7 @@ Degree project — INACAP, 2026.
 
 ## Ways to use it
 
-- **One person:** local installation from the repository and the console (`beacon ask`, `beacon sync`). See the [manual installation guide](docs/en/manual-installation.md).
+- **One person:** local installation from the repository and the console (`beacon ask`, `beacon sync`). Run `python tools/install.py` for a one-step setup, then use the `beacon` launcher; the [manual installation guide](docs/en/manual-installation.md) also has the long step-by-step process.
 - **A team:** one server running Docker Compose with a single shared index, accessed from the browser, the console or the REST API. This is the recommended way and is described below.
 
 ## Quick start with Docker (recommended)
@@ -63,7 +63,7 @@ python tools/install.py    # environment, dependencies, web interface and models
 beacon study
 ```
 
-The assistant opens in the browser and guides you: you accept participation, choose whether or not to share your machine's details, paste the address of a public repository, ask at least 3 questions rating each answer, and review the result. When you finish, `beacon-estudio-resultados-<id>.json` is left in the project folder (without code, paths or your name); send it through the channel given in the invitation. Details in [docs/en/study-mode.md](docs/en/study-mode.md).
+The assistant opens in the browser and guides you: you accept participation, choose whether or not to share your machine's details, paste the address of a public repository, ask at least 3 questions rating each answer, and review the result. When you finish, `beacon-estudio-resultados-<id>.json` is left in the project folder (without code, paths or your name); send it with the "Send my results" button (when available) or through the channel given in the invitation. Details in [docs/en/study-mode.md](docs/en/study-mode.md).
 
 ## Documentation
 

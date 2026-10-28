@@ -16,7 +16,23 @@ Todo se hace desde una consola; no hace falta Docker.
   deja corriendo en segundo plano; si no, `ollama serve` en otra consola)
 - Git
 
-## Pasos (Windows, PowerShell)
+## Forma rápida (recomendada)
+
+Un solo script hace toda la preparación: entorno virtual, dependencias, `config/config.yaml` (copiado del ejemplo), interfaz web (si hay Node) y los dos modelos de Ollama (si hay Ollama).
+
+```bash
+git clone https://github.com/gsufan/beacon.git
+cd beacon
+python tools/install.py    # con Python 3.10-3.12, por ejemplo py -3.11 tools/install.py
+.\beacon                   # abre una consola con el entorno activo (Linux/macOS: ./beacon)
+beacon doctor
+```
+
+El lanzador (`beacon.cmd` en Windows, `beacon` en Linux/macOS) está en la raíz del proyecto. Sin argumentos abre una consola con el entorno virtual ya activo, para usar `beacon ...` directamente; con argumentos ejecuta ese comando (por ejemplo `.\beacon doctor`). Nunca hace falta activar el entorno a mano.
+
+Si prefieres hacer cada paso tú, o el script falla, sigue el proceso largo de abajo.
+
+## Paso a paso (Windows, PowerShell)
 
 ```powershell
 # 1. Clonar y entrar al proyecto
