@@ -13,7 +13,9 @@ import git  # noqa: E402
 from core.engine.backends import OllamaBackend  # noqa: E402
 from core.config import AIProviderConfig  # noqa: E402
 from core.engine.indexer import CodebaseIndexer  # noqa: E402
+from core.engine.call_graph import extract_call_candidates  # noqa: E402
 from core.engine.rag_engine import RAGEngine  # noqa: E402
+from core.engine.retrieval import question_identifiers  # noqa: E402
 from core.projects import ProjectContext  # noqa: E402
 
 AI = AIProviderConfig(provider="ollama", host="http://127.0.0.1:9",
@@ -60,10 +62,10 @@ def _engine(tmp_path):
 
 
 def test_detects_identifiers_but_not_ordinary_words():
-    ids = RAGEngine.question_identifiers(
+    ids = question_identifiers(
         "¿Dónde se usa max_redirects y por qué TooManyRedirects usa DEFAULT_CA_BUNDLE_PATH en Redis?")
     assert ids == ["max_redirects", "TooManyRedirects", "DEFAULT_CA_BUNDLE_PATH"]
-    assert RAGEngine.question_identifiers("¿Cómo se envía la petición HTTP con POST?") == []
+    assert question_identifiers("¿Cómo se envía la petición HTTP con POST?") == []
 
 
 def test_named_function_beats_tests_that_repeat_its_name(tmp_path):
@@ -82,11 +84,11 @@ def test_usage_question_prefers_the_code_that_uses_the_identifier(tmp_path):
 
 def test_question_without_identifiers_is_unchanged(tmp_path):
     engine = _engine(tmp_path)
-    assert engine._identifier_matches("¿Cómo se calcula el largo?", [0.3, 0.4, 0.5]) == {}
+    assert engine.retriever.identifier_matches("¿Cómo se calcula el largo?", [0.3, 0.4, 0.5]) == {}
 
 
 def test_call_candidates_skip_definitions():
     code = "def outer():\n    def hook(r):\n        return r\n    return send(hook)\n"
-    assert RAGEngine._extract_call_candidates(code, "outer") == ["send"]
+    assert extract_call_candidates(code, "outer") == ["send"]
     js = "function main() {\n  function local(x) { return x }\n  return convert(local)\n}"
-    assert RAGEngine._extract_call_candidates(js, "main") == ["convert"]
+    assert extract_call_candidates(js, "main") == ["convert"]

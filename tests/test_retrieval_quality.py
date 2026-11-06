@@ -17,7 +17,8 @@ from core.engine.chunker import chunk_source  # noqa: E402
 from core.engine.embeddings import embed_query, profile_for  # noqa: E402
 from core.engine import indexer as indexer_module  # noqa: E402
 from core.engine.indexer import CodebaseIndexer, IndexModelMismatchError, embedding_text  # noqa: E402
-from core.engine.rag_engine import RAGEngine, TEST_DISTANCE_PENALTY  # noqa: E402
+from core.engine.rag_engine import RAGEngine  # noqa: E402
+from core.engine.retrieval import TEST_DISTANCE_PENALTY  # noqa: E402
 from core.projects import ProjectContext  # noqa: E402
 
 

@@ -72,7 +72,7 @@ def main():
     base, reranked, latencies = [], [], []
     for item in questions:
         expected = set(item["expected"])
-        candidates = engine._ranked_candidates(item["q"], CANDIDATES)[:CANDIDATES]
+        candidates = engine.ranked_candidates(item["q"], CANDIDATES)[:CANDIDATES]
         t = time.perf_counter()
         ordered = rerank(engine, item["q"], candidates)
         latencies.append(time.perf_counter() - t)
