@@ -17,7 +17,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from core import services
-from core.config import load_config
+from core.config import default_ai_provider, load_config
 from core.engine.backends import BackendUnavailableError, create_backend
 from core.engine.indexer import IndexModelMismatchError
 from core.engine.llm import LLMCancelledError, LLMTimeoutError, chat
@@ -130,9 +130,9 @@ def run_health_checks() -> list:
     items = []
     try:
         ai = load_config().ai_provider
-        provider, host, embedding, llm = ai.provider, ai.host, ai.embedding_model, ai.llm_model
     except FileNotFoundError:
-        provider, host, embedding, llm = "ollama", "http://localhost:11434", "qwen3-embedding:0.6b", "llama3:8b"
+        ai = default_ai_provider()
+    provider, host, embedding, llm = ai.provider, ai.host, ai.embedding_model, ai.llm_model
 
     installed, ollama_ok = [], False
     try:

@@ -7,6 +7,7 @@ is never left behind.
 """
 
 import os
+import time
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -56,6 +57,28 @@ def project_lock(project_dir):
                 f"El proyecto '{lock_dir.name}' se está sincronizando en otro proceso "
                 "(el servidor, su watcher automático u otra consola). Espera a que termine."
             )
+        try:
+            yield
+        finally:
+            _unlock(fd)
+    finally:
+        os.close(fd)
+
+
+@contextmanager
+def file_lock(lock_path, timeout: float = 10.0):
+    """Exclusive lock on `lock_path`, waiting up to `timeout` seconds for another process to release it.
+    For short read-modify-write operations on shared files such as config.yaml.
+    """
+    lock_path = Path(lock_path)
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        deadline = time.monotonic() + timeout
+        while not _try_lock(fd):
+            if time.monotonic() >= deadline:
+                raise TimeoutError(f"'{lock_path}' sigue bloqueado por otro proceso.")
+            time.sleep(0.05)
         try:
             yield
         finally:

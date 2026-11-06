@@ -39,6 +39,7 @@ from core.config import (
     ProjectAlreadyExistsError,
     ProjectEntry,
     add_project,
+    default_ai_provider,
     set_auto_watch,
     update_project,
     load_config,
@@ -301,8 +302,7 @@ def cmd_ask(project_id: str, question: str, top_k: int = 5):
                                "Pack a project's index (ChromaDB) and documentation into a portable .zip. "
                                "Useful to take an already indexed project to another machine without reindexing."))
 def cmd_export(project_id: str, output: str = typer.Option(None, "--output", "-o")):
-    cfg = load_config()
-    entry = next((p for p in cfg.projects if p.id == project_id), None)
+    entry = load_config().find_project(project_id)
     if entry is None:
         console.print(tr(f"[red]Proyecto '{project_id}' no encontrado en config.yaml.[/red]",
                          f"[red]Project '{project_id}' not found in config.yaml.[/red]"))
@@ -642,11 +642,9 @@ def cmd_study(
     # Study-specific configuration: it uses the Ollama and the models already installed.
     try:
         ai = load_config().ai_provider
-        ai_cfg = {"provider": ai.provider, "host": ai.host, "embedding_model": ai.embedding_model,
-                  "llm_model": ai.llm_model}
     except FileNotFoundError:
-        ai_cfg = {"provider": "ollama", "host": "http://localhost:11434", "embedding_model": "qwen3-embedding:0.6b",
-                  "llm_model": "llama3:8b"}
+        ai = default_ai_provider()
+    ai_cfg = {"provider": ai.provider, "host": ai.host, "embedding_model": ai.embedding_model, "llm_model": ai.llm_model}
     study_config = study_dir / "config.yaml"
     projects = []
     if study_config.exists() and resumed:  # resumed session: the prepared repository stays registered

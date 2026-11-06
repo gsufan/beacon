@@ -58,7 +58,7 @@ def register_project(project_id: str, *, name: Optional[str] = None, repo_path: 
     validate_project_id(project_id)
     if bool(repo_path) == bool(repo_url):
         raise InvalidRequestError("Indica la ruta de un repositorio local o la URL de uno remoto (solo una de las dos).")
-    if any(p.id == project_id for p in load_config().projects):
+    if load_config().find_project(project_id):
         raise ProjectAlreadyExistsError(f"El proyecto '{project_id}' ya está registrado.")
 
     if repo_path:
@@ -132,7 +132,7 @@ class SyncResult:
 
 
 def _project_entry(project_id: str) -> ProjectEntry:
-    entry = next((p for p in load_config().projects if p.id == project_id), None)
+    entry = load_config().find_project(project_id)
     if entry is None:
         raise ProjectNotFoundError(f"Proyecto '{project_id}' no encontrado en config.yaml.")
     return entry

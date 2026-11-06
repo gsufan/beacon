@@ -74,7 +74,7 @@ def _remove_dir(path: Path):
 
 
 def clean_project(project_id: str, *, clone: bool = False, index: bool = False, docs: bool = False) -> int:
-    entry = next((p for p in load_config().projects if p.id == project_id), None)
+    entry = load_config().find_project(project_id)
     if entry is None:
         raise ProjectNotFoundError(f"Proyecto '{project_id}' no encontrado en config.yaml.")
     project_dir = safe_project_dir(project_id, DATA_ROOT)
