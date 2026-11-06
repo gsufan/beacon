@@ -36,20 +36,17 @@ from core.engine.backends import BackendAuthError, BackendError, BackendUnavaila
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
-    default_ai_provider,
     set_auto_watch,
     update_project,
     load_config,
 )
 from core.projects import (
-    DATA_ROOT,
     InvalidRepoUrlError,
     list_projects,
     get_project,
     ProjectNotFoundError,
 )
 from core.project_lock import ProjectBusyError
-from core.fs import remove_tree
 from core import portability, services
 from core.engine.indexer import CodebaseIndexer, IndexModelMismatchError
 from core.engine.doc_generator import DocGenerator, IndexOutOfDateError
@@ -505,26 +502,6 @@ def cmd_clean(
     console.print(tr(f"[green]OK[/green] Liberados {storage.human_size(freed)}.", f"[green]OK[/green] Freed {storage.human_size(freed)}."))
 
 
-def _remove_orphan_study_clones(keep: tuple = ()):
-    """Deletes study clones left behind by a process that was killed mid-clone. Only folders named like a study clone
-    that are not one of the user's own projects are touched."""
-    import re
-    try:
-        own = {p.id for p in load_config().projects}
-    except Exception:  # noqa: BLE001
-        own = set()
-    for folder in DATA_ROOT.glob("estudio-*"):
-        if re.fullmatch(r"estudio-[0-9a-f]{4}", folder.name) and folder.name not in own and folder.name not in keep:
-            remove_tree(folder, ignore_errors=True)
-
-
-def _remove_study_data():
-    from core.study.api import study_project_ids
-    for project_id in study_project_ids() + ["estudio"]:
-        remove_tree(DATA_ROOT / project_id, ignore_errors=True)
-    _remove_orphan_study_clones()
-
-
 @app.command("study", help=tr("Modo estudio: una sesión guiada, con tu aprobación en cada paso, que genera dos archivos locales que puedes "
                               "revisar antes de subirlos. No toca tu configuración ni tus proyectos.",
                               "Study mode: a guided session, with your approval at every step, that generates two local files you can "
@@ -541,63 +518,36 @@ def cmd_study(
                                                       "Discard an unfinished previous session and start over.")),
     no_browser: bool = typer.Option(False, "--no-browser", help=tr("No abrir el navegador automáticamente.", "Do not open the browser automatically.")),
 ):
-    import os
     import subprocess
-    import sys
     import threading
     import webbrowser
 
-    import yaml
+    from core.study import launcher
+    from core.study.session import StudyError
 
-    from core.study import hardware
-    from core.study.session import StudyError, StudySession
-
-    study_dir = DATA_ROOT / "_study"
-    study_dir.mkdir(parents=True, exist_ok=True)
-    session = StudySession(study_dir / "sesion.json")
-    if new:
-        session.discard()
-        _remove_study_data()
-    resumed = session.started
-    if not session.started:
-        try:
-            session.start(profile={"open": "abierto", "pilot": "piloto"}.get(profile, profile), code=code, order=order,
-                          language=language, beacon_version=_version(), beacon_commit=hardware.beacon_commit())
-        except StudyError as e:
-            console.print(f"[red]{e}[/red]")
-            raise typer.Exit(code=1)
-    # Study-specific configuration: it uses the Ollama and the models already installed.
     try:
-        ai = load_config().ai_provider
-    except FileNotFoundError:
-        ai = default_ai_provider()
-    ai_cfg = {"provider": ai.provider, "host": ai.host, "embedding_model": ai.embedding_model, "llm_model": ai.llm_model}
-    study_config = study_dir / "config.yaml"
-    projects = []
-    if study_config.exists() and resumed:  # resumed session: the prepared repository stays registered
-        try:
-            projects = (yaml.safe_load(study_config.read_text(encoding="utf-8")) or {}).get("projects") or []
-        except yaml.YAMLError:
-            projects = []
-    study_config.write_text(yaml.safe_dump({"ai_provider": ai_cfg, "projects": projects}, allow_unicode=True), encoding="utf-8")
-    _remove_orphan_study_clones(keep=tuple(p["id"] for p in projects))
-    env = dict(os.environ, BEACON_STUDY="1", DEUDA_TECNICA_CONFIG=str(study_config))
+        launch = launcher.prepare(profile={"open": "abierto", "pilot": "piloto"}.get(profile, profile), code=code,
+                                  order=order, language=language, beacon_version=_version(), new=new)
+    except StudyError as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=1)
     url = f"http://127.0.0.1:{port}/study"
     console.print(tr(f"[bold]Modo estudio[/bold] en {url}", f"[bold]Study mode[/bold] at {url}"))
     console.print(tr("[dim]Todo queda en este equipo hasta que subas los archivos que decidas. Ctrl+C para salir.[/dim]",
                      "[dim]Everything stays on this machine until you upload the files you choose. Ctrl+C to quit.[/dim]"))
     if not no_browser:
         threading.Timer(4.0, lambda: webbrowser.open(url)).start()
+    discarded = tr("[dim]Sesión descartada: la próxima vez el estudio parte desde cero.[/dim]",
+                   "[dim]Session discarded: next time the study starts from scratch.[/dim]")
     try:
         subprocess.run([sys.executable, "-m", "uvicorn", "core.api:app", "--host", "127.0.0.1", "--port", str(port),
-                        "--timeout-graceful-shutdown", "3"], env=env)
+                        "--timeout-graceful-shutdown", "3"], env=launch.server_env())
     except KeyboardInterrupt:
         pass
     finally:
-        if not StudySession(study_dir / "sesion.json").started:
-            _remove_study_data()
-            console.print(tr("[dim]Sesión descartada: la próxima vez el estudio parte desde cero.[/dim]",
-                             "[dim]Session discarded: next time the study starts from scratch.[/dim]"))
+        if not launcher.session_in_progress():
+            launcher.remove_study_data()
+            console.print(discarded)
             return
         # On exit, ask whether to discard the session and the cloned repository; files already generated are
         # left alone. With no answer (Ctrl+C again, closed input) the session is kept.
@@ -607,10 +557,8 @@ def cmd_study(
         except (typer.Abort, EOFError):
             discard = False
         if discard:
-            session.discard()
-            _remove_study_data()
-            console.print(tr("[dim]Sesión descartada: la próxima vez el estudio parte desde cero.[/dim]",
-                             "[dim]Session discarded: next time the study starts from scratch.[/dim]"))
+            launcher.discard(launch.session)
+            console.print(discarded)
         else:
             console.print(tr("[dim]Sesión conservada: la próxima vez continúa donde quedó (o usa --new para empezar de cero).[/dim]",
                              "[dim]Session kept: next time it continues where it left off (or use --new to start over).[/dim]"))

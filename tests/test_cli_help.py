@@ -66,7 +66,8 @@ def test_console_language_follows_the_os_locale_with_english_as_default(monkeypa
 
 def _close_study(tmp_path, monkeypatch, answer):
     import subprocess
-    monkeypatch.setattr(cli_module, "DATA_ROOT", tmp_path)
+    from core.study import launcher
+    monkeypatch.setattr(launcher, "DATA_ROOT", tmp_path)
     (tmp_path / "estudio").mkdir()
 
     def fake_run(*args, **kwargs):

@@ -38,7 +38,6 @@ def env(tmp_path, monkeypatch):
     for module in (storage, projects_module):
         monkeypatch.setattr(module, "DATA_ROOT", tmp_path / "data")
     monkeypatch.setattr(storage, "load_config", lambda: config)
-    monkeypatch.setattr(cli_module, "DATA_ROOT", tmp_path / "data")
     monkeypatch.setattr(storage, "release_chroma_client", lambda p: None)
     return tmp_path
 

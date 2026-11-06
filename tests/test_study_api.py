@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 
 from core.projects import InvalidRepoUrlError  # noqa: E402
 from core.study import api as study_api  # noqa: E402
+from core.study import launcher  # noqa: E402
 from core.study.session import StudySession  # noqa: E402
 
 
@@ -30,7 +31,7 @@ class FakeEngine:
 @pytest.fixture
 def client(tmp_path, monkeypatch):
     monkeypatch.setattr(study_api, "session_path", lambda: tmp_path / "_study" / "sesion.json")
-    monkeypatch.setattr(study_api, "STUDY_PROJECT_ID", "estudio")
+    monkeypatch.setattr(launcher, "DATA_ROOT", tmp_path)  # the study configuration is read from tmp_path/_study
     monkeypatch.setattr(study_api, "output_dir", lambda: tmp_path)
     monkeypatch.setattr(study_api.hardware, "collect_hardware", lambda path=".": {
         "cpu_modelo": "cpu", "cpu_nucleos": 4, "ram_gb": 16.0, "disco_libre_gb": 50.0, "gpus": [], "so": "Test"})
@@ -283,14 +284,13 @@ def test_submit_url_only_accepts_https_or_local_http(monkeypatch):
 
 
 def test_cleanup_removes_orphan_study_clones_but_not_other_folders(tmp_path, monkeypatch):
-    from core import cli
-    monkeypatch.setattr(cli, "DATA_ROOT", tmp_path)
-    monkeypatch.setattr(study_api, "DATA_ROOT", tmp_path)
-    monkeypatch.setattr(cli, "load_config", lambda: SimpleNamespace(projects=[SimpleNamespace(id="estudio-ffff")]))
+    from core.study import launcher
+    monkeypatch.setattr(launcher, "DATA_ROOT", tmp_path)
+    monkeypatch.setattr(launcher, "load_config", lambda: SimpleNamespace(projects=[SimpleNamespace(id="estudio-ffff")]))
     for name in ("estudio", "estudio-ab12", "estudio-cd34", "estudio-ffff", "estudio-notes", "requests"):
         (tmp_path / name).mkdir()
-    cli._remove_orphan_study_clones(keep=("estudio-cd34",))
+    launcher.remove_orphan_clones(keep=("estudio-cd34",))
     left = sorted(p.name for p in tmp_path.iterdir())
     assert left == ["estudio", "estudio-cd34", "estudio-ffff", "estudio-notes", "requests"]  # the kept one, the user's own and unrelated folders
-    cli._remove_study_data()
+    launcher.remove_study_data()
     assert sorted(p.name for p in tmp_path.iterdir()) == ["estudio-ffff", "estudio-notes", "requests"]

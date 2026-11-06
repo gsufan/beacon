@@ -22,22 +22,18 @@ from core.engine.backends import BackendUnavailableError, create_backend, model_
 from core.engine.indexer import IndexModelMismatchError
 from core.engine.llm import LLMCancelledError, LLMTimeoutError, chat
 from core.fs import remove_tree
-from core.projects import DATA_ROOT, InvalidRepoUrlError, ProjectNotFoundError
+from core.projects import DATA_ROOT, InvalidRepoUrlError
 from core.study import hardware, submit
-from core.study.session import CORRECT_VALUES, StudyError, StudySession
+from core.study.launcher import STUDY_PROJECT_ID, session_path, study_project_ids
+from core.study.session import StudyError, StudySession
 from core.study.validate import validate_result
 from core.version import VERSION
 
 logger = logging.getLogger("beacon.study")
 
-STUDY_PROJECT_ID = "estudio"
 ASK_TIMEOUT_SECONDS = 180  # an answer that takes longer is usually a model loop: it is cut with a notice
 MAX_FILES = 3000  # more than this is hours of indexing: a smaller repository is requested
 ALLOWED_HOSTS = ("github.com", "gitlab.com", "bitbucket.org", "codeberg.org")
-
-
-def study_dir() -> Path:
-    return DATA_ROOT / "_study"
 
 
 def output_dir() -> Path:
@@ -51,16 +47,6 @@ def result_file(study_id: str) -> str:
 
 def identity_file(study_id: str) -> str:
     return f"beacon-estudio-identidad-{study_id}.json"
-
-
-def study_project_ids() -> list:
-    """Ids of the study repositories registered in its own configuration (the most recent last)."""
-    import yaml
-    try:
-        raw = yaml.safe_load((study_dir() / "config.yaml").read_text(encoding="utf-8")) or {}
-    except (OSError, yaml.YAMLError):
-        return []
-    return [p["id"] for p in raw.get("projects") or [] if str(p.get("id", "")).startswith(STUDY_PROJECT_ID)]
 
 
 def current_project_id() -> str:
@@ -78,10 +64,6 @@ def remove_study_repos(keep: Optional[str] = None):
         except Exception:  # noqa: BLE001
             pass
         remove_tree(DATA_ROOT / project_id, ignore_errors=True)
-
-
-def session_path() -> Path:
-    return study_dir() / "sesion.json"
 
 
 class StartBody(BaseModel):

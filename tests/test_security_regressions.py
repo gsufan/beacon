@@ -84,8 +84,8 @@ def test_cli_import_rejects_malicious_manifest_id(monkeypatch, tmp_path):
     with zipfile.ZipFile(evil_zip, "w") as zf:
         zf.writestr("manifest.json", json.dumps({"id": "../escaped", "name": "x", "repo_path": "/tmp/x"}))
         zf.writestr("data/chroma_db/file.bin", "x")
-    data_root = tmp_path / "data"
-    monkeypatch.setattr(cli_module, "DATA_ROOT", data_root)
+    from core import portability
+    monkeypatch.setattr(portability, "DATA_ROOT", tmp_path / "data")
 
     result = runner.invoke(cli_module.app, ["import", str(evil_zip)])
     assert result.exit_code == 1
