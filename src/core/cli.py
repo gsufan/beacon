@@ -33,7 +33,7 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from core.cli_lang import tr
-from core.engine.backends import BackendAuthError, BackendError, BackendUnavailableError, ExternalServerError, ModelNotFoundError, create_backend
+from core.engine.backends import BackendAuthError, BackendError, BackendUnavailableError, ExternalServerError, ModelNotFoundError, create_backend, model_available
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -441,24 +441,24 @@ def cmd_doctor():
     ai = cfg.ai_provider
     name = ai.provider.capitalize()
     console.print(tr(f"[bold]Chequeando {name}...[/bold]", f"[bold]Checking {name}...[/bold]"))
+    backend = None
     try:
         backend = create_backend(ai.provider, ai.host)
-        installed = set(backend.list_models())
+        installed = backend.list_models()
         console.print(tr(f"  [green]✓[/green] Conectado en {ai.host}", f"  [green]✓[/green] Connected at {ai.host}"))
 
         for label, model in [("embedding_model", ai.embedding_model), ("llm_model", ai.llm_model)]:
-            match = any(model in m for m in installed)
-            hint = backend.install_hint(model)
-            if match:
+            if model_available(model, installed):
                 console.print(tr(f"  [green]✓[/green] {label} ({model}) está disponible", f"  [green]✓[/green] {label} ({model}) is available"))
             else:
+                hint = backend.install_hint(model)
                 console.print(tr(f"  [red]✗[/red] {label} ({model}) NO está disponible — corre: {hint}",
                                  f"  [red]✗[/red] {label} ({model}) is NOT available — run: {hint}"))
                 ok_all = False
     except Exception as e:
         console.print(tr(f"  [red]✗[/red] No se pudo conectar a {name} en {ai.host}: {e}",
                          f"  [red]✗[/red] Could not connect to {name} at {ai.host}: {e}"))
-        start = backend.start_hint() if "backend" in locals() else ""
+        start = backend.start_hint() if backend else ""
         if start:
             console.print(tr(f"  [dim]¿Corriste '{start}'?[/dim]", f"  [dim]Did you run '{start}'?[/dim]"))
         ok_all = False

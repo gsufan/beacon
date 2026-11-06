@@ -18,7 +18,7 @@ from pydantic import BaseModel, Field
 
 from core import services
 from core.config import default_ai_provider, load_config
-from core.engine.backends import BackendUnavailableError, create_backend
+from core.engine.backends import BackendUnavailableError, create_backend, model_available
 from core.engine.indexer import IndexModelMismatchError
 from core.engine.llm import LLMCancelledError, LLMTimeoutError, chat
 from core.fs import remove_tree
@@ -142,7 +142,7 @@ def run_health_checks() -> list:
         pass
     items.append({"id": "ollama", "estado": "ok" if ollama_ok else "error", "valor": host})
     for item_id, model in (("model_embedding", embedding), ("model_llm", llm)):
-        present = any(model == m or f"{model}:latest" == m for m in installed)
+        present = model_available(model, installed)
         items.append({"id": item_id, "estado": "ok" if present else ("error" if ollama_ok else "skip"), "valor": model})
 
     snapshot = hardware.collect_hardware(str(DATA_ROOT))

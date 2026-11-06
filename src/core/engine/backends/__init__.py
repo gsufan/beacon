@@ -44,6 +44,11 @@ _REGISTRY: Dict[str, tuple] = {
 DEFAULT_HOSTS = {pid: default for pid, (_, default, _f) in _REGISTRY.items()}
 
 
+def model_available(name: str, installed: List[str]) -> bool:
+    """Exact match: servers such as Ollama list untagged models as "<name>:latest"."""
+    return name in installed or f"{name}:latest" in installed
+
+
 def available_providers() -> List[dict]:
     return [{"id": pid, "name": name, "default_host": host} for pid, (name, host, _) in _REGISTRY.items()]
 
@@ -66,5 +71,5 @@ __all__ = [
     "BackendAuthError", "BackendRateLimitError", "ExternalServerError", "OpenAICompatibleBackend", "is_local_host",
     "Backend", "BackendError", "BackendHealth", "BackendUnavailableError", "InputRejectedError", "LLMCancelledError",
     "LLMStoppedError", "LLMTimeoutError", "ModelNotFoundError", "OllamaBackend", "RawChat", "DEFAULT_HOSTS",
-    "available_providers", "create_backend",
+    "available_providers", "create_backend", "model_available",
 ]

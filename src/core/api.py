@@ -30,7 +30,7 @@ from core.projects import (
     ProjectNotFoundError,
 )
 from core.project_lock import ProjectBusyError
-from core.engine.backends import BackendAuthError, BackendUnavailableError, ExternalServerError, available_providers, create_backend
+from core.engine.backends import BackendAuthError, BackendUnavailableError, ExternalServerError, available_providers, create_backend, model_available
 from core.engine.chroma_utils import read_index_version
 from core.engine.indexer import IndexModelMismatchError
 from core.engine.rag_engine import RAGEngine
@@ -281,11 +281,6 @@ def system_available_models(host: Optional[str] = None, provider: Optional[str] 
     return {"models": models}
 
 
-def _model_installed(name: str, installed: list) -> bool:
-    # Servers such as Ollama list untagged models as "<name>:latest".
-    return name in installed or f"{name}:latest" in installed
-
-
 @app.get("/system/ai-status")
 def system_ai_status():
     ai = load_config().ai_provider
@@ -295,8 +290,8 @@ def system_ai_status():
         return {"reachable": False, "llm_model_available": False, "embedding_model_available": False}
     return {
         "reachable": True,
-        "llm_model_available": _model_installed(ai.llm_model, installed),
-        "embedding_model_available": _model_installed(ai.embedding_model, installed),
+        "llm_model_available": model_available(ai.llm_model, installed),
+        "embedding_model_available": model_available(ai.embedding_model, installed),
     }
 
 

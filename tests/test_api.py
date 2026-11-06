@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 import core.api as api  # noqa: E402
 from core.projects import ProjectNotFoundError  # noqa: E402
 from core.config import AIProviderConfig, AppConfig, ProjectEntry  # noqa: E402
+from core.engine.backends import model_available  # noqa: E402
 
 client = TestClient(api.app)
 
@@ -311,9 +312,10 @@ def test_ai_status_reports_missing_model(monkeypatch):
     assert body == {"reachable": True, "llm_model_available": True, "embedding_model_available": False}
 
 
-def test_ai_status_accepts_latest_tag():
-    assert api._model_installed("llama3", ["llama3:latest"])
-    assert not api._model_installed("llama3", ["llama3:8b"])
+def test_model_available_is_exact_or_latest():
+    assert model_available("llama3", ["llama3:latest"])
+    assert not model_available("llama3", ["llama3:8b"])
+    assert not model_available("llama3:8b", ["llama3:8b-instruct-q8_0"])
 
 
 class _FakeEngine:
