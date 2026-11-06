@@ -2,9 +2,8 @@
 
 import logging
 import os
-from contextlib import asynccontextmanager
 import threading
-import time
+from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -14,8 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-logger = logging.getLogger("beacon.api")
-
+from core import services, storage
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -23,30 +21,34 @@ from core.config import (
     set_auto_watch,
     update_ai_provider,
 )
-from core.projects import (
-    InvalidRepoUrlError,
-    get_project,
-    list_projects,
-    ProjectNotFoundError,
+from core.engine.backends import (
+    BackendAuthError, BackendUnavailableError, ExternalServerError, available_providers, create_backend, model_available,
 )
-from core.project_lock import ProjectBusyError
-from core.engine.backends import BackendAuthError, BackendUnavailableError, ExternalServerError, available_providers, create_backend, model_available
 from core.engine.chroma_utils import read_index_version
 from core.engine.indexer import IndexModelMismatchError
 from core.engine.rag_engine import RAGEngine
-from core import services
+from core.project_lock import ProjectBusyError
+from core.projects import InvalidRepoUrlError, ProjectNotFoundError, get_project, list_projects
+from core.version import VERSION
+
+logger = logging.getLogger("beacon.api")
+
+AUTO_WATCH_INTERVAL_SECONDS = 300
 
 _shutdown_hooks: list = []
 
 
 @asynccontextmanager
 async def _lifespan(_app):
+    stop = threading.Event()
+    threading.Thread(target=_auto_watch_loop, args=(stop,), daemon=True, name="beacon-auto-watch").start()
     yield
-    for hook in _shutdown_hooks:  # on shutdown: stop whatever is in progress (e.g. a model answer)
+    stop.set()
+    for hook in _shutdown_hooks:  # stop whatever is in progress (e.g. a model answer)
         hook()
 
 
-app = FastAPI(title="Beacon API", version="0.3.0", docs_url="/api/docs", redoc_url="/api/redoc", lifespan=_lifespan)
+app = FastAPI(title="Beacon API", version=VERSION, docs_url="/api/docs", redoc_url="/api/redoc", lifespan=_lifespan)
 # The compiled interface is served from the same origin as the API; the only legitimate cross-origin
 # is the Vite dev server. "*" is not used (see docs/en/security.md).
 app.add_middleware(
@@ -70,45 +72,83 @@ async def api_key_middleware(request: Request, call_next):
     return await call_next(request)
 
 
+# Domain errors and the HTTP status each one maps to. The endpoints let them propagate.
+_ERROR_STATUS = {
+    ProjectNotFoundError: 404,
+    InvalidProjectIdError: 400,
+    InvalidRepoUrlError: 400,
+    services.InvalidRequestError: 400,
+    services.CloneError: 400,
+    ProjectAlreadyExistsError: 409,
+    ProjectBusyError: 409,
+    IndexModelMismatchError: 409,
+    ExternalServerError: 409,
+    BackendAuthError: 502,
+}
+_DOMAIN_ERRORS = tuple(_ERROR_STATUS)
+
+
+def _domain_error_handler(status_code: int):
+    def handler(_request: Request, exc: Exception):
+        return JSONResponse({"detail": str(exc)}, status_code=status_code)
+    return handler
+
+
+for _error, _status in _ERROR_STATUS.items():
+    app.add_exception_handler(_error, _domain_error_handler(_status))
+
+
+def _model_server_down(provider: str, host: str) -> HTTPException:
+    # 503 lets the UI tell "the model server is down" apart from other engine errors.
+    return HTTPException(status_code=503, detail=f"No se pudo conectar al servidor de modelos ({provider}) en '{host}'. "
+                                                 "Verifica que esté ejecutándose.")
+
+
 @app.get("/healthz", include_in_schema=False)
 def healthz():
     """No authentication and no external dependencies, for Docker and orchestrator healthchecks."""
     return {"status": "ok"}
 
 
-_sync_status: dict = {}
-_sync_lock = threading.Lock()
-
-AUTO_WATCH_INTERVAL_SECONDS = 300
-
-
-_engines: dict = {}  # project_id -> (index version, RAGEngine)
-_engines_lock = threading.Lock()
-
-
-def _get_engine(project_id: str) -> RAGEngine:
+class EngineCache:
     """One RAGEngine per project, reused across requests while the index does not change. If it changed (a
     sync in this process or in another, e.g. `beacon sync` in a console), a new one is created that sees
     the updated index (see chroma_utils).
     """
-    project = get_project(project_id)
-    version = read_index_version(Path(project.chroma_dir).parent)
-    with _engines_lock:
-        cached = _engines.get(project_id)
-        if cached and cached[0] == version:
-            return cached[1]
-    engine = RAGEngine(project, load_config().ai_provider)
-    with _engines_lock:
-        _engines[project_id] = (version, engine)
-    return engine
+
+    def __init__(self):
+        self._engines: dict = {}  # project_id -> (index version, RAGEngine)
+        self._lock = threading.Lock()
+
+    def get(self, project_id: str) -> RAGEngine:
+        project = get_project(project_id)
+        version = read_index_version(Path(project.chroma_dir).parent)
+        with self._lock:
+            cached = self._engines.get(project_id)
+            if cached and cached[0] == version:
+                return cached[1]
+        engine = RAGEngine(project, load_config().ai_provider)
+        with self._lock:
+            self._engines[project_id] = (version, engine)
+        return engine
+
+    def clear(self):
+        """For a modified configuration or project, and before deleting data: cached engines keep the index open."""
+        with self._lock:
+            self._engines.clear()
 
 
-_get_engine.cache_clear = _engines.clear  # for modified config/project
+_engines = EngineCache()
+
+
+def _get_engine(project_id: str) -> RAGEngine:
+    return _engines.get(project_id)
+
 
 if os.environ.get("BEACON_STUDY") == "1":
     from core.study.api import build_router
 
-    _study_router = build_router(_get_engine, _get_engine.cache_clear)
+    _study_router = build_router(lambda project_id: _get_engine(project_id), _engines.clear)
     _shutdown_hooks.append(_study_router.shutdown)
     app.include_router(_study_router)
 
@@ -170,56 +210,28 @@ def get_projects():
 
 @app.get("/projects/{project_id}/health")
 def project_health(project_id: str):
-    try:
-        engine = _get_engine(project_id)
-    except ProjectNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-    return {"status": "ok", "total_chunks_indexados": engine.collection.count()}
+    return {"status": "ok", "total_chunks_indexados": _get_engine(project_id).collection.count()}
 
 
 @app.post("/projects/{project_id}/query", response_model=QueryResponse)
 def query(project_id: str, req: QueryRequest):
-    try:
-        engine = _get_engine(project_id)
-    except ProjectNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    engine = _get_engine(project_id)
     if engine.collection.count() == 0:
         raise HTTPException(status_code=409, detail=f"El índice de '{project_id}' está vacío. Corre 'beacon sync {project_id}' primero.")
     try:
         result = engine.ask(req.question, top_k=req.top_k, language=req.language)
-    except IndexModelMismatchError as e:
-        raise HTTPException(status_code=409, detail=str(e))
+    except _DOMAIN_ERRORS:
+        raise
     except (BackendUnavailableError, ConnectionError, httpx.TransportError):
-        # 503 lets the UI tell "the model server is down" apart from other engine errors.
-        ai = engine.ai_config
-        raise HTTPException(status_code=503, detail=f"No se pudo conectar al servidor de modelos ({ai.provider}) en '{ai.host}'. Verifica que esté ejecutándose.")
-    except ExternalServerError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except BackendAuthError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise _model_server_down(engine.ai_config.provider, engine.ai_config.host)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el motor RAG: {e}")
     return result.to_dict()
 
 
-def _require_engine(project_id: str) -> RAGEngine:
-    try:
-        return _get_engine(project_id)
-    except ProjectNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
-def _require_project(project_id: str):
-    try:
-        return get_project(project_id)
-    except ProjectNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-
 @app.get("/projects/{project_id}/docs/tree")
 def docs_tree(project_id: str):
-    project = _require_project(project_id)
-    docs_dir = Path(project.docs_dir)
+    docs_dir = Path(get_project(project_id).docs_dir)
     if not docs_dir.exists():
         return {"files": []}
     files = sorted(
@@ -231,8 +243,7 @@ def docs_tree(project_id: str):
 
 @app.get("/projects/{project_id}/docs")
 def docs(project_id: str, file_path: str):
-    project = _require_project(project_id)
-    docs_dir = Path(project.docs_dir).resolve()
+    docs_dir = Path(get_project(project_id).docs_dir).resolve()
     doc_path = (docs_dir / f"{file_path}.md").resolve()
     if not doc_path.is_relative_to(docs_dir):
         raise HTTPException(status_code=403, detail="Ruta fuera del directorio de documentación del proyecto.")
@@ -259,7 +270,7 @@ def put_ai_provider(body: AIProviderUpdate):
         embedding_model=body.embedding_model, llm_model=body.llm_model,
         llm_num_ctx=body.llm_num_ctx,
     )
-    _get_engine.cache_clear()
+    _engines.clear()
     return updated.__dict__
 
 
@@ -328,17 +339,12 @@ def create_project(body: ProjectCreate):
         raise HTTPException(status_code=400, detail="'repo_path' es requerido para source_type='local'.")
     if body.source_type == "git" and not body.repo_url:
         raise HTTPException(status_code=400, detail="'repo_url' es requerido para source_type='git'.")
-    try:
-        entry = services.register_project(
-            body.id, name=body.name, auto_watch=body.auto_watch,
-            repo_path=body.repo_path if body.source_type == "local" else None,
-            repo_url=body.repo_url if body.source_type == "git" else None,
-            auth_token=body.auth_token if body.source_type == "git" else None,
-        )
-    except ProjectAlreadyExistsError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except (InvalidProjectIdError, InvalidRepoUrlError, services.InvalidRequestError, services.CloneError) as e:
-        raise HTTPException(status_code=400, detail=str(e))
+    entry = services.register_project(
+        body.id, name=body.name, auto_watch=body.auto_watch,
+        repo_path=body.repo_path if body.source_type == "local" else None,
+        repo_url=body.repo_url if body.source_type == "git" else None,
+        auth_token=body.auth_token if body.source_type == "git" else None,
+    )
     return entry.__dict__
 
 
@@ -351,24 +357,16 @@ def put_auto_watch(project_id: str, body: AutoWatchUpdate):
 
 @app.delete("/projects/{project_id}")
 def delete_project(project_id: str, purge_data: bool = False):
-    # Cached instances have the index open.
-    _get_engine.cache_clear()
+    _engines.clear()
     try:
         services.unregister_project(project_id, purge_data=purge_data)
-    except ProjectBusyError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except ProjectNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Proyecto '{project_id}' no encontrado.")
-    except services.InvalidRequestError as e:
-        raise HTTPException(status_code=400, detail=str(e))
     finally:
-        _get_engine.cache_clear()
+        _engines.clear()
     return {"status": "eliminado", "purge_data": purge_data}
 
 
 @app.get("/system/storage")
 def system_storage():
-    from core import storage
     projects = [dict(id=u.id, name=u.name, source_type=u.source_type, clone_bytes=u.clone_bytes, index_bytes=u.index_bytes,
                      docs_bytes=u.docs_bytes, total_bytes=u.total_bytes, managed_clone=bool(u.clone_path))
                 for u in storage.list_usage()]
@@ -377,21 +375,22 @@ def system_storage():
 
 @app.post("/projects/{project_id}/clean")
 def clean_project_storage(project_id: str, body: CleanRequest):
-    from core import storage
     if not (body.clone or body.index or body.docs):
         raise HTTPException(status_code=400, detail="Indica qué borrar: clone, index y/o docs.")
-    _get_engine.cache_clear()
+    _engines.clear()
     try:
         freed = storage.clean_project(project_id, clone=body.clone, index=body.index, docs=body.docs)
-    except ProjectBusyError as e:
-        raise HTTPException(status_code=409, detail=str(e))
-    except ProjectNotFoundError:
-        raise HTTPException(status_code=404, detail=f"Proyecto '{project_id}' no encontrado.")
+    except _DOMAIN_ERRORS:
+        raise
     except OSError as e:
         raise HTTPException(status_code=409, detail=f"No se pudo borrar (¿está en uso por otro proceso?): {e}")
     finally:
-        _get_engine.cache_clear()
+        _engines.clear()
     return {"freed_bytes": freed}
+
+
+_sync_status: dict = {}
+_sync_lock = threading.Lock()
 
 
 def _run_sync(project_id: str):
@@ -402,7 +401,7 @@ def _run_sync(project_id: str):
         _sync_status[project_id] = {"status": "running", "detail": None}
     try:
         result = services.sync_project(project_id, docs=True)
-        _get_engine.cache_clear()
+        _engines.clear()
         with _sync_lock:
             _sync_status[project_id] = {
                 "status": "done", "detail": {"index": result.index, "docs": result.docs, "pulled": result.pulled},
@@ -416,15 +415,6 @@ def _run_sync(project_id: str):
             _sync_status[project_id] = {"status": "error", "detail": str(e)}
 
 
-@app.post("/projects/{project_id}/sync", status_code=202)
-def trigger_sync(project_id: str, background_tasks: BackgroundTasks):
-    _require_project(project_id)
-    if not _claim_sync(project_id):
-        raise HTTPException(status_code=409, detail="Ya hay un sync en curso para este proyecto.")
-    background_tasks.add_task(_run_sync, project_id)
-    return {"status": "started"}
-
-
 def _claim_sync(project_id: str) -> bool:
     """Marks the project as 'running' if it was not, in a single operation under the lock, so two
     consecutive requests cannot start two parallel syncs on the same collection.
@@ -436,6 +426,15 @@ def _claim_sync(project_id: str) -> bool:
         return True
 
 
+@app.post("/projects/{project_id}/sync", status_code=202)
+def trigger_sync(project_id: str, background_tasks: BackgroundTasks):
+    get_project(project_id)
+    if not _claim_sync(project_id):
+        raise HTTPException(status_code=409, detail="Ya hay un sync en curso para este proyecto.")
+    background_tasks.add_task(_run_sync, project_id)
+    return {"status": "started"}
+
+
 @app.get("/projects/{project_id}/sync-status")
 def sync_status(project_id: str):
     with _sync_lock:
@@ -444,7 +443,7 @@ def sync_status(project_id: str):
 
 def _auto_watch_tick():
     """One watcher cycle: syncs the projects with auto_watch=True. Sync is idempotent (it does nothing
-    without new commits). Separate from _auto_watch_loop so it can be tested without the infinite sleep.
+    without new commits). Separate from _auto_watch_loop so it can be tested without waiting.
     """
     try:
         cfg = load_config()
@@ -470,14 +469,10 @@ def _auto_watch_tick():
                 _sync_status.pop(entry.id, None)
 
 
-def _auto_watch_loop():
-    while True:
-        time.sleep(AUTO_WATCH_INTERVAL_SECONDS)
+def _auto_watch_loop(stop: threading.Event):
+    """Runs while the server is up (started and stopped by the app lifespan)."""
+    while not stop.wait(AUTO_WATCH_INTERVAL_SECONDS):
         _auto_watch_tick()
-
-
-_auto_watch_thread = threading.Thread(target=_auto_watch_loop, daemon=True)
-_auto_watch_thread.start()
 
 
 _FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
@@ -516,6 +511,6 @@ else:
             "<p>La interfaz web todavía no está compilada. Desde la raíz del proyecto:</p>"
             "<pre>cd frontend\nnpm install\nnpm run build</pre>"
             "<p>Luego reinicia <code>beacon serve</code>. Mientras tanto puedes usar la CLI "
-            "o explorar la API en <a href=\"/docs\">/docs</a>.</p>",
+            "o explorar la API en <a href=\"/api/docs\">/api/docs</a>.</p>",
             status_code=503,
         )

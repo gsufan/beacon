@@ -26,6 +26,7 @@ from core.projects import DATA_ROOT, InvalidRepoUrlError, ProjectNotFoundError
 from core.study import hardware, submit
 from core.study.session import CORRECT_VALUES, StudyError, StudySession
 from core.study.validate import validate_result
+from core.version import VERSION
 
 logger = logging.getLogger("beacon.study")
 
@@ -221,7 +222,7 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
     def start(body: StartBody):
         s = session()
         try:
-            s.start(profile=body.perfil, code=body.codigo, order=body.orden, language=body.idioma, beacon_version="0.3.0",
+            s.start(profile=body.perfil, code=body.codigo, order=body.orden, language=body.idioma, beacon_version=VERSION,
                     beacon_commit=hardware.beacon_commit())
         except StudyError as e:
             fail(e)

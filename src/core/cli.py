@@ -33,6 +33,7 @@ from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
 from core.cli_lang import tr
+from core.version import INSTALLED, VERSION
 from core.engine.backends import BackendAuthError, BackendError, BackendUnavailableError, ExternalServerError, ModelNotFoundError, create_backend, model_available
 from core.config import (
     InvalidProjectIdError,
@@ -73,11 +74,7 @@ console = Console()
 
 
 def _version() -> str:
-    from importlib.metadata import PackageNotFoundError, version
-    try:
-        return version("beacon")
-    except PackageNotFoundError:
-        return tr("desarrollo", "development")
+    return VERSION if INSTALLED else tr("desarrollo", "development")
 
 
 def _version_callback(show: bool):

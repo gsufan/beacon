@@ -100,7 +100,7 @@ def test_put_ai_provider_wiring(monkeypatch):
         return type("Cfg", (), kwargs)()
 
     monkeypatch.setattr(api, "update_ai_provider", fake_update_ai_provider)
-    api._get_engine.cache_clear()
+    api._engines.clear()
 
     resp = client.put("/config/ai-provider", json={
         "provider": "ollama", "host": "http://localhost:11434",
@@ -115,7 +115,7 @@ def test_put_ai_provider_accepts_context_window(monkeypatch):
     calls = {}
     monkeypatch.setattr(api, "update_ai_provider",
                         lambda **kw: calls.update(kw) or type("Cfg", (), kw)())
-    api._get_engine.cache_clear()
+    api._engines.clear()
     body = {"provider": "ollama", "host": "http://h:11434", "embedding_model": "e", "llm_model": "m"}
 
     assert client.put("/config/ai-provider", json={**body, "llm_num_ctx": 32768}).status_code == 200
@@ -210,7 +210,7 @@ def test_docs_path_traversal_blocked_existing_project(monkeypatch):
     class FakeProject:
         docs_dir = "C:/some/project/docs"
 
-    monkeypatch.setattr(api_module, "_require_project", lambda project_id: FakeProject())
+    monkeypatch.setattr(api_module, "get_project", lambda project_id: FakeProject())
     resp = client.get("/projects/any-id/docs", params={"file_path": "../../../../windows/win.ini"})
     assert resp.status_code == 403
 
@@ -352,3 +352,41 @@ def test_query_includes_source_code(monkeypatch):
     resp = client.post("/projects/demo/query", json={"question": "que hace este repo?"})
     assert resp.status_code == 200
     assert resp.json()["sources"][0]["code"] == "def f():\n    return 1"
+
+
+def test_watcher_runs_only_while_the_server_is_up():
+    import threading
+
+    def watchers():
+        return [t for t in threading.enumerate() if t.name == "beacon-auto-watch" and t.is_alive()]
+
+    assert not watchers()  # importing the module does not start it
+    with TestClient(api.app):
+        assert len(watchers()) == 1
+    for t in watchers():
+        t.join(timeout=2)
+    assert not watchers()
+
+
+@pytest.mark.parametrize("error, status", [
+    (api.IndexModelMismatchError("otro modelo"), 409),
+    (api.ProjectBusyError("ocupado"), 409),
+    (api.BackendAuthError("sin acceso"), 502),
+])
+def test_query_domain_errors_keep_their_status(monkeypatch, error, status):
+    def ask(question, top_k, language):
+        raise error
+
+    monkeypatch.setattr(api, "_get_engine", lambda project_id: _FakeEngine(ask))
+    resp = client.post("/projects/demo/query", json={"question": "que hace este repo?"})
+    assert resp.status_code == status
+    assert resp.json()["detail"] == str(error)
+
+
+def test_delete_busy_project_returns_409(monkeypatch):
+    def busy(project_id, purge_data):
+        raise api.ProjectBusyError("en uso")
+
+    monkeypatch.setattr(api.services, "unregister_project", busy)
+    resp = client.delete("/projects/demo", params={"purge_data": True})
+    assert resp.status_code == 409 and resp.json()["detail"] == "en uso"
