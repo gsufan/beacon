@@ -25,7 +25,7 @@ from core.config import (
 )
 from core.engine.chroma_utils import bump_index_version, release_chroma_client
 from core.engine.doc_generator import DocGenerator
-from core.engine.git_watcher import _is_generated_or_vendor
+from core.engine.git_watcher import is_generated_or_vendor
 from core.fs import remove_tree
 from core.engine.indexer import CodebaseIndexer
 from core.project_lock import ProjectBusyError, ensure_not_busy, project_lock
@@ -176,7 +176,7 @@ def _purge_generated(indexer: CodebaseIndexer) -> int:
     """Removes generated/vendor chunks left by indexes created before that filter (current indexing no longer adds them)."""
     data = indexer.collection.get(include=["metadatas"])
     to_delete = [cid for cid, m in zip(data["ids"], data["metadatas"])
-                 if _is_generated_or_vendor(m.get("file_path", ""))]
+                 if is_generated_or_vendor(m.get("file_path", ""))]
     if to_delete:
         indexer.collection.delete(ids=to_delete)
         bump_index_version(Path(indexer.project.chroma_dir).parent)

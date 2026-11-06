@@ -70,7 +70,7 @@ def _chunk(name, size, expanded=False):
 def test_chat_always_sends_explicit_num_ctx():
     fake = _RecordingOllama()
     llm.chat(OllamaBackend(fake), "llama3:8b", "sistema", "usuario")
-    assert fake.chats[0]["options"]["num_ctx"] == llm.LLM_NUM_CTX
+    assert fake.chats[0]["options"]["num_ctx"] == llm.DEFAULT_LLM_NUM_CTX
 
 
 def test_chat_uses_low_temperature_and_fixed_seed():
@@ -126,7 +126,7 @@ def test_index_uses_committed_content_not_uncommitted_working_tree(tmp_path):
     docs = " ".join(idx.collection.get(include=["documents"])["documents"])
     assert "version_commiteada" in docs
     assert "cambio_sin_commitear" not in docs
-    assert idx._get_last_indexed_commit() == head
+    assert idx.control.last_indexed_commit() == head
 
 
 def test_commit_arriving_during_sync_is_not_marked_as_indexed(tmp_path):
@@ -145,13 +145,13 @@ def test_commit_arriving_during_sync_is_not_marked_as_indexed(tmp_path):
 
     idx._index_file = index_and_commit_meanwhile
     idx.sync()
-    assert idx._get_last_indexed_commit() == first  # not the one that arrived during the sync
+    assert idx.control.last_indexed_commit() == first  # not the one that arrived during the sync
 
     idx._index_file = original
     idx.sync()  # the next sync does process b.py
     files = {m["file_path"] for m in idx.collection.get(include=["metadatas"])["metadatas"]}
     assert "b.py" in files
-    assert idx._get_last_indexed_commit() == late["sha"]
+    assert idx.control.last_indexed_commit() == late["sha"]
 
 
 

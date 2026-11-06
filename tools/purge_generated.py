@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from core.engine.chroma_utils import bump_index_version, get_chroma_client
 from core.projects import get_project
 from core.engine.indexer import COLLECTION_NAME
-from core.engine.git_watcher import _is_generated_or_vendor
+from core.engine.git_watcher import is_generated_or_vendor
 
 
 def purge(project_id: str, dry_run: bool = True):
@@ -20,7 +20,7 @@ def purge(project_id: str, dry_run: bool = True):
 
     data = collection.get(include=["metadatas"])
     to_delete = [cid for cid, m in zip(data["ids"], data["metadatas"])
-                 if _is_generated_or_vendor(m.get("file_path", ""))]
+                 if is_generated_or_vendor(m.get("file_path", ""))]
 
     print(f"Chunks generados/vendor encontrados: {len(to_delete)}")
     if not to_delete:

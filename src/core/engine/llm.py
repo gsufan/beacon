@@ -17,10 +17,6 @@ from core.engine.backends import Backend, LLMCancelledError, LLMStoppedError, LL
 
 logger = logging.getLogger("beacon.llm")
 
-# Default window: the maximum of llama3:8b. Change it with `llm_num_ctx` in config.yaml; the video
-# memory needed grows with its size.
-LLM_NUM_CTX = DEFAULT_LLM_NUM_CTX
-
 # Answers about code must be precise and repeatable: low temperature and a fixed seed.
 LLM_TEMPERATURE = 0.2
 LLM_SEED = 42
@@ -37,7 +33,7 @@ def estimate_tokens(text: str) -> int:
     return math.ceil(len(text) / CHARS_PER_TOKEN)
 
 
-def prompt_budget_tokens(reserve_for_answer: int, num_ctx: int = LLM_NUM_CTX) -> int:
+def prompt_budget_tokens(reserve_for_answer: int, num_ctx: int = DEFAULT_LLM_NUM_CTX) -> int:
     return num_ctx - reserve_for_answer
 
 
@@ -49,7 +45,7 @@ class ChatResult:
     truncated: bool = False  # the answer hit the length cap and was cut
 
 
-def chat(backend: Backend, model: str, system: str, user: str, num_ctx: int = LLM_NUM_CTX,
+def chat(backend: Backend, model: str, system: str, user: str, num_ctx: int = DEFAULT_LLM_NUM_CTX,
          max_tokens: int = LLM_MAX_ANSWER_TOKENS, max_seconds: Optional[float] = None,
          should_stop: Optional[Callable[[], bool]] = None) -> ChatResult:
     """One chat call with an explicit `num_ctx`. Warns if the prompt did not fit (the model processed fewer

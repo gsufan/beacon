@@ -412,8 +412,8 @@ def cmd_status(project_id: str):
     never = tr("nunca", "never")
     yes, no = tr("sí", "yes"), tr("no", "no")
     current_commit = index_stats["commit_actual"][:8]
-    last_indexed = (index_stats["ultimo_commit_indexado"] or never)[:8] if index_stats["ultimo_commit_indexado"] else never
-    last_documented = (doc_stats["ultimo_commit_documentado"] or never)[:8] if doc_stats["ultimo_commit_documentado"] else never
+    last_indexed = (index_stats["ultimo_commit_indexado"] or never)[:8]
+    last_documented = (doc_stats["ultimo_commit_documentado"] or never)[:8]
 
     table = Table(title=tr(f"Estado — {project.name}", f"Status — {project.name}"))
     table.add_column("")

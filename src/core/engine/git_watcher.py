@@ -28,7 +28,7 @@ EXCLUDED_PATH_MARKERS = [
 ]
 
 
-def _is_generated_or_vendor(path: str) -> bool:
+def is_generated_or_vendor(path: str) -> bool:
     normalized = path.replace("\\", "/")
     return any(marker in normalized for marker in EXCLUDED_PATH_MARKERS)
 
@@ -60,7 +60,7 @@ class ChangeSet:
 
 
 def _is_indexable(path: str) -> bool:
-    return Path(path).suffix.lower() in INDEXABLE_EXTENSIONS and not _is_generated_or_vendor(path)
+    return Path(path).suffix.lower() in INDEXABLE_EXTENSIONS and not is_generated_or_vendor(path)
 
 
 def _classify(changes: "ChangeSet", diff_item) -> None:

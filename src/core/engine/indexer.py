@@ -11,12 +11,10 @@ from core.projects import ProjectContext
 from core.engine.chunker import chunk_file, chunk_source, CodeChunk
 from core.engine.embeddings import embed_documents
 from core.engine.git_watcher import GitWatcher, ChangeSet
+from core.engine.index_store import (  # noqa: F401 (COLLECTION_NAME re-exported for the tools)
+    COLLECTION_NAME, STAGING_COLLECTION_NAME, IndexControl, create_code_collection, open_code_collection,
+)
 
-COLLECTION_NAME = "codebase_index"
-STAGING_COLLECTION_NAME = "codebase_index__rebuild"
-CONTROL_COLLECTION_NAME = "sys_index_control"
-CONTROL_KEY_ID = "last_indexed_commit"
-LEGACY_EMBEDDING_MODEL = "nomic-embed-text"
 # Version of what is stored in the index (what is embedded and how files are split). If it changes,
 # the next sync rebuilds the whole index so fragments of both versions are not mixed.
 #   1: code only.
@@ -26,6 +24,7 @@ INDEX_FORMAT = 2
 
 class IndexModelMismatchError(RuntimeError):
     """The index was built with another embedding model: its vectors are not comparable with query vectors and it must be reindexed."""
+
 
 def embedding_text(meta: dict, code: str) -> str:
     """Text embedded for a chunk: the code preceded by its path and name. The code alone does not say which
@@ -45,29 +44,11 @@ class CodebaseIndexer:
         self.watcher = GitWatcher(project.repo_path)
         self.backend = ai_config.backend()
         self.client = get_chroma_client(project.chroma_dir)
-        self.collection = self.client.get_or_create_collection(
-            name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"}
-        )
-        self.control = self.client.get_or_create_collection(name=CONTROL_COLLECTION_NAME)
-
-
-    def _get_last_indexed_commit(self):
-        result = self.control.get(ids=[CONTROL_KEY_ID])
-        return result["metadatas"][0]["commit_hash"] if result["ids"] else None
+        self.collection = open_code_collection(self.client)
+        self.control = IndexControl(self.client)
 
     def indexed_embedding_model(self) -> Optional[str]:
-        return indexed_embedding_model(self.control, self.collection)
-
-    def _indexed_format(self) -> int:
-        result = self.control.get(ids=[CONTROL_KEY_ID])
-        return result["metadatas"][0].get("index_format", 1) if result["ids"] else 1
-
-    def _save_last_indexed_commit(self, commit_hash: str):
-        self.control.upsert(
-            ids=[CONTROL_KEY_ID], documents=[commit_hash], embeddings=[[0.0]],
-            metadatas=[{"commit_hash": commit_hash, "embedding_model": self.ai_config.embedding_model,
-                        "index_format": INDEX_FORMAT}],
-        )
+        return self.control.embedding_model(self.collection)
 
     def _start_rebuild(self):
         """Starts a full rebuild in a separate collection; the current one keeps answering queries until
@@ -78,8 +59,7 @@ class CodebaseIndexer:
         except Exception:
             pass
         live = self.collection
-        self.collection = self.client.create_collection(name=STAGING_COLLECTION_NAME,
-                                                        metadata={"hnsw:space": "cosine"})
+        self.collection = create_code_collection(self.client, STAGING_COLLECTION_NAME)
         return live
 
     def _finish_rebuild(self):
@@ -93,7 +73,6 @@ class CodebaseIndexer:
         except Exception:
             pass
         self.collection = live
-
 
     DIRECT_TRY_MAX_CHARS = 16000
     MIN_SPLIT_CHARS = 800
@@ -143,7 +122,6 @@ class CodebaseIndexer:
             self._embed_adaptive(c.chunk_id(), c.code, c.to_metadata(), results)
         return results
 
-
     def _purge_file(self, file_path: str) -> int:
         existing = self.collection.get(where={"file_path": file_path})
         if existing["ids"]:
@@ -180,7 +158,6 @@ class CodebaseIndexer:
         self.collection.upsert(ids=ids, documents=documents, embeddings=embeddings, metadatas=metadatas)
         return len(ids)
 
-
     def sync(self, include_uncommitted: bool = False, on_progress: ProgressCallback = None,
              full: bool = False) -> dict:
         remove_orphan_segments(self.project.chroma_dir)
@@ -188,11 +165,11 @@ class CodebaseIndexer:
         model_changed = previous_model is not None and previous_model != self.ai_config.embedding_model
         if model_changed:
             full = True  # another model's vectors are not comparable: rebuild everything
-        previous_format = self._indexed_format()
+        previous_format = self.control.index_format()
         format_changed = previous_model is not None and not model_changed and previous_format != INDEX_FORMAT
         if format_changed:
             full = True  # same model and dimension: rebuilding is enough
-        last_commit = None if full else self._get_last_indexed_commit()
+        last_commit = None if full else self.control.last_indexed_commit()
         # The commit is fixed at the start: the diff, the indexed content and the recorded hash all belong to
         # the same commit even if another arrives during the sync.
         target = self.watcher.current_commit_hash()
@@ -239,7 +216,7 @@ class CodebaseIndexer:
             bump_index_version(os.path.dirname(self.project.chroma_dir))
 
         if not include_uncommitted:
-            self._save_last_indexed_commit(target)
+            self.control.save_indexed(target, self.ai_config.embedding_model, INDEX_FORMAT)
 
         return {
             "status": "ok", "detalle": changes.summary(),
@@ -253,14 +230,6 @@ class CodebaseIndexer:
     def stats(self) -> dict:
         return {
             "total_chunks": self.collection.count(),
-            "ultimo_commit_indexado": self._get_last_indexed_commit(),
+            "ultimo_commit_indexado": self.control.last_indexed_commit(),
             "commit_actual": self.watcher.current_commit_hash(),
         }
-
-
-def indexed_embedding_model(control, collection) -> Optional[str]:
-    """Model recorded in the control collection; indexes created before it was recorded used LEGACY_EMBEDDING_MODEL."""
-    result = control.get(ids=[CONTROL_KEY_ID])
-    if result["ids"]:
-        return result["metadatas"][0].get("embedding_model") or LEGACY_EMBEDDING_MODEL
-    return LEGACY_EMBEDDING_MODEL if collection.count() else None

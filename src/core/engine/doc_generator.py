@@ -8,12 +8,10 @@ from core.engine.chroma_utils import get_chroma_client
 from core.config import AIProviderConfig
 from core.projects import ProjectContext
 from core.engine.git_watcher import GitWatcher, ChangeSet
-from core.engine.indexer import COLLECTION_NAME, CONTROL_COLLECTION_NAME, CONTROL_KEY_ID
+from core.engine.index_store import IndexControl, open_code_collection
 from core.engine.overview import FOLDER_SYSTEM_PROMPT, OVERVIEW_MD, build_overview
 from core.engine.text_sanitize import strip_preamble
 from core.engine.llm import CHARS_PER_TOKEN, chat, estimate_tokens, prompt_budget_tokens
-
-DOC_CONTROL_KEY_ID = "last_documented_commit"
 
 
 class IndexOutOfDateError(RuntimeError):
@@ -76,26 +74,11 @@ class DocGenerator:
         self.watcher = GitWatcher(project.repo_path)
         self.backend = ai_config.backend()
         self.client = get_chroma_client(project.chroma_dir)
-        self.control = self.client.get_or_create_collection(name=CONTROL_COLLECTION_NAME)
+        self.control = IndexControl(self.client)
 
     @property
     def collection(self):
-        # Looked up by name on each use: an index rebuild recreates the collection and a stored reference would
-        # point to the deleted one.
-        return self.client.get_or_create_collection(name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"})
-
-    def _get_control_commit(self, key: str):
-        result = self.control.get(ids=[key])
-        return result["metadatas"][0]["commit_hash"] if result["ids"] else None
-
-    def _get_last_documented_commit(self):
-        return self._get_control_commit(DOC_CONTROL_KEY_ID)
-
-    def _save_last_documented_commit(self, commit_hash: str):
-        self.control.upsert(
-            ids=[DOC_CONTROL_KEY_ID], documents=[commit_hash],
-            embeddings=[[0.0]], metadatas=[{"commit_hash": commit_hash}],
-        )
+        return open_code_collection(self.client)
 
     def _get_chunks_for_file(self, file_path: str) -> List[dict]:
         result = self.collection.get(where={"file_path": file_path}, include=["documents", "metadatas"])
@@ -223,18 +206,18 @@ class DocGenerator:
 
     def stats(self) -> dict:
         return {
-            "ultimo_commit_documentado": self._get_last_documented_commit(),
+            "ultimo_commit_documentado": self.control.last_documented_commit(),
             "commit_actual": self.watcher.current_commit_hash(),
         }
 
     def sync(self, on_progress: ProgressCallback = None, full: bool = False) -> dict:
         head = self.watcher.current_commit_hash()  # fixed for the whole sync
-        if self._get_control_commit(CONTROL_KEY_ID) != head:
+        if self.control.last_indexed_commit() != head:
             raise IndexOutOfDateError(
                 "El índice no está al día con el último commit. Corre 'beacon sync' antes de generar la documentación."
             )
 
-        last_commit = None if full else self._get_last_documented_commit()
+        last_commit = None if full else self.control.last_documented_commit()
         changes: ChangeSet = self.watcher.get_changes_since(last_commit, target=head)
         if changes.is_empty():
             result = {"status": "sin_cambios", "detalle": changes.summary()}
@@ -265,7 +248,7 @@ class DocGenerator:
                 on_progress(i, total, fp)
 
         overview = self.update_overview(on_progress)
-        self._save_last_documented_commit(head)
+        self.control.save_documented(head)
         return {
             "status": "ok", "detalle": changes.summary(),
             "docs_generados": generated, "docs_eliminados": deleted, "sin_chunks_indexados": skipped,

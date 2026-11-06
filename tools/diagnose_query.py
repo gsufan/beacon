@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from core.engine.chroma_utils import get_chroma_client
 from core.projects import get_project
 from core.engine.indexer import COLLECTION_NAME
-from core.engine.git_watcher import _is_generated_or_vendor
+from core.engine.git_watcher import is_generated_or_vendor
 
 
 def diagnose(project_id: str):
@@ -20,7 +20,7 @@ def diagnose(project_id: str):
 
     data = collection.get(include=["metadatas"])
     paths = [m.get("file_path", "?") for m in data["metadatas"]]
-    generated = [p for p in paths if _is_generated_or_vendor(p)]
+    generated = [p for p in paths if is_generated_or_vendor(p)]
 
     print(f"Total chunks: {len(paths)}")
     print(f"Generados/vendor (no deberían quedar tras 'sync'): {len(generated)}")

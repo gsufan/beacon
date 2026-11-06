@@ -68,11 +68,6 @@ def list_usage(data_root: Path | None = None) -> List[ProjectUsage]:
     return [project_usage(p, data_root) for p in load_config().projects]
 
 
-def _remove_dir(path: Path):
-    """On Windows, deleting fails if another process has it open: report it instead of leaving things half done."""
-    remove_tree(path)
-
-
 def clean_project(project_id: str, *, clone: bool = False, index: bool = False, docs: bool = False) -> int:
     entry = load_config().find_project(project_id)
     if entry is None:
@@ -84,15 +79,15 @@ def clean_project(project_id: str, *, clone: bool = False, index: bool = False, 
         ensure_not_busy(project_dir)  # do not delete while another process (sync, server) writes
     if index and (project_dir / "chroma_db").exists():
         release_chroma_client(str(project_dir / "chroma_db"))
-        _remove_dir(project_dir / "chroma_db")
+        remove_tree(project_dir / "chroma_db")
         freed += usage.index_bytes
         bump_index_version(project_dir)  # a running server must not keep using the deleted index
     if docs and (project_dir / "docs").exists():
-        _remove_dir(project_dir / "docs")
+        remove_tree(project_dir / "docs")
         freed += usage.docs_bytes
     managed = _managed_clone(entry, DATA_ROOT)
     if clone and managed is not None and managed.exists():
-        _remove_dir(managed)
+        remove_tree(managed)
         freed += usage.clone_bytes
     ensure_project_dirs(project_id)  # the empty folders the rest of the system expects
     return freed

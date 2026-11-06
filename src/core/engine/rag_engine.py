@@ -15,10 +15,9 @@ from core.engine.chroma_utils import get_chroma_client
 from core.config import AIProviderConfig
 from core.projects import ProjectContext
 from core.engine.embeddings import embed_query
-from core.engine.indexer import (
-    COLLECTION_NAME, CONTROL_COLLECTION_NAME, IndexModelMismatchError, indexed_embedding_model,
-)
-from core.engine.llm import CHARS_PER_TOKEN, chat, estimate_tokens, prompt_budget_tokens
+from core.engine.index_store import IndexControl, open_code_collection
+from core.engine.indexer import IndexModelMismatchError
+from core.engine.llm import CHARS_PER_TOKEN, LLM_MAX_ANSWER_TOKENS, chat, estimate_tokens, prompt_budget_tokens
 from core.engine.overview import RepoOverview
 from core.engine.question_kind import is_general_question
 from core.engine.scope_resolution import resolve_candidate
@@ -28,7 +27,7 @@ logger = logging.getLogger("beacon.rag")
 
 DEFAULT_TOP_K = 5
 DEFAULT_MAX_CALL_EXPANSIONS = 5
-ANSWER_RESERVE_TOKENS = 1024
+ANSWER_RESERVE_TOKENS = LLM_MAX_ANSWER_TOKENS
 TRUNCATED_NOTES = {
     "es": "\n\n[La respuesta alcanzó el límite de longitud y se cortó.]",
     "en": "\n\n[The answer reached the length limit and was cut off.]",
@@ -130,7 +129,7 @@ class RetrievedChunk:
     distance: float
     expanded: bool = False
 
-    def as_context_block(self, index: int) -> str:
+    def as_context_block(self) -> str:
         if self.chunk_type == "overview":
             return f"[{self.file_path}]\n{self.code}"
         location = f"{self.file_path} (líneas {self.start_line}-{self.end_line})"
@@ -168,11 +167,8 @@ class RAGEngine:
         self.ai_config = ai_config
         self.backend = ai_config.backend()
         self.client = get_chroma_client(project.chroma_dir)
-        self.collection = self.client.get_or_create_collection(
-            name=COLLECTION_NAME, metadata={"hnsw:space": "cosine"}
-        )
-        control = self.client.get_or_create_collection(name=CONTROL_COLLECTION_NAME)
-        self.index_model = indexed_embedding_model(control, self.collection)
+        self.collection = open_code_collection(self.client)
+        self.index_model = IndexControl(self.client).embedding_model(self.collection)
 
     def _check_index_model(self):
         if self.index_model and self.index_model != self.ai_config.embedding_model:
@@ -255,8 +251,7 @@ class RAGEngine:
         """Looks the collection up again by name: a full rebuild (in this or another process) replaces it,
         and the stored reference points to the deleted one.
         """
-        self.collection = self.client.get_or_create_collection(name=COLLECTION_NAME,
-                                                               metadata={"hnsw:space": "cosine"})
+        self.collection = open_code_collection(self.client)
 
     def _query(self, embedding: List[float], n: int) -> dict:
         """Queries ChromaDB. With many deleted elements in the HNSW graph, hnswlib may fail to gather `n`
@@ -302,7 +297,8 @@ class RAGEngine:
     def _find_chunk_by_name(self, name: str, caller_file_path: str) -> Optional[RetrievedChunk]:
         try:
             result = self.collection.get(where={"name": name}, include=["documents", "metadatas"])
-        except Exception:
+        except Exception:  # noqa: BLE001 (the expansion is optional: the answer goes on without it)
+            logger.warning("No se pudo buscar '%s' para el grafo de llamadas", name, exc_info=True)
             return None
         if not result["ids"]:
             return None
@@ -345,7 +341,7 @@ class RAGEngine:
 
     def _build_prompt(self, question: str, chunks: List[RetrievedChunk]) -> str:
         context = "(No se encontraron fragmentos relevantes.)" if not chunks else \
-            "\n\n".join(c.as_context_block(i + 1) for i, c in enumerate(chunks))
+            "\n\n".join(c.as_context_block() for c in chunks)
         return f"CONTEXTO:\n\n{context}\n\n---\n\nPREGUNTA: {question}\n\nResponde siguiendo las reglas del sistema."
 
     def _fit_to_budget(self, question: str, system_prompt: str,
@@ -358,7 +354,7 @@ class RAGEngine:
         used = estimate_tokens(system_prompt) + estimate_tokens(self._build_prompt(question, []))
         kept: List[RetrievedChunk] = []
         for chunk in chunks:
-            cost = estimate_tokens(chunk.as_context_block(len(kept) + 1)) + 1
+            cost = estimate_tokens(chunk.as_context_block()) + 1
             if used + cost > budget:
                 continue  # a smaller one that comes later may still fit
             kept.append(chunk)

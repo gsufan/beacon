@@ -18,7 +18,7 @@ from core.engine.backends import OllamaBackend  # noqa: E402
 from core.config import AIProviderConfig  # noqa: E402
 from core.engine.doc_generator import DocGenerator, IndexOutOfDateError  # noqa: E402
 from core.engine.git_watcher import GitWatcher  # noqa: E402
-from core.engine.indexer import CodebaseIndexer  # noqa: E402
+from core.engine.indexer import INDEX_FORMAT, CodebaseIndexer  # noqa: E402
 from core.projects import ProjectContext  # noqa: E402
 
 AI = AIProviderConfig(provider="ollama", host="http://127.0.0.1:9",
@@ -98,7 +98,7 @@ def test_full_rescan_purges_chunks_of_files_that_no_longer_exist(tmp_path):
 
     # Simulates rewritten history: the stored commit no longer exists and b.py disappeared
     _commit(repo, {"b.py": None}, "borra b")
-    idx._save_last_indexed_commit("0" * 40)
+    idx.control.save_indexed("0" * 40, AI.embedding_model, INDEX_FORMAT)
     idx.sync()
     assert _indexed_files(idx) == {"a.py"}
 
@@ -132,7 +132,7 @@ def test_docs_refuse_to_run_when_index_is_behind_head(tmp_path):
     gen.backend = OllamaBackend(_FakeOllama())
     with pytest.raises(IndexOutOfDateError):
         gen.sync()
-    assert gen._get_last_documented_commit() is None
+    assert gen.control.last_documented_commit() is None
 
 
 def test_docs_full_rescan_removes_orphan_docs(tmp_path):
@@ -146,9 +146,9 @@ def test_docs_full_rescan_removes_orphan_docs(tmp_path):
     assert (Path(ctx.docs_dir) / "b.py.md").exists()
 
     _commit(repo, {"b.py": None}, "borra b")
-    idx._save_last_indexed_commit("0" * 40)
+    idx.control.save_indexed("0" * 40, AI.embedding_model, INDEX_FORMAT)
     idx.sync()
-    gen._save_last_documented_commit("0" * 40)  # rewritten history also for the docs
+    gen.control.save_documented("0" * 40)  # rewritten history also for the docs
     gen.sync()
     assert not (Path(ctx.docs_dir) / "b.py.md").exists()
     assert (Path(ctx.docs_dir) / "a.py.md").exists()

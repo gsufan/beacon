@@ -125,7 +125,7 @@ def test_sync_does_not_mark_commit_indexed_when_embeddings_fail(tmp_path, exc, e
 
     with pytest.raises(expected):
         indexer.sync()
-    assert indexer._get_last_indexed_commit() is None
+    assert indexer.control.last_indexed_commit() is None
 
 
 def test_sync_still_skips_chunk_rejected_for_length(tmp_path):

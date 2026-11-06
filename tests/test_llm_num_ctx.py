@@ -40,7 +40,7 @@ def _write_config(path, ai_extra=""):
 def test_default_window_is_the_one_measured_so_far(tmp_path):
     cfg = tmp_path / "config.yaml"
     _write_config(cfg)
-    assert load_config(cfg).ai_provider.llm_num_ctx == DEFAULT_LLM_NUM_CTX == llm.LLM_NUM_CTX == 8192
+    assert load_config(cfg).ai_provider.llm_num_ctx == DEFAULT_LLM_NUM_CTX == llm.DEFAULT_LLM_NUM_CTX == 8192
 
 
 def test_window_is_read_from_config(tmp_path):
