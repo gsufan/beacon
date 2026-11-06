@@ -10,6 +10,7 @@ from typing import Callable, List, Optional
 
 from chromadb.errors import InvalidCollectionException
 
+from core.engine.backends import Backend, create_backend
 from core.engine.chroma_utils import get_chroma_client
 
 from core.config import AIProviderConfig
@@ -162,11 +163,13 @@ class RAGResponse:
 
 
 class RAGEngine:
-    def __init__(self, project: ProjectContext, ai_config: AIProviderConfig):
+    def __init__(self, project: ProjectContext, ai_config: AIProviderConfig, *, backend: Optional[Backend] = None,
+                 client=None):
+        """`backend` and `client` default to the ones of the configuration and the project."""
         self.project = project
         self.ai_config = ai_config
-        self.backend = ai_config.backend()
-        self.client = get_chroma_client(project.chroma_dir)
+        self.backend = backend or create_backend(ai_config.provider, ai_config.host)
+        self.client = client or get_chroma_client(project.chroma_dir)
         self.collection = open_code_collection(self.client)
         self.index_model = IndexControl(self.client).embedding_model(self.collection)
 

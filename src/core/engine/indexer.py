@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import Callable, List, Optional
 
 from core.engine.chroma_utils import bump_index_version, get_chroma_client, remove_orphan_segments
-from core.engine.backends import InputRejectedError
+from core.engine.backends import Backend, InputRejectedError, create_backend
 
 from core.config import AIProviderConfig
 from core.projects import ProjectContext
@@ -69,12 +69,14 @@ class IndexStats:
 
 
 class CodebaseIndexer:
-    def __init__(self, project: ProjectContext, ai_config: AIProviderConfig):
+    def __init__(self, project: ProjectContext, ai_config: AIProviderConfig, *, backend: Optional[Backend] = None,
+                 client=None, watcher: Optional[GitWatcher] = None):
+        """`backend`, `client` and `watcher` default to the ones of the configuration and the project."""
         self.project = project
         self.ai_config = ai_config
-        self.watcher = GitWatcher(project.repo_path)
-        self.backend = ai_config.backend()
-        self.client = get_chroma_client(project.chroma_dir)
+        self.watcher = watcher or GitWatcher(project.repo_path)
+        self.backend = backend or create_backend(ai_config.provider, ai_config.host)
+        self.client = client or get_chroma_client(project.chroma_dir)
         self.collection = open_code_collection(self.client)
         self.control = IndexControl(self.client)
 

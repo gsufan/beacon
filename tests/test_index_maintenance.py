@@ -41,8 +41,7 @@ def _project(tmp_path):
 
 
 def _indexer(ctx):
-    idx = CodebaseIndexer(ctx, AI)
-    idx.backend = OllamaBackend(_FakeEmbed())
+    idx = CodebaseIndexer(ctx, AI, backend=OllamaBackend(_FakeEmbed()))
     return idx
 
 
@@ -103,8 +102,7 @@ class _FlakyCollection:
 def test_query_retries_with_fewer_candidates_instead_of_failing(tmp_path):
     ctx = _project(tmp_path)
     _indexer(ctx).sync()
-    engine = RAGEngine(ctx, AI)
-    engine.backend = OllamaBackend(_FakeEmbed())
+    engine = RAGEngine(ctx, AI, backend=OllamaBackend(_FakeEmbed()))
     engine.collection = _FlakyCollection(max_ok=12)
     chunks = engine.retrieve("¿qué hace a?", top_k=5)
     assert len(chunks) == 5
@@ -114,8 +112,7 @@ def test_query_retries_with_fewer_candidates_instead_of_failing(tmp_path):
 def test_other_chroma_errors_are_not_hidden(tmp_path):
     ctx = _project(tmp_path)
     _indexer(ctx).sync()
-    engine = RAGEngine(ctx, AI)
-    engine.backend = OllamaBackend(_FakeEmbed())
+    engine = RAGEngine(ctx, AI, backend=OllamaBackend(_FakeEmbed()))
 
     class Broken(_FlakyCollection):
         def query(self, query_embeddings, n_results):
@@ -131,8 +128,7 @@ def test_queries_keep_working_while_the_index_is_rebuilt(tmp_path):
     # A query during a `sync --full` from another console must answer normally.
     ctx = _project(tmp_path)
     _indexer(ctx).sync()
-    engine = RAGEngine(ctx, AI)  # like the server: opened before rebuilding
-    engine.backend = OllamaBackend(_FakeEmbed())
+    engine = RAGEngine(ctx, AI, backend=OllamaBackend(_FakeEmbed()))  # like the server: opened before rebuilding
     seen_during = []
 
     def query_midway(current, total, path):
@@ -180,8 +176,7 @@ def test_purge_works_after_the_index_was_queried_in_this_process(monkeypatch, tm
     # On Windows, an open index prevents deleting the folder.
     services, ctx, project_dir, removed = _registered(monkeypatch, tmp_path)
     _indexer(ctx).sync()
-    engine = RAGEngine(ctx, AI)
-    engine.backend = OllamaBackend(_FakeEmbed())
+    engine = RAGEngine(ctx, AI, backend=OllamaBackend(_FakeEmbed()))
     engine.retrieve("¿qué hace a?")
     del engine
 

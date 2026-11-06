@@ -90,9 +90,8 @@ def test_budget_grows_with_the_window():
 def _engine(tmp_path, num_ctx):
     ctx = ProjectContext(id="t", name="t", repo_path=str(tmp_path),
                          chroma_dir=str(tmp_path / "chroma"), docs_dir=str(tmp_path / "docs"))
-    engine = RAGEngine(ctx, replace(AI, llm_num_ctx=num_ctx))
     fake = _FakeOllama()
-    engine.backend = OllamaBackend(fake)
+    engine = RAGEngine(ctx, replace(AI, llm_num_ctx=num_ctx), backend=OllamaBackend(fake))
     chunks = [RetrievedChunk(file_path=f"f{i}.py", chunk_type="function", name=f"f{i}", start_line=1,
                              end_line=10, code="x" * 6000, distance=0.1) for i in range(10)]
     engine.select_context = lambda q, top_k: chunks

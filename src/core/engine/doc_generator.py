@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional
 
+from core.engine.backends import Backend, create_backend
 from core.engine.chroma_utils import get_chroma_client
 
 from core.config import AIProviderConfig
@@ -96,12 +97,14 @@ Basa todo en el código dado. Si es un mock/simulación, dilo explícitamente. D
 
 
 class DocGenerator:
-    def __init__(self, project: ProjectContext, ai_config: AIProviderConfig):
+    def __init__(self, project: ProjectContext, ai_config: AIProviderConfig, *, backend: Optional[Backend] = None,
+                 client=None, watcher: Optional[GitWatcher] = None):
+        """`backend`, `client` and `watcher` default to the ones of the configuration and the project."""
         self.project = project
         self.ai_config = ai_config
-        self.watcher = GitWatcher(project.repo_path)
-        self.backend = ai_config.backend()
-        self.client = get_chroma_client(project.chroma_dir)
+        self.watcher = watcher or GitWatcher(project.repo_path)
+        self.backend = backend or create_backend(ai_config.provider, ai_config.host)
+        self.client = client or get_chroma_client(project.chroma_dir)
         self.control = IndexControl(self.client)
 
     @property

@@ -56,8 +56,7 @@ def _setup(tmp_path):
 
 
 def _indexer(ctx):
-    idx = CodebaseIndexer(ctx, AI)
-    idx.backend = OllamaBackend(_FakeOllama())
+    idx = CodebaseIndexer(ctx, AI, backend=OllamaBackend(_FakeOllama()))
     return idx
 
 
@@ -128,8 +127,7 @@ def test_docs_refuse_to_run_when_index_is_behind_head(tmp_path):
     idx.sync()
     _commit(repo, {"a.py": "def a():\n    return 2\n"}, "cambio sin reindexar")
 
-    gen = DocGenerator(ctx, AI)
-    gen.backend = OllamaBackend(_FakeOllama())
+    gen = DocGenerator(ctx, AI, backend=OllamaBackend(_FakeOllama()))
     with pytest.raises(IndexOutOfDateError):
         gen.sync()
     assert gen.control.last_documented_commit() is None
@@ -140,8 +138,7 @@ def test_docs_full_rescan_removes_orphan_docs(tmp_path):
     _commit(repo, {"a.py": "def a():\n    return 1\n", "b.py": "def b():\n    return 2\n"}, "init")
     idx = _indexer(ctx)
     idx.sync()
-    gen = DocGenerator(ctx, AI)
-    gen.backend = OllamaBackend(_FakeOllama())
+    gen = DocGenerator(ctx, AI, backend=OllamaBackend(_FakeOllama()))
     gen.sync()
     assert (Path(ctx.docs_dir) / "b.py.md").exists()
 

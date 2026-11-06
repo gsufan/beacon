@@ -10,7 +10,7 @@ from typing import Iterator, List, Optional
 
 import yaml
 
-from core.engine.backends import DEFAULT_HOSTS, create_backend
+from core.engine.backends import DEFAULT_HOSTS
 from core.project_lock import file_lock
 
 # Looked up relative to the project root, not the user's cwd
@@ -41,9 +41,6 @@ class AIProviderConfig:
 
     def public_dict(self) -> dict:
         return dict(self.__dict__)
-
-    def backend(self):
-        return create_backend(self.provider, self.host)
 
 
 def default_ai_provider() -> AIProviderConfig:

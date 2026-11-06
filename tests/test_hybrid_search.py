@@ -53,11 +53,9 @@ def _engine(tmp_path):
     repo.index.commit("init")
     ctx = ProjectContext(id="t", name="t", repo_path=str(repo_dir),
                          chroma_dir=str(tmp_path / "data" / "chroma_db"), docs_dir=str(tmp_path / "data" / "docs"))
-    idx = CodebaseIndexer(ctx, AI)
-    idx.backend = OllamaBackend(_SameVector())
+    idx = CodebaseIndexer(ctx, AI, backend=OllamaBackend(_SameVector()))
     idx.sync()
-    engine = RAGEngine(ctx, AI)
-    engine.backend = OllamaBackend(_SameVector())
+    engine = RAGEngine(ctx, AI, backend=OllamaBackend(_SameVector()))
     return engine
 
 

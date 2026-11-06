@@ -94,9 +94,8 @@ def test_chat_warns_when_model_processed_far_less_than_sent(caplog):
 
 def test_rag_prompt_fits_context_and_sources_match_what_model_saw(tmp_path):
     _, ctx = _repo_and_ctx(tmp_path)
-    engine = RAGEngine(ctx, AI)
     fake = _RecordingOllama(content="respuesta")
-    engine.backend = OllamaBackend(fake)
+    engine = RAGEngine(ctx, AI, backend=OllamaBackend(fake))
     # 10 chunks of ~6,000 characters (~1,700 tokens each): they do not all fit in 8,192
     chunks = [_chunk(f"f{i}", 6000) for i in range(10)]
     engine.select_context = lambda q, top_k: chunks
@@ -119,8 +118,7 @@ def test_index_uses_committed_content_not_uncommitted_working_tree(tmp_path):
     head = _commit(repo, "a.py", "def version_commiteada():\n    return 1\n", "init")
     (Path(repo.working_dir) / "a.py").write_text("def cambio_sin_commitear():\n    return 2\n")
 
-    idx = CodebaseIndexer(ctx, AI)
-    idx.backend = OllamaBackend(_RecordingOllama())
+    idx = CodebaseIndexer(ctx, AI, backend=OllamaBackend(_RecordingOllama()))
     idx.sync()
 
     docs = " ".join(idx.collection.get(include=["documents"])["documents"])
@@ -132,8 +130,7 @@ def test_index_uses_committed_content_not_uncommitted_working_tree(tmp_path):
 def test_commit_arriving_during_sync_is_not_marked_as_indexed(tmp_path):
     repo, ctx = _repo_and_ctx(tmp_path)
     first = _commit(repo, "a.py", "def a():\n    return 1\n", "init")
-    idx = CodebaseIndexer(ctx, AI)
-    idx.backend = OllamaBackend(_RecordingOllama())
+    idx = CodebaseIndexer(ctx, AI, backend=OllamaBackend(_RecordingOllama()))
 
     original = idx._index_file
     late = {}
@@ -189,9 +186,8 @@ def test_own_writes_do_not_force_reload(tmp_path):
 
 def _docgen_with_chunks(tmp_path, chunks):
     _, ctx = _repo_and_ctx(tmp_path)
-    gen = DocGenerator(ctx, AI)
     fake = _RecordingOllama(content="Componentes:\n- `x` — nota")
-    gen.backend = OllamaBackend(fake)
+    gen = DocGenerator(ctx, AI, backend=OllamaBackend(fake))
     gen._get_chunks_for_file = lambda fp: chunks
     return gen, fake
 

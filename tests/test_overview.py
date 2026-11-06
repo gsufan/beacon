@@ -128,14 +128,12 @@ def _project(tmp_path):
 
 def test_general_questions_use_the_overview_and_specific_ones_do_not(tmp_path):
     ctx, ai = _project(tmp_path)
-    idx = CodebaseIndexer(ctx, ai)
-    idx.backend = OllamaBackend(_Embed())
+    idx = CodebaseIndexer(ctx, ai, backend=OllamaBackend(_Embed()))
     idx.sync()
     _write_docs(Path(ctx.docs_dir), FILES)
     build_overview(Path(ctx.docs_dir), _Llm(), budget_chars=20000)
     fake = _Embed()
-    engine = RAGEngine(ctx, ai)
-    engine.backend = OllamaBackend(fake)
+    engine = RAGEngine(ctx, ai, backend=OllamaBackend(fake))
 
     general = engine.ask("¿Qué hace este proyecto?")
     assert general.sources[0].chunk_type == "overview" and general.sources[0].file_path == "resumen del proyecto"
@@ -148,11 +146,9 @@ def test_general_questions_use_the_overview_and_specific_ones_do_not(tmp_path):
 
 def test_general_question_without_an_overview_falls_back_to_retrieval(tmp_path):
     ctx, ai = _project(tmp_path)
-    idx = CodebaseIndexer(ctx, ai)
-    idx.backend = OllamaBackend(_Embed())
+    idx = CodebaseIndexer(ctx, ai, backend=OllamaBackend(_Embed()))
     idx.sync()
-    engine = RAGEngine(ctx, ai)
-    engine.backend = OllamaBackend(_Embed())
+    engine = RAGEngine(ctx, ai, backend=OllamaBackend(_Embed()))
     assert all(s.chunk_type != "overview" for s in engine.ask("¿Qué hace este proyecto?").sources)
 
 
