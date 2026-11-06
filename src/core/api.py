@@ -404,7 +404,8 @@ def _run_sync(project_id: str):
         _engines.clear()
         with _sync_lock:
             _sync_status[project_id] = {
-                "status": "done", "detail": {"index": result.index, "docs": result.docs, "pulled": result.pulled},
+                "status": "done", "detail": {"index": result.index.to_dict(), "docs": result.docs.to_dict() if result.docs else None,
+                           "pulled": result.pulled},
             }
     except ProjectBusyError as e:
         with _sync_lock:

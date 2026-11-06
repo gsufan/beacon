@@ -134,7 +134,7 @@ def test_sync_still_skips_chunk_rejected_for_length(tmp_path):
     indexer.backend = OllamaBackend(_FailingOllama(ollama.ResponseError("input length exceeds context length", 500)))
 
     result = indexer.sync()
-    assert result["status"] == "ok"
+    assert result.changed
 
 
 def test_chromadb_is_only_used_embedded():

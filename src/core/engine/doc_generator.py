@@ -1,5 +1,6 @@
 """Incremental .md documentation generated from the already indexed chunks."""
 
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, List, Optional
 
@@ -19,6 +20,33 @@ class IndexOutOfDateError(RuntimeError):
 
 
 ProgressCallback = Optional[Callable[[int, int, str], None]]
+
+
+@dataclass
+class DocSyncResult:
+    changed: bool
+    summary: str
+    generated: int = 0
+    deleted: int = 0
+    skipped: List[str] = field(default_factory=list)  # files without indexed chunks
+    overview: Optional[dict] = None
+
+    def to_dict(self) -> dict:
+        """Shown by the CLI and returned by the API."""
+        if self.changed:
+            result = {"status": "ok", "detalle": self.summary, "docs_generados": self.generated,
+                      "docs_eliminados": self.deleted, "sin_chunks_indexados": self.skipped}
+        else:
+            result = {"status": "sin_cambios", "detalle": self.summary}
+        if self.overview is not None:
+            result["resumen_proyecto"] = self.overview
+        return result
+
+
+@dataclass
+class DocStats:
+    last_documented_commit: Optional[str]
+    current_commit: str
 
 # Without this instruction the model tends to answer in English when the code and its comments are in English.
 DOC_LANGUAGE = ("IMPORTANTE: escribe todo en español neutro (sin modismos regionales ni voseo), "
@@ -204,13 +232,10 @@ class DocGenerator:
         step = (lambda folder: on_progress(1, 1, "overview: " + (folder or "."))) if on_progress else None
         return build_overview(Path(self.project.docs_dir), self._llm, self._content_budget_chars(FOLDER_SYSTEM_PROMPT), step)
 
-    def stats(self) -> dict:
-        return {
-            "ultimo_commit_documentado": self.control.last_documented_commit(),
-            "commit_actual": self.watcher.current_commit_hash(),
-        }
+    def stats(self) -> DocStats:
+        return DocStats(self.control.last_documented_commit(), self.watcher.current_commit_hash())
 
-    def sync(self, on_progress: ProgressCallback = None, full: bool = False) -> dict:
+    def sync(self, on_progress: ProgressCallback = None, full: bool = False) -> DocSyncResult:
         head = self.watcher.current_commit_hash()  # fixed for the whole sync
         if self.control.last_indexed_commit() != head:
             raise IndexOutOfDateError(
@@ -220,9 +245,9 @@ class DocGenerator:
         last_commit = None if full else self.control.last_documented_commit()
         changes: ChangeSet = self.watcher.get_changes_since(last_commit, target=head)
         if changes.is_empty():
-            result = {"status": "sin_cambios", "detalle": changes.summary()}
+            result = DocSyncResult(changed=False, summary=changes.summary())
             if self._existing_doc_sources():  # no model calls if nothing changed; builds it for projects documented earlier
-                result["resumen_proyecto"] = self.update_overview(on_progress)
+                result.overview = self.update_overview(on_progress)
             return result
 
         files = changes.files_to_reindex()
@@ -249,8 +274,5 @@ class DocGenerator:
 
         overview = self.update_overview(on_progress)
         self.control.save_documented(head)
-        return {
-            "status": "ok", "detalle": changes.summary(),
-            "docs_generados": generated, "docs_eliminados": deleted, "sin_chunks_indexados": skipped,
-            "resumen_proyecto": overview,
-        }
+        return DocSyncResult(changed=True, summary=changes.summary(), generated=generated, deleted=deleted,
+                             skipped=skipped, overview=overview)

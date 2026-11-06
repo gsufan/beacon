@@ -1,6 +1,7 @@
 """Incremental indexer: chunker, git diff, ChromaDB and embeddings."""
 
 import os
+from dataclasses import dataclass
 from typing import Callable, List, Optional
 
 from core.engine.chroma_utils import bump_index_version, get_chroma_client, remove_orphan_segments
@@ -35,6 +36,36 @@ def embedding_text(meta: dict, code: str) -> str:
 
 
 ProgressCallback = Optional[Callable[[int, int, str], None]]
+
+
+@dataclass
+class IndexSyncResult:
+    changed: bool
+    summary: str
+    files_indexed: int = 0
+    chunks_inserted: int = 0
+    chunks_purged: int = 0
+    model_change: str = ""  # "old → new" when another embedding model forced a rebuild
+    format_change: str = ""  # same, for a new INDEX_FORMAT
+
+    def to_dict(self) -> dict:
+        """Shown by the CLI and returned by the API."""
+        if not self.changed:
+            return {"status": "sin_cambios", "detalle": self.summary}
+        result = {"status": "ok", "detalle": self.summary, "archivos_indexados": self.files_indexed,
+                  "chunks_insertados": self.chunks_inserted, "chunks_purgados": self.chunks_purged}
+        if self.model_change:
+            result["modelo_embeddings"] = f"{self.model_change} (índice reconstruido)"
+        if self.format_change:
+            result["formato_indice"] = f"{self.format_change} (índice reconstruido)"
+        return result
+
+
+@dataclass
+class IndexStats:
+    total_chunks: int
+    last_indexed_commit: Optional[str]
+    current_commit: str
 
 
 class CodebaseIndexer:
@@ -159,7 +190,7 @@ class CodebaseIndexer:
         return len(ids)
 
     def sync(self, include_uncommitted: bool = False, on_progress: ProgressCallback = None,
-             full: bool = False) -> dict:
+             full: bool = False) -> IndexSyncResult:
         remove_orphan_segments(self.project.chroma_dir)
         previous_model = self.indexed_embedding_model()
         model_changed = previous_model is not None and previous_model != self.ai_config.embedding_model
@@ -182,7 +213,7 @@ class CodebaseIndexer:
             changes.deleted += u.deleted
 
         if changes.is_empty() and not changes.full_rescan:
-            return {"status": "sin_cambios", "detalle": changes.summary()}
+            return IndexSyncResult(changed=False, summary=changes.summary())
 
         files = changes.files_to_reindex()
         purged = 0
@@ -218,18 +249,12 @@ class CodebaseIndexer:
         if not include_uncommitted:
             self.control.save_indexed(target, self.ai_config.embedding_model, INDEX_FORMAT)
 
-        return {
-            "status": "ok", "detalle": changes.summary(),
-            "archivos_indexados": files_indexed, "chunks_insertados": indexed, "chunks_purgados": purged,
-            **({"modelo_embeddings": f"{previous_model} → {self.ai_config.embedding_model} (índice reconstruido)"}
-               if model_changed else {}),
-            **({"formato_indice": f"{previous_format} → {INDEX_FORMAT} (índice reconstruido)"}
-               if format_changed else {}),
-        }
+        return IndexSyncResult(
+            changed=True, summary=changes.summary(), files_indexed=files_indexed, chunks_inserted=indexed,
+            chunks_purged=purged,
+            model_change=f"{previous_model} → {self.ai_config.embedding_model}" if model_changed else "",
+            format_change=f"{previous_format} → {INDEX_FORMAT}" if format_changed else "",
+        )
 
-    def stats(self) -> dict:
-        return {
-            "total_chunks": self.collection.count(),
-            "ultimo_commit_indexado": self.control.last_indexed_commit(),
-            "commit_actual": self.watcher.current_commit_hash(),
-        }
+    def stats(self) -> IndexStats:
+        return IndexStats(self.collection.count(), self.control.last_indexed_commit(), self.watcher.current_commit_hash())

@@ -240,8 +240,8 @@ def measure(repo: Path, levels, keep: bool):
         elapsed = time.perf_counter() - t
         files = len([p for p in repo.rglob("*") if p.is_file() and ".git" not in p.parts])
         report["indexacion"] = {
-            "archivos": files, "fragmentos": result["chunks_insertados"], "segundos": round(elapsed, 1),
-            "fragmentos_por_segundo": round(result["chunks_insertados"] / elapsed, 1),
+            "archivos": files, "fragmentos": result.chunks_inserted, "segundos": round(elapsed, 1),
+            "fragmentos_por_segundo": round(result.chunks_inserted / elapsed, 1),
             "memoria_maxima_mb": round(_peak_memory_mb()), "disco_mb": round(_dir_size_mb(Path(project.chroma_dir)), 1)}
         print("   ", report["indexacion"], flush=True)
 
@@ -256,7 +256,7 @@ def measure(repo: Path, levels, keep: bool):
         t = time.perf_counter()
         inc = services.sync_project(PROJECT_ID, docs=False, pull=False).index
         report["incremental"] = {"archivos_modificados": len(changed), "segundos": round(time.perf_counter() - t, 1),
-                                 "fragmentos_reindexados": inc["chunks_insertados"]}
+                                 "fragmentos_reindexados": inc.chunks_inserted}
         print("   ", report["incremental"], flush=True)
 
         print("3/5 latencia de la búsqueda...", flush=True)

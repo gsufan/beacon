@@ -16,6 +16,7 @@ import core.api as api  # noqa: E402
 import core.cli as cli_module  # noqa: E402
 import core.services as services  # noqa: E402
 from core.config import AIProviderConfig, AppConfig, ProjectEntry  # noqa: E402
+from core.engine.indexer import IndexSyncResult  # noqa: E402
 from core.project_lock import LOCK_FILENAME, ProjectBusyError, ensure_not_busy, project_lock  # noqa: E402
 
 SRC = str(Path(__file__).resolve().parents[1] / "src")
@@ -160,7 +161,7 @@ def test_git_project_sync_pulls_inside_the_lock(monkeypatch, tmp_path):
             self.project = type("P", (), {"chroma_dir": str(project_dir / "chroma_db")})()
 
         def sync(self, **kwargs):
-            return {"status": "sin_cambios"}
+            return IndexSyncResult(changed=False, summary="")
 
     monkeypatch.setattr(services, "pull_from_remote", pull)
     monkeypatch.setattr(services, "CodebaseIndexer", FakeIndexer)

@@ -294,7 +294,7 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
             import git
             commit = git.Repo(repo_path).head.commit.hexsha[:10]
             langs = sorted({detect_language(str(p)) for p in files})
-            session().set_repo(url, commit, result.index.get("archivos_indexados", len(files)), engine.collection.count(),
+            session().set_repo(url, commit, result.index.files_indexed if result.index.changed else len(files), engine.collection.count(),
                                langs, time.time() - started)
             with lock:
                 status["repo"] = {"estado": "listo", "detalle": None}

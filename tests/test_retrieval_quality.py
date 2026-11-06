@@ -80,7 +80,7 @@ def test_batch_rejected_for_length_falls_back_to_per_chunk(tmp_path):
     idx = CodebaseIndexer(ctx, _ai("qwen3-embedding:0.6b"))
     idx.backend = OllamaBackend(_FakeEmbed(fail_batches=True))
     result = idx.sync()
-    assert result["chunks_insertados"] >= 2
+    assert result.chunks_inserted >= 2
 
 
 def test_empty_files_are_not_indexed():
@@ -99,7 +99,7 @@ def test_changing_embedding_model_rebuilds_index_with_new_dimension(tmp_path):
     new.backend = OllamaBackend(_FakeEmbed(dim=4))  # another dimension, like 768 -> 1024
     result = new.sync()  # no new commits: it must rebuild anyway
 
-    assert "índice reconstruido" in result["modelo_embeddings"]
+    assert "índice reconstruido" in result.to_dict()["modelo_embeddings"]
     assert new.indexed_embedding_model() == "qwen3-embedding:0.6b"
     vectors = new.collection.get(include=["embeddings"])["embeddings"]
     assert len(vectors) > 0 and all(len(v) == 4 for v in vectors)
@@ -157,8 +157,8 @@ def test_index_built_with_an_older_format_is_rebuilt(tmp_path, monkeypatch):
     new = CodebaseIndexer(ctx, _ai("qwen3-embedding:0.6b"))
     new.backend = OllamaBackend(_FakeEmbed())
     result = new.sync()  # no new commits: it must rebuild anyway
-    assert result["formato_indice"] == "1 → 2 (índice reconstruido)"
-    assert new.sync()["status"] == "sin_cambios"
+    assert result.to_dict()["formato_indice"] == "1 → 2 (índice reconstruido)"
+    assert not new.sync().changed
 
 
 

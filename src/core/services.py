@@ -24,10 +24,10 @@ from core.config import (
     validate_project_id,
 )
 from core.engine.chroma_utils import bump_index_version, release_chroma_client
-from core.engine.doc_generator import DocGenerator
+from core.engine.doc_generator import DocGenerator, DocSyncResult
 from core.engine.git_watcher import is_generated_or_vendor
 from core.fs import remove_tree
-from core.engine.indexer import CodebaseIndexer
+from core.engine.indexer import CodebaseIndexer, IndexSyncResult
 from core.project_lock import ProjectBusyError, ensure_not_busy, project_lock
 from core.projects import (
     DATA_ROOT,
@@ -125,8 +125,8 @@ def unregister_project(project_id: str, *, purge_data: bool = False) -> None:
 
 @dataclass
 class SyncResult:
-    index: dict
-    docs: Optional[dict] = None
+    index: IndexSyncResult
+    docs: Optional[DocSyncResult] = None
     pulled: bool = False
     generated_purged: int = 0
 
@@ -200,14 +200,14 @@ def sync_project(project_id: str, *, docs: bool = True, full: bool = False, incl
             pulled = True
         indexer = CodebaseIndexer(project, ai)
         index_result = indexer.sync(include_uncommitted=include_uncommitted, on_progress=on_index_progress, full=full)
-        purged = _purge_generated(indexer) if index_result.get("status") != "sin_cambios" else 0
+        purged = _purge_generated(indexer) if index_result.changed else 0
         docs_result = None
         if docs and not include_uncommitted:  # documentation always reflects a commit
             docs_result = DocGenerator(project, ai).sync(on_progress=on_docs_progress, full=full)
     return SyncResult(index=index_result, docs=docs_result, pulled=pulled, generated_purged=purged)
 
 
-def generate_docs(project_id: str, *, full: bool = False, on_progress: ProgressCallback = None) -> dict:
+def generate_docs(project_id: str, *, full: bool = False, on_progress: ProgressCallback = None) -> DocSyncResult:
     project = get_project(project_id)
     ai = load_config().ai_provider
     with project_lock(Path(project.chroma_dir).parent):

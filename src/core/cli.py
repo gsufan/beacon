@@ -242,12 +242,12 @@ def cmd_sync(
     result = _run_safely(_do_sync, repo_path=project.repo_path)
     if result.pulled:
         console.print(tr("[dim]Cambios del remoto traídos con git pull.[/dim]", "[dim]Remote changes pulled with git pull.[/dim]"))
-    console.print(f"[green]OK[/green] {result.index}")
+    console.print(f"[green]OK[/green] {result.index.to_dict()}")
     if result.generated_purged:
         console.print(tr(f"[green]Purgados {result.generated_purged} chunks de código generado/vendor.[/green]",
                          f"[green]Purged {result.generated_purged} chunks of generated/vendor code.[/green]"))
     if result.docs is not None:
-        console.print(tr("[green]Documentación:[/green] ", "[green]Documentation:[/green] ") + f"{result.docs}")
+        console.print(tr("[green]Documentación:[/green] ", "[green]Documentation:[/green] ") + f"{result.docs.to_dict()}")
 
 
 @app.command("docs", help=tr("Genera/actualiza documentación .md incremental para un proyecto (requiere 'sync' al día).",
@@ -267,7 +267,7 @@ def cmd_docs(
             return services.generate_docs(project_id, full=full, on_progress=_progress_callback(progress, task))
 
     result = _run_safely(_do_docs, repo_path=project.repo_path)
-    console.print(f"[green]OK[/green] {result}")
+    console.print(f"[green]OK[/green] {result.to_dict()}")
 
 
 @app.command("ask", help=tr("Consulta en lenguaje natural sobre un proyecto ya indexado.",
@@ -411,14 +411,14 @@ def cmd_status(project_id: str):
 
     never = tr("nunca", "never")
     yes, no = tr("sí", "yes"), tr("no", "no")
-    current_commit = index_stats["commit_actual"][:8]
-    last_indexed = (index_stats["ultimo_commit_indexado"] or never)[:8]
-    last_documented = (doc_stats["ultimo_commit_documentado"] or never)[:8]
+    current_commit = index_stats.current_commit[:8]
+    last_indexed = (index_stats.last_indexed_commit or never)[:8]
+    last_documented = (doc_stats.last_documented_commit or never)[:8]
 
     table = Table(title=tr(f"Estado — {project.name}", f"Status — {project.name}"))
     table.add_column("")
     table.add_column(tr("valor", "value"))
-    table.add_row(tr("Chunks indexados", "Indexed chunks"), str(index_stats["total_chunks"]))
+    table.add_row(tr("Chunks indexados", "Indexed chunks"), str(index_stats.total_chunks))
     table.add_row(tr("Commit actual del repo", "Current repo commit"), current_commit)
     table.add_row(tr("Último commit indexado", "Last indexed commit"), last_indexed)
     table.add_row(tr("Índice al día", "Index up to date"),

@@ -54,7 +54,7 @@ def test_full_rebuild_recreates_the_collection_instead_of_deleting_one_by_one(tm
     result = idx.sync(full=True)
     # New collection: the HNSW graph starts with no elements marked as deleted.
     assert idx.collection.id != first_id
-    assert result["chunks_purgados"] == result["chunks_insertados"] == idx.collection.count() > 0
+    assert result.chunks_purged == result.chunks_inserted == idx.collection.count() > 0
 
 
 def test_orphan_segment_folders_are_removed_and_live_ones_kept(tmp_path):
