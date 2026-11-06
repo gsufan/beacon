@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from typer.testing import CliRunner  # noqa: E402
 
 import core.cli as cli_module  # noqa: E402
+import core.portability as portability  # noqa: E402
 from core.config import AppConfig, AIProviderConfig, ProjectEntry  # noqa: E402
 
 runner = CliRunner()
@@ -25,15 +26,15 @@ def _fake_entry(project_id="demo-export"):
 
 
 def test_export_missing_project_in_config_fails(monkeypatch, tmp_path):
-    monkeypatch.setattr(cli_module, "load_config", lambda: AppConfig(ai_provider=FAKE_AI_CONFIG, projects=[]))
+    monkeypatch.setattr(portability, "load_config", lambda: AppConfig(ai_provider=FAKE_AI_CONFIG, projects=[]))
     result = runner.invoke(cli_module.app, ["export", "no-such-project"])
     assert result.exit_code == 1
 
 
 def test_export_missing_data_dir_fails(monkeypatch, tmp_path):
     entry = _fake_entry()
-    monkeypatch.setattr(cli_module, "load_config", lambda: AppConfig(ai_provider=FAKE_AI_CONFIG, projects=[entry]))
-    monkeypatch.setattr(cli_module, "DATA_ROOT", tmp_path / "data")  # does not exist
+    monkeypatch.setattr(portability, "load_config", lambda: AppConfig(ai_provider=FAKE_AI_CONFIG, projects=[entry]))
+    monkeypatch.setattr(portability, "DATA_ROOT", tmp_path / "data")  # does not exist
     result = runner.invoke(cli_module.app, ["export", entry.id])
     assert result.exit_code == 1
 
@@ -47,8 +48,8 @@ def test_export_then_import_round_trip(monkeypatch, tmp_path):
     (data_root / entry.id / "docs").mkdir(parents=True)
     (data_root / entry.id / "docs" / "a.py.md").write_text("# doc de prueba")
 
-    monkeypatch.setattr(cli_module, "load_config", lambda: AppConfig(ai_provider=FAKE_AI_CONFIG, projects=[entry]))
-    monkeypatch.setattr(cli_module, "DATA_ROOT", data_root)
+    monkeypatch.setattr(portability, "load_config", lambda: AppConfig(ai_provider=FAKE_AI_CONFIG, projects=[entry]))
+    monkeypatch.setattr(portability, "DATA_ROOT", data_root)
 
     output_zip = tmp_path / "export.zip"
     result = runner.invoke(cli_module.app, ["export", entry.id, "--output", str(output_zip)])
@@ -61,7 +62,9 @@ def test_export_then_import_round_trip(monkeypatch, tmp_path):
         assert "data/chroma_db/fake_index_file.bin" in zf.namelist()
 
     new_data_root = tmp_path / "data-imported"
-    monkeypatch.setattr(cli_module, "DATA_ROOT", new_data_root)
+    monkeypatch.setattr(portability, "DATA_ROOT", new_data_root)
+    # another machine, where the project is not registered yet
+    monkeypatch.setattr(portability, "load_config", lambda: AppConfig(ai_provider=FAKE_AI_CONFIG, projects=[]))
 
     added = {}
 
@@ -69,7 +72,7 @@ def test_export_then_import_round_trip(monkeypatch, tmp_path):
         added["entry"] = entry_obj
         return entry_obj
 
-    monkeypatch.setattr(cli_module, "add_project", fake_add_project)
+    monkeypatch.setattr(portability, "add_project", fake_add_project)
 
     result = runner.invoke(cli_module.app, ["import", str(output_zip)])
     assert result.exit_code == 0, result.output
@@ -89,9 +92,22 @@ def test_import_rejects_zip_slip(monkeypatch, tmp_path):
         zf.writestr("data/../../../escaped.txt", "no deberia terminar aca afuera")
 
     new_data_root = tmp_path / "data-evil"
-    monkeypatch.setattr(cli_module, "DATA_ROOT", new_data_root)
-    monkeypatch.setattr(cli_module, "add_project", lambda entry_obj: entry_obj)
+    monkeypatch.setattr(portability, "DATA_ROOT", new_data_root)
+    monkeypatch.setattr(portability, "add_project", lambda entry_obj: entry_obj)
 
     runner.invoke(cli_module.app, ["import", str(evil_zip)])
 
     assert not (tmp_path / "escaped.txt").exists()
+
+
+def test_import_of_registered_id_touches_nothing(monkeypatch, tmp_path):
+    archive = tmp_path / "p.zip"
+    with zipfile.ZipFile(archive, "w") as zf:
+        zf.writestr("manifest.json", json.dumps({"id": "demo-export", "name": "d", "repo_path": "."}))
+        zf.writestr("data/docs/a.md", "# a")
+    monkeypatch.setattr(portability, "load_config", lambda: AppConfig(ai_provider=FAKE_AI_CONFIG, projects=[_fake_entry()]))
+    monkeypatch.setattr(portability, "DATA_ROOT", tmp_path / "data")
+
+    result = runner.invoke(cli_module.app, ["import", str(archive)])
+    assert result.exit_code == 1
+    assert not (tmp_path / "data").exists()

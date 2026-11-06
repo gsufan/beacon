@@ -18,10 +18,8 @@ Usage:
     beacon study                           # study mode (see docs/en/study-mode.md)
 """
 
-import json
 import logging
 import sys
-import zipfile
 from contextlib import nullcontext
 from pathlib import Path
 from typing import Optional
@@ -38,13 +36,10 @@ from core.engine.backends import BackendAuthError, BackendError, BackendUnavaila
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
-    ProjectEntry,
-    add_project,
     default_ai_provider,
     set_auto_watch,
     update_project,
     load_config,
-    validate_project_id,
 )
 from core.projects import (
     DATA_ROOT,
@@ -53,10 +48,9 @@ from core.projects import (
     get_project,
     ProjectNotFoundError,
 )
-from core.project_lock import LOCK_FILENAME, ProjectBusyError
-from core.engine.chroma_utils import bump_index_version
+from core.project_lock import ProjectBusyError
 from core.fs import remove_tree
-from core import services
+from core import portability, services
 from core.engine.indexer import CodebaseIndexer, IndexModelMismatchError
 from core.engine.doc_generator import DocGenerator, IndexOutOfDateError
 from core.engine.rag_engine import RAGEngine
@@ -299,30 +293,9 @@ def cmd_ask(project_id: str, question: str, top_k: int = 5):
                                "Pack a project's index (ChromaDB) and documentation into a portable .zip. "
                                "Useful to take an already indexed project to another machine without reindexing."))
 def cmd_export(project_id: str, output: str = typer.Option(None, "--output", "-o")):
-    entry = load_config().find_project(project_id)
-    if entry is None:
-        console.print(tr(f"[red]Proyecto '{project_id}' no encontrado en config.yaml.[/red]",
-                         f"[red]Project '{project_id}' not found in config.yaml.[/red]"))
-        raise typer.Exit(code=1)
-
-    project_dir = DATA_ROOT / project_id
-    if not project_dir.exists():
-        console.print(tr(f"[red]No hay datos indexados para '{project_id}' todavía — corre 'beacon sync {project_id}' primero.[/red]",
-                         f"[red]There is no indexed data for '{project_id}' yet — run 'beacon sync {project_id}' first.[/red]"))
-        raise typer.Exit(code=1)
-
     output_path = Path(output) if output else Path(f"{project_id}.beacon.zip")
-    manifest = {
-        "id": entry.id, "name": entry.name, "repo_path": entry.repo_path,
-        "source_type": entry.source_type, "repo_url": entry.repo_url,
-    }
     with console.status(tr(f"Empaquetando {project_id}...", f"Packing {project_id}...")):
-        with zipfile.ZipFile(output_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            zf.writestr("manifest.json", json.dumps(manifest, indent=2, ensure_ascii=False))
-            for file in project_dir.rglob("*"):
-                if file.is_file() and file.name != LOCK_FILENAME:
-                    zf.write(file, arcname=str(Path("data") / file.relative_to(project_dir)))
-
+        _run_safely(lambda: portability.export_project(project_id, output_path))
     size_mb = output_path.stat().st_size / 1_048_576
     console.print(tr(f"[green]OK[/green] Exportado a {output_path} ({size_mb:.1f} MB)",
                      f"[green]OK[/green] Exported to {output_path} ({size_mb:.1f} MB)"))
@@ -337,55 +310,12 @@ def cmd_import(
     repo_path: str = typer.Option(None, "--repo-path", help=tr("Sobreescribe repo_path (útil si cambió de máquina).",
                                                                 "Override repo_path (useful if you changed machines).")),
 ):
-    zpath = Path(zip_path)
-    if not zpath.exists():
-        console.print(tr(f"[red]No existe el archivo '{zip_path}'.[/red]", f"[red]The file '{zip_path}' does not exist.[/red]"))
-        raise typer.Exit(code=1)
-
-    with zipfile.ZipFile(zpath) as zf:
-        try:
-            manifest = json.loads(zf.read("manifest.json"))
-        except KeyError:
-            console.print(tr("[red]El .zip no tiene manifest.json — ¿fue generado con 'beacon export'?[/red]",
-                             "[red]The .zip has no manifest.json — was it created with 'beacon export'?[/red]"))
-            raise typer.Exit(code=1)
-
-        target_id = project_id or manifest["id"]
-        # The id comes from the .zip manifest: validate it before touching the disk.
-        _validate_id_or_exit(target_id)
-        target_dir = (DATA_ROOT / target_id).resolve()
-        if target_dir.exists():
-            console.print(tr(f"[red]Ya existe data/{target_id}/ — usa --id para elegir otro nombre, o borra esa carpeta primero.[/red]",
-                             f"[red]data/{target_id}/ already exists — use --id to pick another name, or delete that folder first.[/red]"))
-            raise typer.Exit(code=1)
-
-        target_dir.mkdir(parents=True, exist_ok=True)
-        with console.status(tr(f"Extrayendo a data/{target_id}/...", f"Extracting to data/{target_id}/...")):
-            for member in zf.namelist():
-                if member == "manifest.json" or not member.startswith("data/"):
-                    continue
-                dest = (target_dir / Path(member).relative_to("data")).resolve()
-                if not dest.is_relative_to(target_dir):
-                    continue  # entry that escapes target_dir
-                dest.parent.mkdir(parents=True, exist_ok=True)
-                with zf.open(member) as src, open(dest, "wb") as out:
-                    out.write(src.read())
-        bump_index_version(target_dir)  # a running server must not use previous data of this id
-
-    final_repo_path = repo_path or manifest["repo_path"]
-    try:
-        add_project(ProjectEntry(
-            id=target_id, name=manifest["name"], repo_path=final_repo_path,
-            source_type=manifest.get("source_type", "local"), repo_url=manifest.get("repo_url"),
-        ))
-    except ProjectAlreadyExistsError as e:
-        console.print(f"[red]{e}[/red] " + tr(f"[dim](los datos ya se copiaron a data/{target_id}/, pero no se registró en config.yaml)[/dim]",
-                                              f"[dim](the data was already copied to data/{target_id}/, but it was not registered in config.yaml)[/dim]"))
-        raise typer.Exit(code=1)
-
+    with console.status(tr("Importando...", "Importing...")):
+        result = _run_safely(lambda: portability.import_project(Path(zip_path), project_id=project_id, repo_path=repo_path))
+    target_id, final_repo_path = result.entry.id, result.entry.repo_path
     console.print(tr(f"[green]OK[/green] Importado como '{target_id}'. Prueba: beacon ask {target_id} \"...\"",
                      f"[green]OK[/green] Imported as '{target_id}'. Try: beacon ask {target_id} \"...\""))
-    if not Path(final_repo_path).exists():
+    if not result.repo_path_exists:
         console.print(tr(
             f"[yellow]![/yellow] 'repo_path' ({final_repo_path}) no existe en esta máquina — "
             "las consultas sobre lo ya indexado funcionan igual, pero 'sync'/'docs' incrementales "
@@ -684,14 +614,6 @@ def cmd_study(
         else:
             console.print(tr("[dim]Sesión conservada: la próxima vez continúa donde quedó (o usa --new para empezar de cero).[/dim]",
                              "[dim]Session kept: next time it continues where it left off (or use --new to start over).[/dim]"))
-
-
-def _validate_id_or_exit(project_id: str):
-    try:
-        validate_project_id(project_id)
-    except InvalidProjectIdError as e:
-        console.print(f"[red]{e}[/red]")
-        raise typer.Exit(code=1)
 
 
 def _resolve_or_exit(project_id: str):

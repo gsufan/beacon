@@ -14,6 +14,7 @@ from typer.testing import CliRunner  # noqa: E402
 
 import core.api as api  # noqa: E402
 import core.cli as cli_module  # noqa: E402
+import core.portability as portability  # noqa: E402
 import core.services as services  # noqa: E402
 from core.config import AIProviderConfig, AppConfig, ProjectEntry  # noqa: E402
 from core.engine.indexer import IndexSyncResult  # noqa: E402
@@ -175,8 +176,8 @@ def test_export_skips_lock_file(monkeypatch, tmp_path):
     (project_dir / "docs").mkdir(parents=True)
     (project_dir / "docs" / "a.md").write_text("# a")
     (project_dir / LOCK_FILENAME).write_text("")
-    monkeypatch.setattr(cli_module, "DATA_ROOT", tmp_path)
-    monkeypatch.setattr(cli_module, "load_config", lambda: AppConfig(
+    monkeypatch.setattr(portability, "DATA_ROOT", tmp_path)
+    monkeypatch.setattr(portability, "load_config", lambda: AppConfig(
         ai_provider=AI, projects=[ProjectEntry(id="demo", name="d", repo_path=".")]))
     out = tmp_path / "demo.zip"
     result = CliRunner().invoke(cli_module.app, ["export", "demo", "-o", str(out)])
