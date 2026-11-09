@@ -29,6 +29,7 @@ from core.engine.backends import (
 from core.engine.chroma_utils import read_index_version
 from core.engine.indexer import IndexModelMismatchError
 from core.engine.rag_engine import RAGEngine
+from core.monitor import ModelMonitor
 from core.project_lock import ProjectBusyError
 from core.projects import InvalidRepoUrlError, ProjectNotFoundError, get_project, list_projects
 from core.version import VERSION
@@ -36,6 +37,9 @@ from core.version import VERSION
 logger = logging.getLogger("beacon.api")
 
 AUTO_WATCH_INTERVAL_SECONDS = 300
+# Synthetic check of the model server (core/monitor.py); 0 disables it. Off in study mode, where it would add load
+# in the middle of a timed question.
+MONITOR_INTERVAL_SECONDS = float(os.environ.get("BEACON_MONITOR_SECONDS", "300"))
 
 _shutdown_hooks: list = []
 
@@ -44,6 +48,8 @@ _shutdown_hooks: list = []
 async def _lifespan(_app):
     stop = threading.Event()
     threading.Thread(target=_auto_watch_loop, args=(stop,), daemon=True, name="beacon-auto-watch").start()
+    if MONITOR_INTERVAL_SECONDS > 0 and os.environ.get("BEACON_STUDY") != "1":
+        threading.Thread(target=_monitor.run, args=(stop, MONITOR_INTERVAL_SECONDS), daemon=True, name="beacon-monitor").start()
     yield
     stop.set()
     for hook in _shutdown_hooks:  # stop whatever is in progress (e.g. a model answer)
@@ -163,6 +169,7 @@ class EngineCache:
 
 
 _engines = EngineCache()
+_monitor = ModelMonitor(lambda: load_config().ai_provider)
 
 
 def _get_engine(project_id: str) -> RAGEngine:
@@ -296,6 +303,12 @@ def put_ai_provider(body: AIProviderUpdate):
     )
     _engines.clear()
     return updated.__dict__
+
+
+@app.get("/system/monitor")
+def system_monitor():
+    """Result of the periodic check of the model server: whether it answered the last time, since when it fails and the history."""
+    return _monitor.state()
 
 
 @app.get("/system/providers")

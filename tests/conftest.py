@@ -16,3 +16,4 @@ shutil.copyfile(_ROOT / "config" / "config.example.yaml", _TMP / "config.yaml")
 
 os.environ["DEUDA_TECNICA_CONFIG"] = str(_TMP / "config.yaml")
 os.environ["DEUDA_TECNICA_CREDENTIALS"] = str(_TMP / "credentials.yaml")
+os.environ["BEACON_MONITOR_SECONDS"] = "0"  # no periodic calls to a real model server from the tests

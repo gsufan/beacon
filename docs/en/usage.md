@@ -124,6 +124,10 @@ Edge cases to keep in mind:
   prevents them from writing at the same time, but there would be redundant
   checks, so that configuration is not recommended.
 
+## Model server monitoring
+
+While `beacon serve` is running, every 5 minutes it checks that the model server answers and can run both models (a short embedding and a one-token answer). An outage is detected even when nobody is asking: the server log records when it fails and when it recovers, and the state is available at `GET /system/monitor` (last result, since when it fails and the last 50 checks). `/healthz`, instead, only says that the Beacon process is alive. The interval is set with the `BEACON_MONITOR_SECONDS` variable (0 disables it); it does not run in study mode.
+
 ## Exporting/importing projects
 
 To take an already indexed project to another machine (useful for a demo or a defense, without depending on reindexing live or on Ollama being fast that day):

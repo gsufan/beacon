@@ -124,6 +124,10 @@ Casos límite a tener en cuenta:
   escriban a la vez, pero se harían revisiones redundantes, así que esa
   configuración no se recomienda.
 
+## Monitoreo del servidor de modelos
+
+Mientras `beacon serve` está activo, cada 5 minutos comprueba que el servidor de modelos responda y que pueda ejecutar los dos modelos (un embedding corto y una respuesta de un token). Así una caída se detecta aunque nadie esté consultando: queda en el log del servidor cuando falla y cuando se recupera, y el estado se consulta en `GET /system/monitor` (último resultado, desde cuándo falla y las últimas 50 comprobaciones). `/healthz`, en cambio, solo indica que el proceso de Beacon está vivo. El intervalo se cambia con la variable `BEACON_MONITOR_SECONDS` (0 lo desactiva); en el modo estudio no corre.
+
 ## Exportar/importar proyectos
 
 Para llevar un proyecto ya indexado a otra máquina (útil para una demo o defensa, sin depender de reindexar en vivo ni de que Ollama responda rápido ese día):
