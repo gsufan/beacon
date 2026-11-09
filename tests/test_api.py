@@ -233,6 +233,29 @@ def test_api_key_accepts_correct_header(monkeypatch):
     assert resp.status_code == 200
 
 
+def test_read_key_can_read_and_ask_but_not_modify(monkeypatch):
+    monkeypatch.setattr(api, "API_KEY", "admin")
+    monkeypatch.setattr(api, "READ_KEY", "consulta")
+    read = {"X-API-Key": "consulta"}
+    assert client.get("/projects", headers=read).status_code == 200
+    assert client.get("/system/ai-status", headers=read).status_code == 200
+    for method, path in (("delete", "/projects/demo"), ("put", "/config/ai-provider"), ("post", "/projects/demo/sync"),
+                         ("post", "/projects"), ("get", "/system/browse-dirs"), ("get", "/system/available-models")):
+        resp = getattr(client, method)(path, headers=read)
+        assert resp.status_code == 403, (method, path, resp.status_code)
+    assert client.delete("/projects/no-existe", headers={"X-API-Key": "admin"}).status_code == 404  # the full key passes
+    assert client.delete("/projects/demo", headers={"X-API-Key": "otra"}).status_code == 401
+
+
+def test_read_key_may_ask_questions(monkeypatch):
+    from core.engine.rag_engine import RAGResponse
+    monkeypatch.setattr(api, "API_KEY", "admin")
+    monkeypatch.setattr(api, "READ_KEY", "consulta")
+    monkeypatch.setattr(api, "_get_engine", lambda project_id: _FakeEngine(lambda question, top_k, language: RAGResponse("ok", [])))
+    resp = client.post("/projects/demo/query", json={"question": "que hace este repo?"}, headers={"X-API-Key": "consulta"})
+    assert resp.status_code == 200
+
+
 def test_api_key_does_not_protect_healthz(monkeypatch):
     monkeypatch.setattr(api, "API_KEY", "secreto123")
     resp = client.get("/healthz")

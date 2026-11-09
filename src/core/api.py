@@ -1,7 +1,9 @@
 """Beacon REST API. It also serves the compiled web interface (frontend/dist)."""
 
+import hmac
 import logging
 import os
+import re
 import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -58,17 +60,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Optional API key: with BEACON_API_KEY set, data and configuration endpoints require the X-API-Key
-# header (not the interface or /healthz). Without it, the API is open.
+# Optional keys, sent in the X-API-Key header (the interface and /healthz stay open). BEACON_API_KEY gives full access;
+# BEACON_READ_KEY only reads and asks questions, so a person who only consults cannot delete a project or change the
+# model server. With neither set, the API is open.
 API_KEY = os.environ.get("BEACON_API_KEY")
+READ_KEY = os.environ.get("BEACON_READ_KEY")
 _PROTECTED_PREFIXES = ("/projects", "/config", "/system")
+# Reads that the consultation key may not do: browsing the server's folders and making it query other hosts.
+_ADMIN_READS = ("/system/browse-dirs", "/system/available-models")
+_QUERY_PATH = re.compile(r"^/projects/[^/]+/query$")
+
+
+def _same(given: str, expected: Optional[str]) -> bool:
+    return bool(expected) and hmac.compare_digest(given.encode(), expected.encode())
+
+
+def _read_only_allowed(request: Request) -> bool:
+    path = request.url.path
+    if request.method in ("GET", "HEAD"):
+        return not path.startswith(_ADMIN_READS)
+    return request.method == "POST" and bool(_QUERY_PATH.match(path))
 
 
 @app.middleware("http")
 async def api_key_middleware(request: Request, call_next):
-    if API_KEY and request.url.path.startswith(_PROTECTED_PREFIXES):
-        if request.headers.get("x-api-key") != API_KEY:
-            return JSONResponse({"detail": "Falta o es inválido el header X-API-Key."}, status_code=401)
+    if (API_KEY or READ_KEY) and request.url.path.startswith(_PROTECTED_PREFIXES):
+        given = request.headers.get("x-api-key", "")
+        if _same(given, API_KEY):
+            return await call_next(request)
+        if _same(given, READ_KEY):
+            if _read_only_allowed(request):
+                return await call_next(request)
+            return JSONResponse({"detail": "La clave de consulta no permite modificar proyectos ni la configuración."}, status_code=403)
+        return JSONResponse({"detail": "Falta o es inválido el header X-API-Key."}, status_code=401)
     return await call_next(request)
 
 

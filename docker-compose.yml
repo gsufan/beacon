@@ -31,6 +31,7 @@ services:
       # Optional: protects the API with the X-API-Key header (see docs/en/security.md). If enabled, enter the
       # same key in Settings > Security in the interface.
       - BEACON_API_KEY=${BEACON_API_KEY:-}
+      - BEACON_READ_KEY=${BEACON_READ_KEY:-}
     depends_on:
       ollama:
         condition: service_healthy

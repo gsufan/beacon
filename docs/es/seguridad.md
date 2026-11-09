@@ -23,3 +23,15 @@ docker compose up -d
 ```
 
 Con la variable seteada, todos los endpoints de datos/configuración exigen el header `X-API-Key`. La UI web te deja ingresar la misma clave en **Configuración > Seguridad** (se guarda solo en tu navegador, vía `localStorage`). Sin la variable seteada (default), la API queda abierta como hasta ahora.
+
+### Clave de solo consulta
+
+Quien tiene `BEACON_API_KEY` puede hacer todo: registrar y eliminar proyectos, sincronizarlos y cambiar el servidor de modelos. Para las personas que solo consultan, define además `BEACON_READ_KEY` y entrégales esa clave:
+
+```bash
+BEACON_API_KEY=clave-admin BEACON_READ_KEY=clave-consulta beacon serve
+```
+
+Con la clave de consulta se puede leer (proyectos, documentación, estado) y hacer preguntas (`POST /projects/{id}/query`); cualquier cambio responde 403. Tampoco permite explorar las carpetas del servidor ni consultar otros hosts (`/system/browse-dirs`, `/system/available-models`). Si solo defines `BEACON_READ_KEY`, los cambios quedan disponibles únicamente desde la consola del servidor (`beacon add`, `beacon sync`, etc.).
+
+Las claves viajan en un header: si la API se usa fuera del propio equipo, ponla detrás de un proxy inverso con HTTPS (por ejemplo Caddy o nginx), porque Beacon no incluye TLS.
