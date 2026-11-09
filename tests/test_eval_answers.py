@@ -48,3 +48,9 @@ def test_flags_identifiers_that_are_not_in_the_context():
 def test_detects_language():
     assert eval_answers.is_spanish("La función cambia el método de la petición a GET.")
     assert not eval_answers.is_spanish("The function changes the method of the request to GET.")
+
+
+def test_percentile_is_nearest_rank():
+    assert eval_answers.percentile(list(range(1, 21)), 90) == 18
+    assert eval_answers.percentile([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 90) == 9
+    assert eval_answers.percentile([7.5], 90) == 7.5

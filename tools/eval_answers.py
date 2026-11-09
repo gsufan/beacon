@@ -16,10 +16,13 @@ measurement can be repeated and compared:
   - Language: the answer is in Spanish.
   - Prompt size: the maximum tokens Ollama reports having processed, to confirm everything fits in the
     8,192 window (llm.chat also warns in the log if it were truncated).
-  - Latency of the full answer.
+  - Latency of the full answer (mean and 90th percentile).
+
+With --sources the JSON also keeps the chunks given to the model for each answer, so human reviewers can judge
+whether every statement is supported by them (faithfulness).
 
 Usage:
-  python tools/eval_answers.py <project_id> eval/answers-requests.yaml [--json output.json]
+  python tools/eval_answers.py <project_id> eval/answers-requests.yaml [--json output.json] [--sources]
 """
 
 import argparse
@@ -90,7 +93,13 @@ def grade(item: dict, answer: str, sources) -> dict:
     return row
 
 
-def evaluate(project_id: str, questions: list) -> dict:
+def percentile(values, q: float) -> float:
+    """Nearest-rank percentile: the smallest value with at least q % of the sample at or below it."""
+    ordered = sorted(values)
+    return ordered[max(0, -(-len(ordered) * q // 100) - 1)]
+
+
+def evaluate(project_id: str, questions: list, keep_sources: bool = False) -> dict:
     engine = RAGEngine(get_project(project_id), load_config().ai_provider)
     rows = []
     for i, item in enumerate(questions, 1):
@@ -102,6 +111,8 @@ def evaluate(project_id: str, questions: list) -> dict:
         row.update({"answer": response.answer, "latency_s": round(latency, 1),
                     "prompt_tokens": response.prompt_tokens, "answer_tokens": response.answer_tokens,
                     "sources": len(response.sources)})
+        if keep_sources:
+            row["sources_detail"] = response.to_dict()["sources"]
         rows.append(row)
 
     answerable = [r for r in rows if r["answerable"]]
@@ -119,6 +130,7 @@ def evaluate(project_id: str, questions: list) -> dict:
         "sin_identificadores_dudosos": pct(sum(not r["ungrounded"] for r in rows), len(rows)),
         "en_espanol": pct(sum(r["spanish"] for r in rows), len(rows)),
         "latencia_media_s": round(statistics.mean(r["latency_s"] for r in rows), 1),
+        "latencia_p90_s": percentile([r["latency_s"] for r in rows], 90),
         "tokens_prompt_max": max(r["prompt_tokens"] for r in rows),
         "respondibles": len(answerable),
         "no_respondibles": len(unanswerable),
@@ -131,10 +143,11 @@ def main():
     parser.add_argument("project_id")
     parser.add_argument("dataset")
     parser.add_argument("--json", help="Guarda el detalle (incluidas las respuestas) en este archivo.")
+    parser.add_argument("--sources", action="store_true", help="Guarda también en el JSON los fragmentos que recibió el modelo.")
     args = parser.parse_args()
 
     questions = yaml.safe_load(Path(args.dataset).read_text(encoding="utf-8"))["questions"]
-    result = evaluate(args.project_id, questions)
+    result = evaluate(args.project_id, questions, keep_sources=args.sources)
 
     for r in result["rows"]:
         if r["answerable"]:
@@ -157,7 +170,7 @@ def main():
           f"ambos {s['contenido_y_cita']}%, falso rechazo {s['falso_rechazo']}%")
     print(f"No respondibles ({s['no_respondibles']}): rechazo correcto {s['rechazo_correcto']}%")
     print(f"Todas: sin identificadores dudosos {s['sin_identificadores_dudosos']}%, en español {s['en_espanol']}%, "
-          f"latencia media {s['latencia_media_s']}s, prompt máximo {s['tokens_prompt_max']} tokens")
+          f"latencia media {s['latencia_media_s']}s, p90 {s['latencia_p90_s']}s, prompt máximo {s['tokens_prompt_max']} tokens")
     if args.json:
         Path(args.json).write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
 

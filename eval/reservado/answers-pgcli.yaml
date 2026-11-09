@@ -1,0 +1,72 @@
+# RESERVED evaluation set on dbcli/pgcli (BSD-3-Clause), commit dc9ce9447e0fc005a347b75b7eb5d541e282b1c1 (2026-11-04).
+#
+# Created on 2026-11-08 for the final measurement of the KPIs (faithfulness and response time). Neither this repository nor
+# these questions were used to choose models or to accept changes to the search or the prompts: they are measured once,
+# on the final version, so the result shows whether the quality holds on code and questions that took no part in the
+# development decisions. Do not use this file to tune Beacon; if it is used for that, it stops being a reserved set.
+#
+# Same format as eval/answers-requests.yaml (tools/eval_answers.py):
+#   must:  groups of terms the answer must mention (each group lists alternatives; one is enough)
+#   cites: file the answer must cite
+#   answerable: false -> nothing in the repository answers it; the correct answer says so
+# The human review of faithfulness (two reviewers) uses the same answers; the automatic criteria are a complement.
+#
+# Usage: python tools/eval_answers.py kpi-pgcli eval/reservado/answers-pgcli.yaml --json out.json --sources
+
+questions:
+  - q: "¿Qué indica el símbolo que se muestra para el estado de la transacción y qué valores puede tomar?"
+    must: [["transaction_indicator"], ["?"], ["!"], ["*"]]
+    cites: "pgexecute.py"
+  - q: "¿Cómo se acorta el nombre del host que se muestra en el prompt?"
+    must: [["short_host"], ["ip_address", "dirección IP"], ["partition", "primer"]]
+    cites: "pgexecute.py"
+  - q: "¿Por qué las fechas y los timestamps se cargan como texto en vez de convertirse a objetos de Python?"
+    must: [["register_typecasters"], ["fuera de rango", "out-of-range", "BC"], ["TextLoader", "texto"]]
+    cites: "pgexecute.py"
+  - q: "¿Cómo se quitan los comentarios que aparecen al principio de un comando SQL?"
+    must: [["remove_beginning_comments"], ["--", "/*"], ["sqlparse"]]
+    cites: "pgexecute.py"
+  - q: "¿Qué prefijo se antepone a una consulta cuando está activo el modo explain?"
+    must: [["explain_prefix", "EXPLAIN"], ["ANALYZE"], ["FORMAT JSON", "JSON"]]
+    cites: "pgexecute.py"
+  - q: "¿Cómo se refrescan las sugerencias de autocompletado sin bloquear la consola?"
+    must: [["CompletionRefresher", "_bg_refresh"], ["thread", "hilo", "segundo plano"]]
+    cites: "completion_refresher.py"
+  - q: "¿Qué pasa si se pide refrescar el autocompletado mientras ya hay un refresco en curso?"
+    must: [["_restart_refresh", "restart", "reinicia", "reiniciar"]]
+    cites: "completion_refresher.py"
+  - q: "¿Qué hacen las teclas F2, F3, F4 y F5?"
+    must: [["smart_completion", "Smart Completion", "autocompletado inteligente"], ["multi_line", "multilínea", "Multiline"], ["Vi", "Emacs"], ["explain"]]
+    cites: "key_bindings.py"
+  - q: "¿Qué comandos se consideran destructivos y piden confirmación antes de ejecutarse?"
+    must: [["drop"], ["delete"], ["truncate"], ["alter"], ["is_destructive", "confirm_destructive_query"]]
+    cites: "parseutils"
+  - q: "¿Cómo se detecta un UPDATE sin cláusula WHERE?"
+    must: [["query_is_unconditional_update"], ["WHERE"], ["sqlparse"]]
+    cites: "parseutils"
+  - q: "¿Cuándo se ejecuta la consulta al presionar Enter en modo multilínea?"
+    must: [["buffer_should_be_handled", "_is_complete"], ["safe"], [";", "punto y coma"]]
+    cites: "pgbuffer.py"
+  - q: "¿Dónde se guarda el archivo de configuración de pgcli en cada sistema operativo?"
+    must: [["config_location"], ["XDG_CONFIG_HOME"], ["Windows", "USERPROFILE"], ["~/.config/pgcli", ".config"]]
+    cites: "config.py"
+  - q: "¿Cómo se obtiene y se guarda la contraseña usando el llavero del sistema?"
+    must: [["keyring_get_password", "keyring_set_password", "keyring"], ["pgcli"]]
+    cites: "auth.py"
+  - q: "¿En qué orden de prioridad se elige el tiempo máximo de espera de la conexión?"
+    must: [["get_connect_timeout"], ["--timeout", "explicit"], ["PGCONNECT_TIMEOUT"], ["connect_timeout"]]
+    cites: "main.py"
+  - q: "¿Cuándo se limita la cantidad de filas que muestra una consulta?"
+    must: [["_should_limit_output", "row_limit"], ["LIMIT"], ["explain", "select"]]
+    cites: "main.py"
+  - q: "¿Cómo se oculta la contraseña en el título del proceso?"
+    must: [["obfuscate_process_password"], ["xxxx"], ["setproctitle"]]
+    cites: "main.py"
+  - q: "¿Qué datos de uso envía pgcli a un servicio de telemetría y cada cuánto lo hace?"
+    answerable: false
+  - q: "¿Cómo cifra pgcli el archivo de historial de consultas?"
+    answerable: false
+  - q: "¿Cómo configura pgcli la replicación de la base de datos hacia un servidor secundario?"
+    answerable: false
+  - q: "¿Cómo se conecta pgcli a una base de datos Oracle?"
+    answerable: false
