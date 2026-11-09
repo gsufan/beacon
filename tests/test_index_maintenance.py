@@ -201,3 +201,33 @@ def test_purge_of_data_in_use_changes_nothing(monkeypatch, tmp_path):
         services.unregister_project("demo", purge_data=True)
     assert removed == []  # still registered
     assert (project_dir / "chroma_db").exists()  # and with its data
+
+
+def test_a_failed_incremental_sync_leaves_the_index_untouched(tmp_path):
+    """No query may see chunks of two commits: if embedding fails, nothing of the previous index is deleted."""
+    ctx = _project(tmp_path)
+    idx = _indexer(ctx)
+    idx.sync()
+    before = sorted(idx.collection.get()["ids"])
+    indexed_commit = idx.control.last_indexed_commit()
+    repo = git.Repo(ctx.repo_path)
+    repo_dir = Path(ctx.repo_path)
+    (repo_dir / "a.py").write_text("def a():\n    return 10\n\n\ndef added_later():\n    return 42\n")
+    (repo_dir / "c.py").write_text("def c():\n    return 3\n")
+    repo.index.add(["a.py", "c.py"])
+    repo.index.commit("two files change")
+
+    calls = {"n": 0}
+
+    def fail_on_second_file(i, total, fp):
+        calls["n"] += 1
+        if calls["n"] == 2:
+            raise RuntimeError("el servidor de modelos se cayó a mitad del sync")
+
+    with pytest.raises(RuntimeError):
+        _indexer(ctx).sync(on_progress=fail_on_second_file)
+    fresh = _indexer(ctx)
+    assert sorted(fresh.collection.get()["ids"]) == before
+    assert fresh.control.last_indexed_commit() == indexed_commit
+    fresh.sync()  # the next sync applies both files
+    assert any("added_later" in d for d in fresh.collection.get()["documents"])

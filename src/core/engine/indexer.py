@@ -161,33 +161,28 @@ class CodebaseIndexer:
             self.collection.delete(ids=existing["ids"])
         return len(existing["ids"])
 
-    def _index_file(self, file_path: str, commit_hash: Optional[str] = None) -> int:
-        """Indexes one file. With `commit_hash` the content is read from that commit (the normal case);
-        without it, from disk (only the --uncommitted mode, which records no commit).
+    def _prepare_file(self, file_path: str, commit_hash: Optional[str] = None) -> list:
+        """Chunks and embeddings of one file, without writing to the index. With `commit_hash` the content is read
+        from that commit (the normal case); without it, from disk (only the --uncommitted mode, which records no commit).
         """
         if commit_hash:
             source = self.watcher.read_file_at(commit_hash, file_path)
             if source is None:
-                return 0
+                return []
             chunks = chunk_source(file_path, source)
         else:
             full_path = os.path.join(self.project.repo_path, file_path)
             if not os.path.exists(full_path):
-                return 0
+                return []
             chunks = chunk_file(full_path)
-        if not chunks:
-            return 0
-
         for chunk in chunks:
             chunk.file_path = file_path
-        results = self._embed_file_chunks(chunks)
-        ids = [r[0] for r in results]
-        documents = [r[1] for r in results]
-        metadatas = [r[2] for r in results]
-        embeddings = [r[3] for r in results]
+        return self._embed_file_chunks(chunks) if chunks else []
 
-        if not ids:
+    def _write_file(self, results: list) -> int:
+        if not results:
             return 0
+        ids, documents, metadatas, embeddings = (list(column) for column in zip(*results))
         self.collection.upsert(ids=ids, documents=documents, embeddings=embeddings, metadatas=metadatas)
         return len(ids)
 
@@ -218,6 +213,15 @@ class CodebaseIndexer:
             return IndexSyncResult(changed=False, summary=changes.summary())
 
         files = changes.files_to_reindex()
+        # All embeddings are computed before touching the index: it is the slow part and the one that fails (model
+        # server down, text too long). If it fails, an incremental sync leaves the index exactly as it was, so queries
+        # never mix chunks of two commits; the short write step that follows applies all the changes together.
+        prepared = []
+        for i, fp in enumerate(files, 1):
+            prepared.append(self._prepare_file(fp, commit_hash=None if include_uncommitted else target))
+            if on_progress:
+                on_progress(i, len(files), fp)
+
         purged = 0
         indexed, files_indexed = 0, 0
         # A full rebuild is assembled in a new collection instead of deleting chunk by chunk: hnswlib only marks
@@ -230,21 +234,18 @@ class CodebaseIndexer:
                 # also those being reindexed: an 'added' file may have been indexed by a previous --uncommitted run
                 for fp in changes.files_to_purge() + files:
                     purged += self._purge_file(fp)
-            total = len(files)
-            for i, fp in enumerate(files, 1):
-                n = self._index_file(fp, commit_hash=None if include_uncommitted else target)
+            for results in prepared:
+                n = self._write_file(results)
                 if n > 0:
                     indexed += n
                     files_indexed += 1
-                if on_progress:
-                    on_progress(i, total, fp)
             if live is not None:
                 self._finish_rebuild()
                 live = None
         finally:
             if live is not None:  # failed midway: the previous index stays intact
                 self._abort_rebuild(live)
-            # Even if the sync fails midway the index has changed: notify other processes (the server) so they
+            # Even if the write fails midway the index has changed: notify other processes (the server) so they
             # stop searching their stale copy.
             bump_index_version(os.path.dirname(self.project.chroma_dir))
 

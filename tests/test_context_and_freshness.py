@@ -132,7 +132,7 @@ def test_commit_arriving_during_sync_is_not_marked_as_indexed(tmp_path):
     first = _commit(repo, "a.py", "def a():\n    return 1\n", "init")
     idx = CodebaseIndexer(ctx, AI, backend=OllamaBackend(_RecordingOllama()))
 
-    original = idx._index_file
+    original = idx._prepare_file
     late = {}
 
     def index_and_commit_meanwhile(fp, commit_hash=None):
@@ -140,11 +140,11 @@ def test_commit_arriving_during_sync_is_not_marked_as_indexed(tmp_path):
             late["sha"] = _commit(repo, "b.py", "def b():\n    return 2\n", "llega durante el sync")
         return original(fp, commit_hash=commit_hash)
 
-    idx._index_file = index_and_commit_meanwhile
+    idx._prepare_file = index_and_commit_meanwhile
     idx.sync()
     assert idx.control.last_indexed_commit() == first  # not the one that arrived during the sync
 
-    idx._index_file = original
+    idx._prepare_file = original
     idx.sync()  # the next sync does process b.py
     files = {m["file_path"] for m in idx.collection.get(include=["metadatas"])["metadatas"]}
     assert "b.py" in files
