@@ -13,7 +13,7 @@ import core.cli as cli_module  # noqa: E402
 
 runner = CliRunner()
 
-COMMANDS = ["projects", "add", "edit", "remove", "sync", "docs", "ask", "export", "import", "status", "doctor", "serve"]
+COMMANDS = ["projects", "add", "edit", "remove", "sync", "docs", "ask", "export", "import", "status", "doctor", "serve", "backup", "restore"]
 
 
 def test_top_level_help():

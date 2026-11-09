@@ -132,6 +132,17 @@ El modelo de lenguaje es el recurso que comparten todos. Dentro de `beacon serve
 
 Mientras `beacon serve` está activo, cada 5 minutos comprueba que el servidor de modelos responda y que pueda ejecutar los dos modelos (un embedding corto y una respuesta de un token). Así una caída se detecta aunque nadie esté consultando: queda en el log del servidor cuando falla y cuando se recupera, y el estado se consulta en `GET /system/monitor` (último resultado, desde cuándo falla y las últimas 50 comprobaciones). `/healthz`, en cambio, solo indica que el proceso de Beacon está vivo. El intervalo se cambia con la variable `BEACON_MONITOR_SECONDS` (0 lo desactiva); en el modo estudio no corre.
 
+## Respaldo completo y reversión de una actualización
+
+`beacon backup` guarda la instalación entera en un .zip: `config.yaml`, `credentials.yaml` y el índice y la documentación de cada proyecto (los repositorios clonados por URL no, porque se vuelven a clonar). Su manifiesto registra la versión y el commit de Beacon, los modelos configurados y, por proyecto, el modelo de embeddings, el formato del índice y el último commit indexado. El archivo contiene credenciales: guárdalo protegido. La clave de API no la guarda Beacon (es una variable de entorno): respáldala en tu gestor de secretos.
+
+```bash
+beacon backup -o respaldo.zip          # mientras sincroniza otro proceso, espera a que termine
+beacon restore respaldo.zip            # en una instalación nueva; --force reemplaza la actual
+```
+
+Para deshacer una actualización incompatible: vuelve al código anterior (`git checkout <versión>` y reinstala), deja los modelos que dice el manifiesto en `config.yaml` y restaura el respaldo tomado antes de actualizar. Si el índice restaurado no coincide con el formato o el modelo del código, `beacon restore` lo avisa y el siguiente `beacon sync` lo reconstruye solo, porque cada índice registra con qué modelo y formato se construyó.
+
 ## Exportar/importar proyectos
 
 Para llevar un proyecto ya indexado a otra máquina (útil para una demo o defensa, sin depender de reindexar en vivo ni de que Ollama responda rápido ese día):

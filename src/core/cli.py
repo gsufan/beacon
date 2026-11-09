@@ -323,6 +323,43 @@ def cmd_import(
         ))
 
 
+@app.command("backup", help=tr("Respalda la instalación completa en un .zip: configuración, credenciales y el índice y la documentación de cada proyecto.",
+                               "Back up the whole installation into a .zip: configuration, credentials and each project's index and documentation."))
+def cmd_backup(output: str = typer.Option(None, "--output", "-o")):
+    from datetime import date
+    from core import backup
+    output_path = Path(output) if output else Path(f"beacon-respaldo-{date.today().isoformat()}.zip")
+    with console.status(tr("Respaldando...", "Backing up...")):
+        result = _run_safely(lambda: backup.backup_installation(output_path))
+    size_mb = output_path.stat().st_size / 1_048_576
+    console.print(tr(f"[green]OK[/green] Respaldo en {output_path} ({result.projects} proyectos, {size_mb:.1f} MB).",
+                     f"[green]OK[/green] Backup at {output_path} ({result.projects} projects, {size_mb:.1f} MB)."))
+    console.print(tr("[yellow]![/yellow] Contiene las credenciales de los repositorios privados: guárdalo en un lugar protegido. "
+                     "La clave de API (BEACON_API_KEY) no se incluye: respáldala en tu gestor de secretos.",
+                     "[yellow]![/yellow] It contains the private repositories' credentials: keep it somewhere protected. "
+                     "The API key (BEACON_API_KEY) is not included: back it up in your secrets manager."))
+
+
+@app.command("restore", help=tr("Restaura una instalación desde un respaldo de 'beacon backup'.",
+                                "Restore an installation from a 'beacon backup' archive."))
+def cmd_restore(archive: str, force: bool = typer.Option(False, "--force", help=tr("Reemplaza la configuración actual.", "Replace the current configuration."))):
+    from core import backup
+    from core.engine.indexer import INDEX_FORMAT
+    manifest = _run_safely(lambda: backup.restore_installation(Path(archive), force=force))
+    console.print(tr(f"[green]OK[/green] Restaurados la configuración y {len(manifest['proyectos'])} proyectos "
+                     f"(respaldo del {manifest['fecha']}, Beacon {manifest['beacon_version']}).",
+                     f"[green]OK[/green] Restored the configuration and {len(manifest['proyectos'])} projects "
+                     f"(backup of {manifest['fecha']}, Beacon {manifest['beacon_version']})."))
+    model = load_config().ai_provider.embedding_model
+    stale = [p["id"] for p in manifest["proyectos"]
+             if p.get("index_format", INDEX_FORMAT) != INDEX_FORMAT or p.get("embedding_model", model) != model]
+    if stale:
+        console.print(tr(f"[yellow]![/yellow] El índice de {', '.join(stale)} se hizo con otro formato o modelo: el próximo 'beacon sync' lo reconstruye.",
+                         f"[yellow]![/yellow] The index of {', '.join(stale)} was built with another format or model: the next 'beacon sync' rebuilds it."))
+    console.print(tr("[dim]Los repositorios clonados por URL se vuelven a clonar en el próximo 'beacon sync'.[/dim]",
+                     "[dim]Repositories cloned by URL are cloned again on the next 'beacon sync'.[/dim]"))
+
+
 @app.command("status", help=tr("Muestra el estado del índice y la documentación de un proyecto.",
                                "Show the state of a project's index and documentation."))
 def cmd_status(project_id: str):

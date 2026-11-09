@@ -132,6 +132,17 @@ The language model is the resource everyone shares. Inside `beacon serve`, quest
 
 While `beacon serve` is running, every 5 minutes it checks that the model server answers and can run both models (a short embedding and a one-token answer). An outage is detected even when nobody is asking: the server log records when it fails and when it recovers, and the state is available at `GET /system/monitor` (last result, since when it fails and the last 50 checks). `/healthz`, instead, only says that the Beacon process is alive. The interval is set with the `BEACON_MONITOR_SECONDS` variable (0 disables it); it does not run in study mode.
 
+## Full backup and rolling back an update
+
+`beacon backup` stores the whole installation in a .zip: `config.yaml`, `credentials.yaml` and each project's index and documentation (not the repositories cloned by URL, which are cloned again). Its manifest records the Beacon version and commit, the configured models and, per project, the embedding model, the index format and the last indexed commit. The file contains credentials: keep it protected. Beacon does not store the API key (it is an environment variable): back it up in your secrets manager.
+
+```bash
+beacon backup -o backup.zip            # if another process is syncing, it waits for it to finish
+beacon restore backup.zip              # on a new installation; --force replaces the current one
+```
+
+To undo an incompatible update: go back to the previous code (`git checkout <version>` and reinstall), keep the models listed in the manifest in `config.yaml` and restore the backup taken before updating. If the restored index does not match the code's format or model, `beacon restore` says so and the next `beacon sync` rebuilds it, since every index records the model and format it was built with.
+
 ## Exporting/importing projects
 
 To take an already indexed project to another machine (useful for a demo or a defense, without depending on reindexing live or on Ollama being fast that day):
