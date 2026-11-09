@@ -124,6 +124,10 @@ Edge cases to keep in mind:
   prevents them from writing at the same time, but there would be redundant
   checks, so that configuration is not recommended.
 
+## Questions go before documentation
+
+The language model is the resource everyone shares. Inside `beacon serve`, questions go first: while one is being answered, background documentation waits before its next model call (the call already in progress is not interrupted), and only one project is documented at a time, so a large project cannot keep the GPU busy for everyone. This rule does not reach documentation started from another console (`beacon docs` is another process): to regenerate the full documentation of a large repository, do it outside working hours.
+
 ## Model server monitoring
 
 While `beacon serve` is running, every 5 minutes it checks that the model server answers and can run both models (a short embedding and a one-token answer). An outage is detected even when nobody is asking: the server log records when it fails and when it recovers, and the state is available at `GET /system/monitor` (last result, since when it fails and the last 50 checks). `/healthz`, instead, only says that the Beacon process is alive. The interval is set with the `BEACON_MONITOR_SECONDS` variable (0 disables it); it does not run in study mode.

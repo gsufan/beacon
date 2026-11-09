@@ -14,6 +14,7 @@ from core.engine.index_store import IndexControl
 from core.engine.indexer import IndexModelMismatchError
 from core.engine.llm import CHARS_PER_TOKEN, chat
 from core.engine.overview import RepoOverview
+from core.engine.priority import priority
 from core.engine.question_kind import is_general_question
 from core.engine.retrieval import DEFAULT_TOP_K, RetrievedChunk, Retriever, question_identifiers
 from core.engine.text_sanitize import strip_preamble
@@ -113,6 +114,10 @@ class RAGEngine:
         self, question: str, top_k: int = DEFAULT_TOP_K, expand_call_graph: bool = True, language: str = "es",
         max_seconds: Optional[float] = None, should_stop: Optional[Callable[[], bool]] = None,
     ) -> RAGResponse:
+        with priority.query():  # background documentation yields the model server meanwhile
+            return self._ask(question, top_k, expand_call_graph, language, max_seconds, should_stop)
+
+    def _ask(self, question, top_k, expand_call_graph, language, max_seconds, should_stop) -> RAGResponse:
         chunks, general = self._context(question, top_k, expand_call_graph)
         system = prompting.system_prompt(language, general)
         chunks = prompting.fit_to_budget(question, system, chunks, self.ai_config.llm_num_ctx)

@@ -12,6 +12,7 @@ from core.projects import ProjectContext
 from core.engine.git_watcher import GitWatcher, ChangeSet
 from core.engine.index_store import IndexControl, open_code_collection
 from core.engine.overview import FOLDER_SYSTEM_PROMPT, OVERVIEW_MD, build_overview
+from core.engine.priority import priority
 from core.engine.text_sanitize import strip_preamble
 from core.engine.llm import CHARS_PER_TOKEN, chat, estimate_tokens, prompt_budget_tokens
 
@@ -148,6 +149,7 @@ class DocGenerator:
         return groups
 
     def _llm(self, system: str, user: str) -> str:
+        priority.wait_for_queries()  # questions go first (see priority.py)
         return chat(self.backend, self.ai_config.llm_model, system, user, self.ai_config.llm_num_ctx,
                     max_tokens=DOC_ANSWER_RESERVE_TOKENS).content
 

@@ -28,6 +28,7 @@ from core.engine.doc_generator import DocGenerator, DocSyncResult
 from core.engine.git_watcher import is_generated_or_vendor
 from core.fs import remove_tree
 from core.engine.indexer import CodebaseIndexer, IndexSyncResult
+from core.engine.priority import priority
 from core.project_lock import ProjectBusyError, ensure_not_busy, project_lock
 from core.projects import (
     DATA_ROOT,
@@ -203,7 +204,8 @@ def sync_project(project_id: str, *, docs: bool = True, full: bool = False, incl
         purged = _purge_generated(indexer) if index_result.changed else 0
         docs_result = None
         if docs and not include_uncommitted:  # documentation always reflects a commit
-            docs_result = DocGenerator(project, ai).sync(on_progress=on_docs_progress, full=full)
+            with priority.documentation():  # one project at a time
+                docs_result = DocGenerator(project, ai).sync(on_progress=on_docs_progress, full=full)
     return SyncResult(index=index_result, docs=docs_result, pulled=pulled, generated_purged=purged)
 
 
@@ -212,4 +214,5 @@ def generate_docs(project_id: str, *, full: bool = False, on_progress: ProgressC
     ai = load_config().ai_provider
     with project_lock(Path(project.chroma_dir).parent):
         ensure_clone(_project_entry(project_id))
-        return DocGenerator(project, ai).sync(on_progress=on_progress, full=full)
+        with priority.documentation():
+            return DocGenerator(project, ai).sync(on_progress=on_progress, full=full)
