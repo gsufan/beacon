@@ -20,7 +20,7 @@ python tools/install.py    # entorno, dependencias, interfaz web y modelos de Ol
 beacon study
 ```
 
-Si Python 3.13 o superior es el predeterminado, ejecuta el instalador con una versión compatible (por ejemplo `py -3.11 tools/install.py`).
+Si Python 3.13 o superior es el predeterminado, ejecuta el instalador con una versión compatible (por ejemplo `py -3.11 tools/install.py`; en Linux sin ninguna, `uv run --no-project --python 3.12 tools/install.py`, ver la [instalación manual](instalacion-manual.md)).
 
 El asistente se abre en el navegador (`http://127.0.0.1:8000/study`) y guía cinco pasos:
 

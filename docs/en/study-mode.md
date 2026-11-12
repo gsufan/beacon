@@ -20,7 +20,7 @@ python tools/install.py    # environment, dependencies, web interface and Ollama
 beacon study
 ```
 
-If Python 3.13 or later is your default, run the installer with a supported version (for example `py -3.11 tools/install.py`).
+If Python 3.13 or later is your default, run the installer with a supported version (for example `py -3.11 tools/install.py`; on Linux with none, `uv run --no-project --python 3.12 tools/install.py`, see the [manual installation](manual-installation.md)).
 
 The assistant opens in the browser (`http://127.0.0.1:8000/study`) and guides you through five steps:
 

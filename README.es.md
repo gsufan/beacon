@@ -53,7 +53,7 @@ Más detalles (GPU en Windows, rutas locales, healthcheck) en [docs/es/docker.md
 
 ## Participar en el estudio (modo estudio)
 
-Si te invitaron a probar Beacon para el estudio de evaluación, necesitas Python 3.10, 3.11 o 3.12 (el 3.13 o superior todavía no funciona), Git, Node 20+ y [Ollama](https://ollama.com) con los modelos instalados.
+Si te invitaron a probar Beacon para el estudio de evaluación, necesitas Python 3.10, 3.11 o 3.12 (el 3.13 o superior todavía no funciona), Git, Node 20+ y [Ollama](https://ollama.com) con los modelos instalados. Si tu sistema solo tiene Python 3.13 o superior (por ejemplo Debian 13), la [instalación manual](docs/es/instalacion-manual.md) explica cómo resolverlo con un comando usando `uv`.
 
 ```bash
 git clone https://github.com/gsufan/beacon.git

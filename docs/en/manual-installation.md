@@ -30,7 +30,16 @@ beacon doctor
 
 The launcher (`beacon.cmd` on Windows, `beacon` on Linux/macOS) lives in the project root. Without arguments it opens a console with the virtual environment already active, so you can use `beacon ...` directly; with arguments it runs that command (for example `.\beacon doctor`). You never need to activate the environment by hand.
 
-On Debian/Ubuntu you may first need `sudo apt install python3-venv`. If you prefer to do each step yourself, or the script fails, follow the long process below.
+On Debian/Ubuntu you may first need `sudo apt install python3-venv`.
+
+**If your Python is 3.13 or later** (it is the default on Debian 13 and on recent Ubuntu and Fedora releases, and the system packages do not offer 3.12), install [uv](https://docs.astral.sh/uv/) and let it download a Python 3.12 without touching the system:
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh    # then open a new terminal
+uv run --no-project --python 3.12 tools/install.py
+```
+
+If `npm` prints an `EBADENGINE` warning about `@testing-library/jest-dom`, it is harmless: that library is only used by the tests and the interface builds fine with Node 20. If you prefer to do each step yourself, or the script fails, follow the long process below.
 
 ## Step by step (Windows, PowerShell)
 

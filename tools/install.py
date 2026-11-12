@@ -23,6 +23,9 @@ def main() -> int:
     if not (3, 10) <= sys.version_info[:2] <= (3, 12):
         print(f"Python 3.10, 3.11 or 3.12 is required (found {sys.version.split()[0]}).")
         print("Run this script with a supported version, for example: py -3.11 tools/install.py (Windows) or python3.11 tools/install.py (Linux/macOS)")
+        print("If your system has none (recent Debian, Ubuntu and Fedora ship 3.13), uv installs one without touching the system:")
+        print("  curl -LsSf https://astral.sh/uv/install.sh | sh   (then open a new terminal)")
+        print("  uv run --no-project --python 3.12 tools/install.py")
         return 1
 
     print("1/4 Virtual environment and dependencies")
