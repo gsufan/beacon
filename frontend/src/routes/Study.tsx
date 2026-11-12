@@ -139,9 +139,8 @@ const EXAMPLE_REPOS = [
   { name: "encode/httpx", lang: "Python", es: "Cliente HTTP moderno con soporte síncrono y asíncrono.", en: "Modern HTTP client with sync and async support." },
   { name: "expressjs/express", lang: "JavaScript", es: "Framework web minimalista para Node.js: enrutado y middleware.", en: "Minimalist web framework for Node.js: routing and middleware." },
   { name: "spring-projects/spring-petclinic", lang: "Java", es: "Aplicación de ejemplo oficial de Spring: una clínica veterinaria con dueños, mascotas y visitas.", en: "Official Spring sample application: a vet clinic with owners, pets and visits." },
-  { name: "sharkdp/bat", lang: "Rust", es: "Un «cat» con resaltado de sintaxis, paginación e integración con git.", en: "A cat clone with syntax highlighting, paging and git integration." },
   { name: "junegunn/fzf", lang: "Go", es: "Buscador difuso interactivo de línea de comandos.", en: "Interactive fuzzy finder for the command line." },
-  { name: "BurntSushi/ripgrep", lang: "Rust", es: "Buscador de texto recursivo muy rápido; buen ejemplo de proyecto con varios módulos.", en: "Very fast recursive text search; a good multi-crate example." },
+  { name: "tldr-pages/tldr-python-client", lang: "Python", es: "Cliente de línea de comandos para consultar ejemplos de uso de comandos (tldr). Pequeño: ideal para una prueba rápida.", en: "Command-line client to look up usage examples of commands (tldr). Small: ideal for a quick try." },
   { name: "GoogleCloudPlatform/microservices-demo", lang: "Go, Python, Java, C#, JS", es: "Tienda en línea de ejemplo con 11 microservicios en distintos lenguajes.", en: "Sample online shop made of 11 microservices in different languages." },
 ] as const;
 const isPreparing = (estado?: string) => estado === "clonando" || estado === "indexando" || estado === "calentando";
