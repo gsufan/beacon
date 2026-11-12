@@ -134,6 +134,7 @@ describe("modo estudio", () => {
     await userEvent.click(screen.getByRole("button", { name: /charmbracelet\/glow/ }));
     expect(screen.getByRole("textbox", { name: "URL" })).toHaveValue("https://github.com/charmbracelet/glow");
     expect(screen.getByText(/\/datos\/estudio/)).toBeInTheDocument();  // where cloned repos are stored
+    expect(screen.getByText(/solo rellena la dirección|only fills in the address/)).toBeInTheDocument();  // picking an example does not start anything
     await userEvent.click(screen.getByRole("button", { name: /Preparar repositorio|Prepare repository/ }));
     await waitFor(() => expect(calls.some((c) => c.path === "/study/repo" && (c.body as { url: string }).url.endsWith("/glow"))).toBe(true));
     expect(await screen.findByRole("link", { name: "https://github.com/charmbracelet/glow" })).toBeInTheDocument();  // "Working on"
@@ -198,5 +199,16 @@ describe("modo estudio", () => {
     await userEvent.click(await screen.findByRole("button", { name: /útiles fueron las fuentes.* 4|were the sources.* 4/ }));
     await waitFor(() => expect(calls.some((c) => c.path === "/study/rate" && (c.body as { fuentes_utiles: number }).fuentes_utiles === 4)).toBe(true));
     expect(screen.getByRole("button", { name: /Terminar|Finish/ })).toBeDisabled();
+  });
+});
+
+
+describe("Study: numeración de las preguntas", () => {
+  it("cada pregunta muestra su número, aunque la más nueva vaya arriba", async () => {
+    state = started({ hardware: { cpu_modelo: "x" }, repo: { url: "https://github.com/a/b", archivos_indexados: 3 }, repo_status: { estado: "listo", detalle: null },
+      preguntas: [1, 2, 3].map((n) => ({ n, pregunta: `p${n}`, respuesta: "r", segundos: 2, fuentes: [], valoracion: null })) });
+    open();
+    const labels = await screen.findAllByText(/^(Pregunta|Question) \d$/);
+    expect(labels.map((l) => l.textContent?.replace(/\D/g, ""))).toEqual(["3", "2", "1"]);  // newest first, each with its own number
   });
 });

@@ -41,7 +41,7 @@ const T = {
     hw_text: "Para interpretar los tiempos necesitamos saber qué equipo usas. Estos son los datos que Beacon detectó en TU equipo en este momento, y es exactamente lo que se guardaría si lo autorizas (no incluye tu nombre ni rutas):",
     consent_hw: "Autorizo guardar estos datos del equipo (si no lo marcas, se omiten).",
     repo_text: "Elige un repositorio público (GitHub, GitLab, Bitbucket o Codeberg) que conozcas, de hasta 3000 archivos de código.",
-    repo_ph: "https://github.com/usuario/repositorio", prepare: "Preparar repositorio", examples: "O elige uno de estos repositorios de ejemplo:", use_repo: "Usar este", chosen: "Elegido", working_on: "Trabajando en:", storage_note: "Los repositorios clonados se guardan en {dir}. Si quieres recuperar espacio, puedes borrar esa carpeta (se borra sola al descartar la sesión). Para ver y limpiar el espacio de todos tus proyectos: beacon space y beacon clean.", closed: "Sesión descartada y servidor detenido. Ya puedes cerrar esta pestaña.",
+    repo_ph: "https://github.com/usuario/repositorio", prepare: "Preparar repositorio", prepare_hint: "Elegir un ejemplo solo rellena la dirección. Presiona «Preparar repositorio» para descargarlo e indexarlo; puede tardar unos segundos o varios minutos según su tamaño.", examples: "O elige uno de estos repositorios de ejemplo:", use_repo: "Usar este", chosen: "Elegido", working_on: "Trabajando en:", storage_note: "Los repositorios clonados se guardan en {dir}. Si quieres recuperar espacio, puedes borrar esa carpeta (se borra sola al descartar la sesión). Para ver y limpiar el espacio de todos tus proyectos: beacon space y beacon clean.", closed: "Sesión descartada y servidor detenido. Ya puedes cerrar esta pestaña.",
     cloning: "Clonando el repositorio...", indexing: "Indexando: {a} de {t} archivos", elapsed: "{s} s",
     repo_ready: "Repositorio listo: {n} archivos indexados.", change_repo: "Elegir otro repositorio",
     repo_locked: "Para cambiar de repositorio hay que descartar la sesión (ya hiciste preguntas).",
@@ -49,7 +49,7 @@ const T = {
     q_hint: "Evita preguntas demasiado generales como «¿qué hace este programa?»: funcionan mejor las concretas, por ejemplo «¿dónde se carga la configuración?» o «¿qué función formatea la salida?».",
     q_ph: "Pregunta sobre el código...", ask: "Preguntar", asking: "Consultando...",
     thinking: "Buscando en el código y generando la respuesta... {s} s",
-    secs: "{s} s", sources: "Fuentes", correct: "¿La respuesta es correcta?",
+    secs: "{s} s", question_n: "Pregunta {n}", sources: "Fuentes", correct: "¿La respuesta es correcta?",
     useful: "¿Qué tan útiles fueron las fuentes? (1 = nada, 5 = mucho)",
     c_si: "Sí", c_parcial: "En parte", c_no: "No", c_no_se: "No lo sé",
     finish: "Terminar", count: "{n} de {min} preguntas mínimas",
@@ -88,7 +88,7 @@ const T = {
     hw_text: "To interpret timings we need to know what machine you use. This is the data Beacon just detected on YOUR machine, and exactly what would be stored if you allow it (no name or paths):",
     consent_hw: "I allow storing this hardware data (if unchecked, it is skipped).",
     repo_text: "Pick a public repository (GitHub, GitLab, Bitbucket or Codeberg) you know, with up to 3000 code files.",
-    repo_ph: "https://github.com/user/repository", prepare: "Prepare repository", examples: "Or pick one of these example repositories:", use_repo: "Use this one", chosen: "Chosen", working_on: "Working on:", storage_note: "Cloned repositories are stored in {dir}. To recover space you can delete that folder (it is removed automatically when you discard the session). To see and clean the space of all your projects: beacon space and beacon clean.", closed: "Session discarded and server stopped. You can close this tab now.",
+    repo_ph: "https://github.com/user/repository", prepare: "Prepare repository", prepare_hint: "Picking an example only fills in the address. Press \"Prepare repository\" to download and index it; it can take a few seconds or several minutes depending on its size.", examples: "Or pick one of these example repositories:", use_repo: "Use this one", chosen: "Chosen", working_on: "Working on:", storage_note: "Cloned repositories are stored in {dir}. To recover space you can delete that folder (it is removed automatically when you discard the session). To see and clean the space of all your projects: beacon space and beacon clean.", closed: "Session discarded and server stopped. You can close this tab now.",
     cloning: "Cloning the repository...", indexing: "Indexing: {a} of {t} files", elapsed: "{s} s",
     repo_ready: "Repository ready: {n} files indexed.", change_repo: "Pick another repository",
     repo_locked: "To change the repository you must discard the session (you already asked questions).",
@@ -96,7 +96,7 @@ const T = {
     q_hint: "Avoid overly general questions such as \"what does this program do?\": specific ones work better, for example \"where is the configuration loaded?\" or \"which function formats the output?\".",
     q_ph: "Question about the code...", ask: "Ask", asking: "Querying...",
     thinking: "Searching the code and generating the answer... {s} s",
-    secs: "{s} s", sources: "Sources", correct: "Is the answer correct?",
+    secs: "{s} s", question_n: "Question {n}", sources: "Sources", correct: "Is the answer correct?",
     useful: "How useful were the sources? (1 = not at all, 5 = very)",
     c_si: "Yes", c_parcial: "Partly", c_no: "No", c_no_se: "Not sure",
     finish: "Finish", count: "{n} of {min} minimum questions",
@@ -402,6 +402,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
                 setWorkingOn(url.trim());
                 void act(() => call("POST", "/repo", { url: url.trim() }));
               }}>{t("prepare")}</button>
+            {!preparing && <p className="text-xs text-muted">{t("prepare_hint")}</p>}
           </>
         ) : (
           <>
@@ -453,6 +454,7 @@ function StudyBody({ state, t, lang, busy, act }: BodyProps) {
           )}
           {[...questions].reverse().map((q) => (
             <li key={q.n} className="flex flex-col gap-2 rounded-lg border border-line p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">{t("question_n", { n: q.n })}</p>
               <p className="text-sm font-semibold">{q.pregunta}</p>
               <p className="whitespace-pre-wrap text-sm text-ink-2">{q.respuesta}</p>
               <p className="text-xs text-muted">{t("secs", { s: q.segundos })} · {t("sources")}: {q.fuentes.length}</p>
