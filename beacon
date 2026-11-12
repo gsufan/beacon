@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/usr/bin/env bash
 # Without arguments: opens a shell with the environment active. With arguments: runs beacon directly.
 dir="$(cd "$(dirname "$0")" && pwd)"
 if [ $# -eq 0 ]; then
