@@ -62,7 +62,7 @@ def summarize(entries: list) -> dict:
         if problems:
             rejected.append((name, problems))
             continue
-        digest = data["integridad"]["sha256_de_preguntas"]
+        digest = data["integrity"]["sha256_of_questions"]
         if digest in seen:
             rejected.append((name, ["duplicado"]))
             continue
@@ -72,14 +72,14 @@ def summarize(entries: list) -> dict:
     times, correct, sources = defaultdict(list), defaultdict(int), []
     by_bucket = defaultdict(list)
     for _, data, _ in valid:
-        for q in data["preguntas"]:
-            times["todos"].append(q["segundos_respuesta"])
-            by_bucket[vram_bucket(data)].append(q["segundos_respuesta"])
-            v = q.get("valoracion")
+        for q in data["questions"]:
+            times["todos"].append(q["answer_seconds"])
+            by_bucket[vram_bucket(data)].append(q["answer_seconds"])
+            v = q.get("rating")
             if v:
-                correct[v["correcta"]] += 1
-                if v.get("fuentes_utiles"):
-                    sources.append(v["fuentes_utiles"])
+                correct[v["correct"]] += 1
+                if v.get("useful_sources"):
+                    sources.append(v["useful_sources"])
     rated = sum(correct.values())
 
     def stats(xs):

@@ -25,7 +25,7 @@ from core.fs import remove_tree
 from core.projects import DATA_ROOT, InvalidRepoUrlError
 from core.study import hardware, submit
 from core.study.launcher import STUDY_PROJECT_ID, session_path, study_project_ids
-from core.study.session import StudyError, StudySession
+from core.study.session import StudyError, StudySession, export_keys
 from core.study.validate import validate_result
 from core.version import VERSION
 
@@ -220,8 +220,8 @@ def build_router(get_engine: Callable, clear_engines: Callable) -> APIRouter:
 
     @router.get("/hardware-preview")
     def hardware_preview():
-        """What would be saved. Nothing is stored until the participant authorizes it."""
-        return hardware.collect_hardware(str(DATA_ROOT))
+        """What would be saved, with the keys of the results file. Nothing is stored until the participant authorizes it."""
+        return export_keys(hardware.collect_hardware(str(DATA_ROOT)))
 
     @router.post("/hardware")
     def hardware_save():

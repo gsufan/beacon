@@ -61,7 +61,7 @@ def test_pilot_profile_requires_a_code(client):
 
 def test_hardware_is_previewed_but_only_saved_with_consent(client):
     client.post("/study/start", json={})
-    assert client.get("/study/hardware-preview").json()["cpu_modelo"] == "cpu"
+    assert client.get("/study/hardware-preview").json()["cpu_model"] == "cpu"  # shown with the keys of the results file
     assert client.get("/study/state").json()["hardware"] is None  # viewing is not saving
     assert client.post("/study/hardware").status_code == 400  # without consent
     client.post("/study/consent", json={"tipo": "hardware", "aceptado": True})
@@ -97,13 +97,13 @@ def test_rating_and_final_file_flow(client, tmp_path):
     client.post("/study/consent", json={"tipo": "envio", "aceptado": True})
     client.post("/study/identity", json={"github": "https://github.com/alguien", "presentacion": "hola"})
     out = client.get("/study/result").json()
-    assert out["resultado"]["esquema"] == 1 and len(out["resultado"]["preguntas"]) == 3
+    assert out["resultado"]["schema"] == 2 and len(out["resultado"]["questions"]) == 3
     assert "alguien" not in json.dumps(out["resultado"]) and out["identidad"]["github"].endswith("alguien")
     sid = out["resultado"]["meta"]["id"]
     assert len(sid) == 6 and out["identidad"]["id"] == sid  # the short id links the two files
     assert out["archivos"] == [study_api.result_file(sid), study_api.identity_file(sid)]
     text = (tmp_path / study_api.result_file(sid)).read_text(encoding="utf-8")
-    assert json.loads(text)["esquema"] == 1 and "alguien" not in text
+    assert json.loads(text)["schema"] == 2 and "alguien" not in text
     assert json.loads((tmp_path / study_api.identity_file(sid)).read_text(encoding="utf-8"))["id"] == sid
 
 
@@ -232,7 +232,7 @@ def test_submit_sends_the_results_and_records_the_receipt(client, tmp_path, monk
         out = client.post("/study/submit", json={"con_identidad": False})
         assert out.status_code == 200 and out.json()["recibo"] == "abc123"
         body = json.loads(collector.received[0])
-        assert len(body["resultado"]["preguntas"]) == 3 and body["identidad"] is None
+        assert len(body["result"]["questions"]) == 3 and body["identity"] is None
         assert "alguien" not in collector.received[0].decode("utf-8")  # identity only travels if asked for
         assert client.get("/study/state").json()["envio"]["enviado"]["recibo"] == "abc123"
     finally:
@@ -246,7 +246,7 @@ def test_submit_includes_identity_only_when_requested(client, tmp_path, monkeypa
         _finished(client, tmp_path)
         assert client.post("/study/submit", json={"con_identidad": True}).status_code == 200
         body = json.loads(collector.received[0])
-        assert body["identidad"]["github"].endswith("alguien") and body["identidad"]["id"] == body["resultado"]["meta"]["id"]
+        assert body["identity"]["github"].endswith("alguien") and body["identity"]["id"] == body["result"]["meta"]["id"]
     finally:
         collector.close()
 

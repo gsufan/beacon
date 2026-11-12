@@ -62,7 +62,32 @@ def test_result_requires_consent_and_minimum_questions(session):
     assert not session.can_finish()
     session.add_question("otra", "resp", 4.0)
     assert session.can_finish()
-    assert session.build_result()["esquema"] == 1
+    assert session.build_result()["schema"] == 2
+
+
+def test_exported_files_use_english_keys(session):
+    """The session file keeps its own keys; the files people send use English keys, at every level."""
+    import re
+    _complete(session)
+    session.set_experience({"anios": 3, "likert": {"util": 4}})
+    session.set_identity(github="g", presentation="hola")
+    result, identity = session.build_result(), session.build_identity()
+    assert {"schema", "meta", "consents", "questions", "integrity", "experience"} <= set(result)
+    q = result["questions"][0]
+    assert {"question", "answer", "answer_seconds", "prompt_tokens", "answer_tokens", "sources", "rating"} <= set(q)
+    assert result["experience"] == {"years": 3, "likert": {"usefulness": 4}}
+    assert identity == {"github": "g", "introduction": "hola", "id": result["meta"]["id"]}
+    spanish = {"esquema", "preguntas", "respuesta", "consentimientos", "valoracion", "experiencia", "integridad", "presentacion"}
+
+    def keys(value):
+        if isinstance(value, dict):
+            return set(value) | set().union(*(keys(v) for v in value.values()))
+        if isinstance(value, list):
+            return set().union(*(keys(v) for v in value)) if value else set()
+        return set()
+
+    assert not keys(result) & spanish and not keys(identity) & spanish
+    assert "preguntas" in session.state  # the session itself is unchanged
 
 
 def test_result_never_contains_source_code_or_absolute_paths(session):
@@ -99,7 +124,7 @@ def test_duration_counts_from_the_acceptance_not_from_launching_the_program(sess
     time.sleep(1.1)
     _complete(session)
     meta = session.build_result()["meta"]
-    assert meta["inicio"] > launched and "participacion_desde" not in meta
+    assert meta["start"] > launched and "participacion_desde" not in meta
 
 
 def test_rating_validation(session):
@@ -142,26 +167,26 @@ def test_a_good_file_passes_validation(session):
 def test_validation_reports_problems_and_suspicious_files(session):
     _complete(session)
     data = session.build_result()
-    data_bad = dict(data, preguntas=data["preguntas"][:1])
+    data_bad = dict(data, questions=data["questions"][:1])
     assert "menos de 3 preguntas" in validate_result(data_bad)[0]
-    assert validate_result({"esquema": 1})[0]  # missing fields
+    assert validate_result({"schema": 2})[0]  # missing fields
     assert validate_result([])[0]
 
     suspicious = json.loads(json.dumps(data))
-    for q in suspicious["preguntas"]:
-        q["segundos_respuesta"] = 0.1
-        q["tokens_respuesta"] = 300
+    for q in suspicious["questions"]:
+        q["answer_seconds"] = 0.1
+        q["answer_tokens"] = 300
     warnings = validate_result(suspicious)[1]
     assert any("imposible" in w for w in warnings) and any("tokens/s" in w for w in warnings)
 
     short_refusal = json.loads(json.dumps(data))  # a short, fast refusal is normal, not suspicious
-    for q in short_refusal["preguntas"]:
-        q["segundos_respuesta"], q["tokens_respuesta"] = 0.75, 16
+    for q in short_refusal["questions"]:
+        q["answer_seconds"], q["answer_tokens"] = 0.75, 16
     assert validate_result(short_refusal)[1] == []
 
     repeated = json.loads(json.dumps(data))
-    for q in repeated["preguntas"]:
-        q["pregunta"] = "igual"
+    for q in repeated["questions"]:
+        q["question"] = "igual"
     assert "preguntas repetidas" in validate_result(repeated)[1]
 
 

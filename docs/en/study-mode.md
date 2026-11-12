@@ -41,7 +41,7 @@ The repository you choose is cloned into `data/estudio/` inside the Beacon folde
 It contains the questions, the answers, the times, the ratings, the chosen repository (address and
 commit) and, if authorized, the machine's details. It does **not** contain source code, machine paths, user
 name, machine name or IP. The identity (GitHub profile or introduction) goes in a separate file and
-is optional. You can leave at any moment with "Discard everything and exit", which deletes the session.
+is optional. Both files use English keys (`schema`, `questions`, `answer`, `rating`…); the questions and answers stay in the language of the session. You can leave at any moment with "Discard everything and exit", which deletes the session.
 
 `beacon study --new` discards a previous session and starts from scratch; `--port` changes the port and `--no-browser` prevents the browser from opening.
 
@@ -54,7 +54,7 @@ There are three routes, from the most convenient to the simplest. The participan
    2. Create a Drive folder for the results and copy its id (the last part of its address). In the project, *Project settings → Script properties*, add `FOLDER_ID` with that value.
    3. *Deploy → New deployment → Web app*: execute as **you**, access for **anyone**. Authorize Drive access and copy the address ending in `/exec` (opened in a browser it must answer `{"ok":true,"servicio":"beacon-estudio"}`).
    4. Put that address in `DEFAULT_SUBMIT_URL` in `src/core/study/submit.py` (so it travels with the repository and participants configure nothing). To try another without editing code: the `BEACON_STUDY_SUBMIT_URL` environment variable.
-   The collector only accepts study files (schema 1, short id, consent and at least 3 questions, up to 2 MB), never overwrites an earlier submission and stores nothing else. Anyone who knows the address could send it data, but not read what was already received; files are validated when analysed.
+   The collector only accepts study files (schema 2, with English keys; short id, consent and at least 3 questions, up to 2 MB), never overwrites an earlier submission and stores nothing else. Anyone who knows the address could send it data, but not read what was already received; files are validated when analysed.
 2. **A form without login** (for example Google Forms or Tally) with a paragraph field where the participant pastes the content of the "Copy results" button, and another optional field for contact details. It exports to CSV.
 3. **Through the invitation channel**: the participant downloads the file and sends it by hand.
 

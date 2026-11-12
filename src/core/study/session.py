@@ -15,7 +15,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2  # 2: the exported files use English keys (the session file keeps its own keys)
 PROFILES = ("abierto", "piloto")
 CONSENT_KINDS = ("participacion", "hardware", "envio")
 CORRECT_VALUES = ("si", "parcial", "no", "no_se")
@@ -24,6 +24,36 @@ MIN_QUESTIONS = 3
 
 class StudyError(ValueError):
     pass
+
+
+# Keys of the session state and their name in the exported files. Keys not listed (id, ts, n, url, commit, gpus...)
+# are already the same in both.
+EXPORT_KEYS = {
+    "esquema": "schema", "consentimientos": "consents", "instalacion": "installation", "preguntas": "questions",
+    "mini_tarea": "mini_task", "tareas_piloto": "pilot_tasks", "experiencia": "experience", "integridad": "integrity",
+    "sha256_de_preguntas": "sha256_of_questions",
+    "perfil": "profile", "codigo": "code", "orden": "order", "idioma": "language", "inicio": "start", "fin": "end",
+    "tipo": "kind", "aceptado": "accepted",
+    "cpu_modelo": "cpu_model", "cpu_nucleos": "cpu_cores", "disco_libre_gb": "free_disk_gb", "so": "os",
+    "modelo": "model", "modelos": "models", "minutos": "minutes", "problemas": "problems",
+    "archivos_indexados": "indexed_files", "fragmentos": "chunks", "lenguajes": "languages", "indexado_segundos": "indexing_seconds",
+    "pregunta": "question", "respuesta": "answer", "segundos_respuesta": "answer_seconds", "tokens_prompt": "prompt_tokens",
+    "tokens_respuesta": "answer_tokens", "fuentes": "sources", "archivo": "file", "lineas": "lines", "valoracion": "rating",
+    "correcta": "correct", "fuentes_utiles": "useful_sources", "resolvio_sola": "solved_alone", "comentario": "comment",
+    "descripcion": "description", "segundos_sin_beacon": "seconds_without_beacon", "segundos_con_beacon": "seconds_with_beacon",
+    "coincide": "matches", "condicion": "condition", "segundos": "seconds", "tope": "capped",
+    "herramientas_declaradas": "declared_tools", "explicacion": "explanation",
+    "anios": "years", "util": "usefulness", "presentacion": "introduction",
+}
+
+
+def export_keys(value):
+    """Copy of a state value with the keys renamed as they appear in the exported files."""
+    if isinstance(value, dict):
+        return {EXPORT_KEYS.get(k, k): export_keys(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [export_keys(v) for v in value]
+    return value
 
 
 _LOCK = threading.RLock()
@@ -206,15 +236,15 @@ class StudySession:
             meta["inicio"] = meta.pop("participacion_desde")
         questions = s["preguntas"]
         digest = hashlib.sha256(json.dumps([q["pregunta"] for q in questions], ensure_ascii=False).encode("utf-8")).hexdigest()
-        return {"esquema": SCHEMA_VERSION, "meta": meta, "consentimientos": s["consentimientos"], "hardware": s["hardware"],
-                "instalacion": s["instalacion"], "repo": s["repo"], "preguntas": questions, "mini_tarea": s["mini_tarea"],
-                "tareas_piloto": s["tareas_piloto"], "experiencia": s["experiencia"],
-                "integridad": {"sha256_de_preguntas": digest}}
+        return export_keys({"esquema": SCHEMA_VERSION, "meta": meta, "consentimientos": s["consentimientos"], "hardware": s["hardware"],
+                        "instalacion": s["instalacion"], "repo": s["repo"], "preguntas": questions, "mini_tarea": s["mini_tarea"],
+                        "tareas_piloto": s["tareas_piloto"], "experiencia": s["experiencia"],
+                        "integridad": {"sha256_de_preguntas": digest}})
 
     def build_identity(self) -> Optional[dict]:
         """Carries the same short id as the results file: it is the only link between them."""
         identity = self.state.get("identidad")
-        return dict(identity, id=self.state["meta"]["id"]) if identity else None
+        return export_keys(dict(identity, id=self.state["meta"]["id"])) if identity else None
 
     def discard(self):
         if self.path.exists():

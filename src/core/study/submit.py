@@ -13,7 +13,7 @@ from urllib.parse import urlparse
 
 import httpx
 
-DEFAULT_SUBMIT_URL = ""
+DEFAULT_SUBMIT_URL = "https://script.google.com/macros/s/AKfycbw7ZZZBnzAwTjL2GtKhOFoOLys22MoiQA4LusVOhCgssDWZKMLgylszMr3_2G3Ekudl/exec"
 MAX_PAYLOAD_BYTES = 2_000_000
 TIMEOUT_SECONDS = 30
 
@@ -34,7 +34,7 @@ def destination_host() -> str:
 
 
 def build_payload(result: dict, identity: Optional[dict]) -> bytes:
-    payload = json.dumps({"resultado": result, "identidad": identity}, ensure_ascii=False).encode("utf-8")
+    payload = json.dumps({"result": result, "identity": identity}, ensure_ascii=False).encode("utf-8")
     if len(payload) > MAX_PAYLOAD_BYTES:
         raise SubmitError("El archivo es demasiado grande para enviarlo (más de 2 MB). Descárgalo y envíalo por el canal de la invitación.")
     return payload

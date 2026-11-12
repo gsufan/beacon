@@ -41,7 +41,7 @@ El repositorio que eliges se clona en `data/estudio/` dentro de la carpeta de Be
 Contiene las preguntas, las respuestas, los tiempos, las valoraciones, el repositorio elegido (dirección y
 commit) y, si se autorizó, los datos del equipo. **No** contiene código fuente, rutas del equipo, nombre de
 usuario, nombre del equipo ni IP. La identidad (perfil de GitHub o presentación) va en un archivo aparte y
-es opcional. Se puede abandonar en cualquier momento con «Descartar todo y salir», que borra la sesión.
+es opcional. Las claves de ambos archivos están en inglés (`schema`, `questions`, `answer`, `rating`…); los textos de las preguntas y respuestas quedan en el idioma de la sesión. Se puede abandonar en cualquier momento con «Descartar todo y salir», que borra la sesión.
 
 `beacon study --new` descarta una sesión anterior y empieza de cero; `--port` cambia el puerto y `--no-browser` evita que se abra el navegador.
 
@@ -54,7 +54,7 @@ Hay tres vías, de la más cómoda a la más simple. El participante elige: si l
    2. Crea una carpeta en Drive para los resultados y copia su identificador (la parte final de su dirección). En el proyecto, *Configuración del proyecto → Propiedades de la secuencia de comandos*, agrega `FOLDER_ID` con ese valor.
    3. *Implementar → Nueva implementación → Aplicación web*: ejecutar como **tú** y acceso para **cualquier persona**. Autoriza el acceso a Drive y copia la dirección que termina en `/exec` (al abrirla en el navegador debe responder `{"ok":true,"servicio":"beacon-estudio"}`).
    4. Esa dirección va en `DEFAULT_SUBMIT_URL` de `src/core/study/submit.py` (así viaja en el repositorio y los participantes no configuran nada). Para probar otra, sin editar el código: variable de entorno `BEACON_STUDY_SUBMIT_URL`.
-   El colector solo acepta archivos del estudio (esquema 1, id corto, consentimiento y al menos 3 preguntas, hasta 2 MB), no sobrescribe un envío anterior y no guarda nada más. Cualquiera que conozca la dirección podría enviarle datos, pero no leer los ya recibidos; los archivos se validan al analizarlos.
+   El colector solo acepta archivos del estudio (esquema 2, con claves en inglés; id corto, consentimiento y al menos 3 preguntas, hasta 2 MB), no sobrescribe un envío anterior y no guarda nada más. Cualquiera que conozca la dirección podría enviarle datos, pero no leer los ya recibidos; los archivos se validan al analizarlos.
 2. **Formulario sin inicio de sesión** (por ejemplo Google Forms o Tally) con un campo de párrafo donde el participante pega el contenido del botón «Copiar resultados», y otro opcional para el contacto. Se exporta a CSV.
 3. **Por el canal de la invitación**: el participante descarga el archivo y lo envía a mano.
 

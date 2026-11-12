@@ -17,3 +17,13 @@ shutil.copyfile(_ROOT / "config" / "config.example.yaml", _TMP / "config.yaml")
 os.environ["DEUDA_TECNICA_CONFIG"] = str(_TMP / "config.yaml")
 os.environ["DEUDA_TECNICA_CREDENTIALS"] = str(_TMP / "credentials.yaml")
 os.environ["BEACON_MONITOR_SECONDS"] = "0"  # no periodic calls to a real model server from the tests
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _no_real_collector(monkeypatch):
+    """The real study collector address ships in the code: no test may send to it."""
+    from core.study import submit
+    monkeypatch.setattr(submit, "DEFAULT_SUBMIT_URL", "")

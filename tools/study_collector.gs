@@ -32,7 +32,7 @@ function doPost(e) {
     var body;
     try { body = JSON.parse(raw); } catch (err) { return reply({ ok: false, error: 'no es JSON' }); }
 
-    var result = body.resultado;
+    var result = body.result;
     var problem = check(result);
     if (problem) return reply({ ok: false, error: problem });
 
@@ -44,7 +44,7 @@ function doPost(e) {
     if (folder.getFilesByName(name).hasNext()) name = 'beacon-estudio-resultados-' + id + '-' + stamp + '.json';
     folder.createFile(name, JSON.stringify(result, null, 2), MimeType.PLAIN_TEXT);
 
-    var identity = body.identidad;
+    var identity = body.identity;
     if (identity && typeof identity === 'object' && identity.id === id) {
       var idName = name.replace('resultados', 'identidad');
       folder.createFile(idName, JSON.stringify(identity, null, 2), MimeType.PLAIN_TEXT);
@@ -65,11 +65,11 @@ function doGet() {
 
 function check(result) {
   if (!result || typeof result !== 'object') return 'falta el resultado';
-  if (result.esquema !== 1) return 'esquema no soportado';
+  if (result.schema !== 2) return 'esquema no soportado';
   if (!result.meta || !/^[0-9a-f]{6}$/.test(String(result.meta.id))) return 'id inválido';
-  var consent = (result.consentimientos || []).some(function (c) { return c.tipo === 'participacion' && c.aceptado; });
+  var consent = (result.consents || []).some(function (c) { return c.kind === 'participacion' && c.accepted; });
   if (!consent) return 'sin consentimiento de participación';
-  var q = result.preguntas;
+  var q = result.questions;
   if (!Array.isArray(q) || q.length < MIN_QUESTIONS || q.length > MAX_QUESTIONS) return 'número de preguntas inválido';
   return '';
 }
