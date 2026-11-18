@@ -96,3 +96,12 @@ def test_config_without_a_host_uses_the_provider_default(tmp_path):
     path = tmp_path / "config.yaml"
     path.write_text("ai_provider:\n  provider: ollama\n  embedding_model: e\n  llm_model: l\nprojects: []\n", encoding="utf-8")
     assert load_config(path).ai_provider.host == "http://localhost:11434"
+
+
+def test_ollama_backend_reuses_its_client_per_timeout():
+    """Building an HTTP client costs ~180 ms (SSL context), so each timeout value gets one client that is reused."""
+    from core.engine.backends.ollama_backend import OllamaBackend
+    backend = OllamaBackend()
+    assert backend._get_client() is backend._get_client()
+    assert backend._get_client(30) is backend._get_client(30)
+    assert backend._get_client(30) is not backend._get_client()

@@ -24,12 +24,15 @@ class OllamaBackend:
 
     def __init__(self, client=None, host: str = DEFAULT_HOST):
         self.host = host
-        self._client = client  # injectable for tests; otherwise created per call so timeouts can differ
+        self._client = client  # injectable for tests
+        self._clients: dict = {}  # one per timeout value: building a client (its SSL context) costs ~180 ms
 
     def _get_client(self, timeout: Optional[float] = None):
         if self._client is not None:
             return self._client
-        return ollama.Client(host=self.host, timeout=timeout) if timeout else ollama.Client(host=self.host)
+        if timeout not in self._clients:
+            self._clients[timeout] = ollama.Client(host=self.host, timeout=timeout) if timeout else ollama.Client(host=self.host)
+        return self._clients[timeout]
 
     def _translate(self, error: Exception, model: str = ""):
         if isinstance(error, ollama.ResponseError):
