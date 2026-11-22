@@ -40,8 +40,9 @@ SOURCES = {
 
 
 class _SameVector:
+    """Same unit vector for everything: semantic distances are exactly equal, with no platform-dependent rounding."""
     def embed(self, model, input, **kwargs):
-        return {"embeddings": [[0.3, 0.4, 0.5] for _ in input]}
+        return {"embeddings": [[0.0, 0.0, 1.0] for _ in input]}
 
 
 def _engine(tmp_path):
