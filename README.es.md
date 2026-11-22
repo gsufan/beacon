@@ -69,7 +69,7 @@ El asistente se abre en el navegador y te guía: aceptas la participación, elig
 
 | Documento | Contenido |
 |---|---|
-| [Instalación manual](docs/es/instalacion-manual.md) | Sin Docker, en Windows y Linux/macOS; cómo compartirlo con un equipo |
+| [Instalación manual](docs/es/instalacion-manual.md) | Sin Docker, en Windows y Linux/macOS (macOS verificado solo en el CI); cómo compartirlo con un equipo |
 | [Uso](docs/es/uso.md) | CLI, interfaz web, sincronización automática, exportar e importar proyectos |
 | [Docker](docs/es/docker.md) | Detalles y casos particulares del despliegue con contenedores |
 | [Calidad medida](docs/es/calidad-medida.md) | Resultados de la búsqueda, de las respuestas y de las pruebas de carga |

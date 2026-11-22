@@ -90,6 +90,8 @@ Notes for Windows:
 
 ## Steps (Linux / macOS)
 
+> **Platform status.** Tested by hand on Windows 11 and on a clean Debian 13. On macOS (Apple Silicon) the continuous integration runs the backend tests, the web interface tests and build, the installer and the launcher on every push; it has **not** been tried by hand on a Mac, and the models cannot be exercised there (no GPU in CI). If you try it on a Mac, a report is welcome.
+
 ```bash
 git clone https://github.com/gsufan/beacon.git && cd beacon
 python3.11 -m venv .venv

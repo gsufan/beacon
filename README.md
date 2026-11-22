@@ -69,7 +69,7 @@ The assistant opens in the browser and guides you: you accept participation, cho
 
 | Document | Contents |
 |---|---|
-| [Manual installation](docs/en/manual-installation.md) | Without Docker, on Windows and Linux/macOS; how to share it with a team |
+| [Manual installation](docs/en/manual-installation.md) | Without Docker, on Windows and Linux/macOS (macOS verified in CI only); how to share it with a team |
 | [Usage](docs/en/usage.md) | CLI, web interface, automatic sync, exporting and importing projects |
 | [Docker](docs/en/docker.md) | Details and special cases of the container deployment |
 | [Measured quality](docs/en/measured-quality.md) | Results for search, answers and load tests |

@@ -90,6 +90,8 @@ Notas para Windows:
 
 ## Pasos (Linux / macOS)
 
+> **Estado por plataforma.** Probado a mano en Windows 11 y en un Debian 13 limpio. En macOS (Apple Silicon) la integración continua ejecuta en cada cambio las pruebas del backend, las pruebas y la compilación de la interfaz, el instalador y el lanzador; **no** se ha probado a mano en un Mac, y los modelos no se pueden ejercitar allí (el CI no tiene GPU). Si lo prueba en un Mac, se agradece el reporte.
+
 ```bash
 git clone https://github.com/gsufan/beacon.git && cd beacon
 python3.11 -m venv .venv
