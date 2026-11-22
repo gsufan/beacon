@@ -153,9 +153,11 @@ class Retriever:
         if ASKS_ABOUT_USAGE.search(question):
             name_bonus, code_bonus = CODE_MATCH_BONUS, NAME_MATCH_BONUS
 
-        def add(result, bonus):
+        def add(result, bonus, skip_definitions=False):
             for chunk_id, doc, meta, vector in zip(result["ids"], result["documents"],
                                                    result["metadatas"], result["embeddings"]):
+                if skip_definitions and meta.get("name") in identifiers:
+                    continue  # a definition repeats its own name: it keeps the name discount, not the "uses it" one
                 if chunk_id not in found or found[chunk_id][3] < bonus:
                     found[chunk_id] = (doc, meta, _cosine_distance(embedding, vector), bonus)
 
@@ -165,7 +167,7 @@ class Retriever:
             in_code = self.collection.get(where_document={"$contains": identifier}, include=_INCLUDE_WITH_VECTORS,
                                           limit=IDENTIFIER_MAX_CODE_MATCHES + 1)
             if len(in_code["ids"]) <= IDENTIFIER_MAX_CODE_MATCHES:
-                add(in_code, code_bonus)
+                add(in_code, code_bonus, skip_definitions=True)
         return found
 
     def retrieve(self, question: str, top_k: int = DEFAULT_TOP_K) -> List[RetrievedChunk]:
