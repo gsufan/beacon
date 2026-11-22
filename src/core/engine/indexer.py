@@ -4,6 +4,8 @@ import os
 from dataclasses import dataclass
 from typing import Callable, List, Optional
 
+import numpy as np
+
 from core.engine.chroma_utils import bump_index_version, get_chroma_client, remove_orphan_segments
 from core.engine.backends import Backend, InputRejectedError, create_backend
 
@@ -111,8 +113,8 @@ class CodebaseIndexer:
     MIN_SPLIT_CHARS = 800
     MAX_SPLIT_DEPTH = 8
 
-    def _embed(self, text: str) -> List[float]:
-        return embed_documents(self.backend, self.ai_config.embedding_model, [text])[0]
+    def _embed(self, text: str) -> np.ndarray:
+        return np.asarray(embed_documents(self.backend, self.ai_config.embedding_model, [text])[0], dtype=np.float32)
 
     def _embed_adaptive(self, chunk_id, code, base_meta, out, depth=0):
         if depth == 0 and len(code) > self.DIRECT_TRY_MAX_CHARS:
@@ -148,7 +150,7 @@ class CodebaseIndexer:
             try:
                 texts = [embedding_text(c.to_metadata(), c.code) for c in chunks]
                 vectors = embed_documents(self.backend, self.ai_config.embedding_model, texts)
-                return [(c.chunk_id(), c.code, c.to_metadata(), v) for c, v in zip(chunks, vectors)]
+                return [(c.chunk_id(), c.code, c.to_metadata(), np.asarray(v, dtype=np.float32)) for c, v in zip(chunks, vectors)]
             except InputRejectedError:
                 pass  # a missing model or a server that is down is not a size problem and propagates
         for c in chunks:
@@ -216,6 +218,7 @@ class CodebaseIndexer:
         # All embeddings are computed before touching the index: it is the slow part and the one that fails (model
         # server down, text too long). If it fails, an incremental sync leaves the index exactly as it was, so queries
         # never mix chunks of two commits; the short write step that follows applies all the changes together.
+        # The vectors are kept as float32 arrays (Chroma stores float32): as Python lists of floats they take 8 times more.
         prepared = []
         for i, fp in enumerate(files, 1):
             prepared.append(self._prepare_file(fp, commit_hash=None if include_uncommitted else target))
