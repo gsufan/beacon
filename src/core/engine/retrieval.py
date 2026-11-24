@@ -34,6 +34,11 @@ CODE_MATCH_BONUS = 0.04
 # `request`) and its occurrences in code are ignored.
 IDENTIFIER_MAX_CODE_MATCHES = 15
 QUESTION_TOKEN = re.compile(r"[A-Za-z_][A-Za-z0-9_]{3,}")
+# A plain word is also an identifier when written in backticks, or when it is capitalized right after a
+# code noun ("la clase Session"); a lowercase word there is usually prose ("la función que...").
+QUOTED_TOKEN = re.compile(r"`([A-Za-z_][A-Za-z0-9_.]*)`")
+NAMED_TOKEN = re.compile(
+    r"\b(?i:clase|funci[oó]n|m[eé]todo|struct|interfaz|class|function|method|interface)\s+([A-Z][A-Za-z0-9_]{2,})\b")
 # "Where is X used?", "who calls X?": the question is about whoever uses the identifier, not its
 # definition, so the larger discount goes to the chunks that use it.
 ASKS_ABOUT_USAGE = re.compile(
@@ -71,12 +76,17 @@ class RetrievedChunk:
 
 
 def question_identifiers(question: str) -> List[str]:
-    """Words in the question shaped like code identifiers: snake_case, camelCase/PascalCase or
-    CONSTANT_CASE. Common words (Spanish or English) do not have that shape.
+    """Words in the question shaped like code identifiers (snake_case, camelCase/PascalCase or
+    CONSTANT_CASE), plus words in backticks or right after "class", "function" or "method". Common
+    words (Spanish or English) do not have that shape.
     """
     found = []
     for token in QUESTION_TOKEN.findall(question):
         if ("_" in token.strip("_") or re.search(r"[a-z][A-Z]", token)) and token not in found:
+            found.append(token)
+    for token in QUOTED_TOKEN.findall(question) + NAMED_TOKEN.findall(question):
+        token = token.rsplit(".", 1)[-1]
+        if len(token) >= 3 and token not in found:
             found.append(token)
     return found
 

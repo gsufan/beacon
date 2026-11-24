@@ -69,6 +69,13 @@ def test_detects_identifiers_but_not_ordinary_words():
     assert question_identifiers("¿Cómo se envía la petición HTTP con POST?") == []
 
 
+def test_plain_words_count_as_identifiers_when_the_question_marks_them():
+    assert question_identifiers("¿Dónde se define la clase Session?") == ["Session"]
+    assert question_identifiers("¿Qué hace la clase HTTPAdapter?") == ["HTTPAdapter"]
+    assert question_identifiers("What does `Session.close` do?") == ["close"]
+    assert question_identifiers("¿Qué clase de errores maneja la función que reintenta?") == []
+
+
 def test_named_function_beats_tests_that_repeat_its_name(tmp_path):
     engine = _engine(tmp_path)
     top = engine.retrieve("¿Para qué sirve super_len?", top_k=1)[0]
