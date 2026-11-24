@@ -80,7 +80,7 @@ El asistente se abre en el navegador y te guía: aceptas la participación, elig
 
 ## Resultados en breve
 
-Sobre `psf/requests` (30 preguntas), el fragmento que responde aparece entre los cinco primeros resultados en el 93 % de los casos. Con 2.000 archivos, el indexado completo toma 6 minutos y la búsqueda tiene un p95 de 35 ms (sin contar el modelo de lenguaje). Los conjuntos de preguntas son chicos: sirven para comparar configuraciones, no como garantía general. Detalle en [Calidad medida](docs/es/calidad-medida.md).
+Sobre `psf/requests` (30 preguntas), el fragmento que responde aparece entre los cinco primeros resultados en el 93 % de los casos. Con 2.000 archivos, el indexado completo toma 5,2 minutos y la búsqueda tiene un p95 de 32 ms (sin contar el modelo de lenguaje). Los conjuntos de preguntas son chicos: sirven para comparar configuraciones, no como garantía general. Detalle en [Calidad medida](docs/es/calidad-medida.md).
 
 ## Licencia
 

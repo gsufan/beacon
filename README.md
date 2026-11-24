@@ -82,7 +82,7 @@ The documentation is also available in Spanish under [docs/es/](docs/es/).
 
 ## Results at a glance
 
-On `psf/requests` (30 questions), the fragment that answers the question appears among the top five results in 93 % of cases. With 2,000 files, a full index takes 6 minutes and search has a p95 of 35 ms (not counting the language model). The question sets are small: they are useful for comparing configurations, not as a general guarantee. Details in [Measured quality](docs/en/measured-quality.md).
+On `psf/requests` (30 questions), the fragment that answers the question appears among the top five results in 93 % of cases. With 2,000 files, a full index takes 5.2 minutes and search has a p95 of 32 ms (not counting the language model). The question sets are small: they are useful for comparing configurations, not as a general guarantee. Details in [Measured quality](docs/en/measured-quality.md).
 
 ## License
 

@@ -11,27 +11,27 @@
   },
   "indexacion": {
     "archivos": 2000,
-    "fragmentos": 18032,
-    "segundos": 298.0,
-    "fragmentos_por_segundo": 60.5,
-    "memoria_maxima_mb": 1005,
+    "fragmentos": 18012,
+    "segundos": 311.3,
+    "fragmentos_por_segundo": 57.9,
+    "memoria_maxima_mb": 348,
     "disco_mb": 121.7
   },
   "incremental": {
     "archivos_modificados": 20,
-    "segundos": 5.1,
-    "fragmentos_reindexados": 214
+    "segundos": 5.0,
+    "fragmentos_reindexados": 194
   },
   "busqueda": {
     "descriptivas": {
       "consultas": 25,
       "p50_ms": 24,
-      "p95_ms": 33
+      "p95_ms": 32
     },
     "con_identificador": {
       "consultas": 25,
       "p50_ms": 36,
-      "p95_ms": 55
+      "p95_ms": 70
     }
   },
   "concurrencia": {
@@ -39,28 +39,28 @@
       "consultas": 2,
       "errores": 0,
       "detalle_errores": [],
-      "p50_s": 0.8,
-      "max_s": 0.8
+      "p50_s": 0.7,
+      "max_s": 0.7
     },
     "4": {
       "consultas": 8,
       "errores": 0,
       "detalle_errores": [],
-      "p50_s": 6.5,
-      "max_s": 11.7
+      "p50_s": 5.2,
+      "max_s": 8.8
     },
     "8": {
       "consultas": 16,
       "errores": 0,
       "detalle_errores": [],
-      "p50_s": 13.2,
-      "max_s": 23.4
+      "p50_s": 9.9,
+      "max_s": 23.5
     }
   },
   "durante_reconstruccion": {
     "codigo_salida_sync": 0,
-    "consultas": 130,
-    "ok": 130,
+    "consultas": 201,
+    "ok": 201,
     "sin_fuentes": 0,
     "errores": []
   }
