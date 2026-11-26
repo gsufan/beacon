@@ -30,4 +30,9 @@ Docker. En un
 servidor dedicado con Linux, donde la GPU no la usa también el escritorio,
 el compose completo funciona sin este ajuste.
 
+Repetido el 26-nov-2026 con la versión final, en esta segunda configuración (Beacon en Docker y Ollama
+de Windows): imagen construida desde un clon limpio en 1,5 minutos, `beacon doctor` en verde, psf/requests
+clonado por URL e indexado en 26 s (738 fragmentos), y respuestas con fuentes en unos 4 s, incluido el
+rechazo de una pregunta sin respuesta en el código.
+
 El contenedor `beacon` espera a que `ollama` pase su healthcheck (`depends_on: condition: service_healthy`) antes de arrancar, así que no falla la primera consulta por arrancar antes de que Ollama esté listo.

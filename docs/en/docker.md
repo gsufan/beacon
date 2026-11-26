@@ -29,4 +29,9 @@ and start only the Beacon service, without the Ollama container
 without Docker. On a dedicated Linux server, where the GPU is not also used by
 the desktop, the full compose file works without this adjustment.
 
+Repeated on 26 Nov 2026 with the final version, in this second setup (Beacon in Docker and Ollama on
+Windows): image built from a clean clone in 1.5 minutes, `beacon doctor` all green, psf/requests cloned by
+URL and indexed in 26 s (738 fragments), and answers with sources in about 4 s, including the refusal of a
+question with no answer in the code.
+
 The `beacon` container waits for `ollama` to pass its healthcheck (`depends_on: condition: service_healthy`) before starting, so the first query does not fail because it started before Ollama was ready.
