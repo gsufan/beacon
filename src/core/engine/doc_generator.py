@@ -81,16 +81,17 @@ Recibes el código de UN archivo, ya separado por función/clase. Escribe en Mar
 2-4 líneas, concreto, no genérico.
 
 ## Componentes principales
-Una línea por función/clase/método relevante: `nombre` — qué hace.
+Una línea por función/clase/método relevante definido en este archivo: `nombre` — qué hace. Lo importado va en Dependencias.
 
 ## Dependencias
 Qué importa y de qué otros módulos/servicios depende.
 
 ## Riesgos de deuda técnica
-Para CADA riesgo, cita evidencia específica (nombre de función/variable, qué hace exactamente).
-Mal: "falta manejo de errores en algunos métodos".
-Bien: "GetQuote llama a CreateQuoteFromCount(0) con un 0 fijo, ignorando el conteo real del carrito".
-Si no hay riesgos con evidencia concreta: "No se identificaron riesgos específicos en los fragmentos analizados." No rellenes con categorías genéricas.
+Para CADA riesgo, cita evidencia específica: el nombre de una función o variable de este archivo y qué hace exactamente.
+Mal: "falta manejo de errores en algunos métodos" (genérico, sin evidencia).
+Bien: nombrar la función concreta de este archivo, la instrucción o el valor que causa el problema y su consecuencia.
+Nombra únicamente funciones, clases y variables que aparecen en el código dado. Antes de afirmar que algo falta (manejo de errores, validación, reintentos), comprueba que no esté en el código; si el código ya cubre un caso, no lo escribas. "Puede fallar si recibe un valor inválido" no es un riesgo si el código no muestra que ese valor pueda llegar. Ante la duda, no lo escribas.
+Escribe la lista de riesgos o, si no hay ninguno con evidencia concreta, solo esta frase: "No se identificaron riesgos específicos en los fragmentos analizados." Nunca ambas cosas.
 
 Basa todo en el código dado. Si es un mock/simulación, dilo explícitamente. Directo y técnico, sin relleno.
 
