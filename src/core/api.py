@@ -15,7 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from core import services, storage
+from core import services, storage, team
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -33,6 +33,7 @@ from core.monitor import ModelMonitor
 from core.project_lock import ProjectBusyError
 from core.projects import InvalidRepoUrlError, ProjectNotFoundError, get_project, list_projects
 from core.version import VERSION
+from hub.security import InvalidTokenError
 
 logger = logging.getLogger("beacon.api")
 
@@ -88,9 +89,52 @@ def _read_only_allowed(request: Request) -> bool:
     return request.method == "POST" and bool(_QUERY_PATH.match(path))
 
 
+def _hub_settings():
+    """Team mode if a Hub is configured; a Hub that cannot be reached for its key is reported, not ignored."""
+    try:
+        return team.hub_settings()
+    except (httpx.HTTPError, KeyError, ValueError) as e:
+        raise HTTPException(status_code=503, detail=f"No se pudo contactar al Beacon Hub configurado: {e}")
+
+
 @app.middleware("http")
-async def api_key_middleware(request: Request, call_next):
-    if (API_KEY or READ_KEY) and request.url.path.startswith(_PROTECTED_PREFIXES):
+async def access_middleware(request: Request, call_next):
+    if not request.url.path.startswith(_PROTECTED_PREFIXES):
+        return await call_next(request)
+    try:
+        settings = _hub_settings()
+    except HTTPException as e:
+        return JSONResponse({"detail": e.detail}, status_code=e.status_code)
+    if settings is not None:
+        return await _team_access(request, call_next, settings)
+    return await _api_key_access(request, call_next)
+
+
+async def _team_access(request: Request, call_next, settings):
+    """Team mode: a session signed by the Hub, a valid license and the Scrum role the route requires."""
+    authorization = request.headers.get("authorization", "")
+    try:
+        claims = team.verify_session(settings, authorization)
+    except InvalidTokenError:
+        return JSONResponse({"detail": "Inicia sesión con tu cuenta de Beacon."}, status_code=401)
+    try:
+        team.verify_license(settings, request.headers.get("x-beacon-license", ""), claims["org"])
+    except team.LicenseExpiredError as e:
+        return JSONResponse({"detail": str(e)}, status_code=402)
+    action, project_id = team.required_permission(request.method, request.url.path)
+    if not team.allowed(claims, action, project_id):
+        return JSONResponse({"detail": "Tu rol no permite esta acción en este proyecto."}, status_code=403)
+    request.state.user = claims
+    response = await call_next(request)
+    if response.status_code < 400:
+        event = team.audit_action(request.method, request.url.path)
+        if event:
+            team.report(settings, authorization, *event)
+    return response
+
+
+async def _api_key_access(request: Request, call_next):
+    if API_KEY or READ_KEY:
         given = request.headers.get("x-api-key", "")
         if _same(given, API_KEY):
             return await call_next(request)
@@ -234,9 +278,45 @@ class CleanRequest(BaseModel):
     docs: bool = False
 
 
+@app.get("/auth/status")
+def auth_status():
+    """Whether this instance works in team mode (with a Hub) or on its own."""
+    url = team.hub_url()
+    return {"mode": "team" if url else "standalone", "hub_url": url}
+
+
+_HUB_TIMEOUT = 20
+
+
+@app.api_route("/hub/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE"], include_in_schema=False)
+async def hub_proxy(path: str, request: Request):
+    """Forwards the interface's calls to the Hub (accounts, team, license, GitHub), so the browser only talks to
+    Beacon Local. The Hub checks the session itself.
+    """
+    url = team.hub_url()
+    if not url:
+        raise HTTPException(status_code=404, detail="Esta instancia no está conectada a un Beacon Hub.")
+    headers = {k: v for k, v in request.headers.items() if k.lower() in ("authorization", "content-type")}
+    try:
+        async with httpx.AsyncClient(timeout=_HUB_TIMEOUT) as client:
+            res = await client.request(request.method, f"{url}/{path}", params=request.query_params,
+                                       content=await request.body(), headers=headers)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=503, detail=f"No se pudo contactar al Beacon Hub: {e}")
+    try:
+        body = res.json()
+    except ValueError:
+        body = {"detail": res.text[:300]}
+    return JSONResponse(body, status_code=res.status_code)
+
+
 @app.get("/projects")
-def get_projects():
-    return [{"id": p.id, "name": p.name} for p in list_projects()]
+def get_projects(request: Request):
+    user = getattr(request.state, "user", None)
+    projects = list_projects()
+    if user and not user.get("admin"):  # team mode: only the projects where the person has a role
+        projects = [p for p in projects if p.id in (user.get("roles") or {})]
+    return [{"id": p.id, "name": p.name} for p in projects]
 
 
 @app.get("/projects/{project_id}/health")
@@ -258,6 +338,30 @@ def query(project_id: str, req: QueryRequest):
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el motor RAG: {e}")
     return result.to_dict()
+
+
+class StartIssueRequest(BaseModel):
+    language: str = Field(default="es", pattern="^(es|en)$")
+
+
+@app.post("/projects/{project_id}/issues/{number}/start")
+def start_issue(project_id: str, number: int, req: StartIssueRequest, request: Request):
+    """«Where do I start with this issue?»: takes the issue's title and description from GitHub (through the Hub)
+    and asks the code which files and functions to review, with sources.
+    """
+    url = team.hub_url()
+    if not url:
+        raise HTTPException(status_code=409, detail="Las issues requieren conectar Beacon a un Beacon Hub.")
+    try:
+        res = httpx.get(f"{url}/projects/{project_id}/github/issues/{number}",
+                        headers={"Authorization": request.headers.get("authorization", "")}, timeout=_HUB_TIMEOUT)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=503, detail=f"No se pudo contactar al Beacon Hub: {e}")
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.json().get("detail", "No se pudo leer la issue."))
+    issue = res.json()
+    answer = query(project_id, QueryRequest(question=team.issue_question(issue, req.language), top_k=8, language=req.language))
+    return {"issue": {k: issue.get(k) for k in ("number", "title", "url", "labels")}, **answer}
 
 
 @app.get("/projects/{project_id}/docs/tree")

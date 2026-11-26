@@ -10,6 +10,7 @@ requires-python = ">=3.10,<3.13"
 
 [project.scripts]
 beacon = "core.cli:app"
+beacon-hub = "hub.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]

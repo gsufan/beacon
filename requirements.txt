@@ -10,6 +10,7 @@ pyyaml==6.0.2
 typer==0.27.2  # 0.15.1 failed on --help with click>=8.2 (Parameter.make_metavar)
 click==8.5.0  # 8.1.x had a known CVE
 rich==13.9.4
+cryptography==50.0.2  # Ed25519 signatures of sessions and licenses (Hub and Local)
 
 # Indirect dependencies (of chromadb, via kubernetes) pinned to versions with no known
 # vulnerabilities according to pip-audit.
