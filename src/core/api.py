@@ -405,7 +405,7 @@ def query(project_id: str, req: QueryRequest):
     out = result.to_dict()
     try:
         insight.record_usage(Path(get_project(project_id).docs_dir).parent, out["sources"], out["answer"])
-    except OSError:
+    except Exception:  # noqa: BLE001 - the usage log must never break an answer
         logger.warning("no se pudo registrar el uso del proyecto %s", project_id)
     return {**out, "verified": verified}
 
