@@ -82,8 +82,8 @@ class JiraClient:
             "comments": ((f.get("comment") or {}).get("total")) or 0,
         }
 
-    def issues(self, project: str, assignee: Optional[str] = None, limit: int = 50) -> list[dict]:
-        jql = f'project = "{project}" AND statusCategory != Done'
+    def issues(self, project: str, assignee: Optional[str] = None, limit: int = 50, done: bool = False) -> list[dict]:
+        jql = f'project = "{project}" AND statusCategory {"=" if done else "!="} Done'
         if assignee:
             safe = assignee.replace('"', "")
             jql += f' AND assignee = "{safe}"'

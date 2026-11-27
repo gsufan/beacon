@@ -602,7 +602,8 @@ def create_app(hub: Hub) -> FastAPI:
         return person["jira_user"] if source == "jira" else person["github_login"]
 
     @app.get("/projects/{project_id}/issues")
-    def project_issues(project_id: str, mine: bool = False, assignee_id: Optional[int] = None, user: dict = Depends(current)):
+    def project_issues(project_id: str, mine: bool = False, assignee_id: Optional[int] = None, state: str = "open",
+                       user: dict = Depends(current)):
         """Open issues of the project's backlog: all, the person's own (mine) or another member's (assignee_id)."""
         source, client, where = tracker_for(user, project_id)
         person = user
@@ -613,7 +614,11 @@ def create_app(hub: Hub) -> FastAPI:
         login = login_of(person, source) if (mine or assignee_id is not None) else None
         if (mine or assignee_id is not None) and not login:
             return {"source": source, "where": where, "issues": [], "needs_login": True, "person": person["name"]}
-        issues = tracker_call(lambda: client.issues(where, assignee=login))
+        closed = state == "closed"
+        if source == "github":
+            issues = tracker_call(lambda: client.issues(where, assignee=login, state="closed" if closed else "open"))
+        else:
+            issues = tracker_call(lambda: client.issues(where, assignee=login, done=closed))
         return {"source": source, "where": where, "issues": issues, "person": person["name"] if assignee_id is not None else None}
 
     @app.get("/projects/{project_id}/issues/{ref}")

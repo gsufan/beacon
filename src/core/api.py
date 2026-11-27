@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from core import edition, expertise, instance, services, storage, team, verification
+from core import assist, edition, expertise, insight, instance, services, storage, team, verification
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -402,7 +402,12 @@ def query(project_id: str, req: QueryRequest):
         raise _model_server_down(engine.ai_config.provider, engine.ai_config.host)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el motor RAG: {e}")
-    return {**result.to_dict(), "verified": verified}
+    out = result.to_dict()
+    try:
+        insight.record_usage(Path(get_project(project_id).docs_dir).parent, out["sources"], out["answer"])
+    except OSError:
+        logger.warning("no se pudo registrar el uso del proyecto %s", project_id)
+    return {**out, "verified": verified}
 
 
 class StartIssueRequest(BaseModel):
@@ -427,6 +432,155 @@ def start_issue(project_id: str, ref: str, req: StartIssueRequest, request: Requ
     issue = res.json()
     answer = query(project_id, QueryRequest(question=team.issue_question(issue, req.language), top_k=8, language=req.language))
     return {"issue": {k: issue.get(k) for k in ("id", "ref", "source", "number", "title", "url", "labels")}, **answer}
+
+
+def _fetch_issue(request: Request, project_id: str, ref: str) -> dict:
+    url = team.hub_url()
+    if not url:
+        raise HTTPException(status_code=409, detail="Las issues requieren conectar Beacon a un Beacon Hub.")
+    try:
+        res = httpx.get(f"{url}/projects/{project_id}/issues/{ref}", headers={"Authorization": request.headers.get("authorization", "")},
+                        timeout=_HUB_TIMEOUT)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=503, detail=f"No se pudo contactar al Beacon Hub: {e}")
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.json().get("detail", "No se pudo leer la issue."))
+    return res.json()
+
+
+def _model_call(fn):
+    try:
+        return fn()
+    except _DOMAIN_ERRORS:
+        raise
+    except (BackendUnavailableError, ConnectionError, httpx.TransportError):
+        ai = load_config().ai_provider
+        raise _model_server_down(ai.provider, ai.host)
+
+
+@app.post("/projects/{project_id}/issues/{ref}/plan")
+def issue_plan(project_id: str, ref: str, req: StartIssueRequest, request: Request):
+    """Implementation plan for an issue: steps, files and functions to change, tests, risks and a size estimate."""
+    issue = _fetch_issue(request, project_id, ref)
+    answer = query(project_id, QueryRequest(question=assist.plan_question(issue, req.language), top_k=8, language=req.language))
+    return {"issue": {k: issue.get(k) for k in ("id", "ref", "source", "title", "url")}, **answer}
+
+
+@app.get("/projects/{project_id}/issues/{ref}/code")
+def issue_linked_code(project_id: str, ref: str):
+    """Commits that mention the issue and the files they changed: the code that implemented (or is implementing) it."""
+    try:
+        return insight.issue_code(get_project(project_id).repo_path, ref)
+    except git.GitError as e:
+        raise HTTPException(status_code=409, detail=f"No se pudo leer el historial de git del proyecto: {e}")
+
+
+class RelatedRequest(BaseModel):
+    issue: dict
+    candidates: list = Field(default_factory=list, max_length=200)
+
+
+@app.post("/projects/{project_id}/issues/related")
+def issues_related(project_id: str, body: RelatedRequest):
+    """Similar issues (open or already solved), as a suggestion so nobody repeats work. It never blocks anything."""
+    engine = _get_engine(project_id)
+    return {"related": _model_call(lambda: assist.related_issues(engine, body.issue, body.candidates))}
+
+
+class ImpactRequest(BaseModel):
+    targets: list[str] = Field(..., min_length=1, max_length=10)
+
+
+@app.post("/projects/{project_id}/impact")
+def change_impact(project_id: str, body: ImpactRequest):
+    """What depends on these functions: direct and indirect callers, the tests that exercise them, who knows the
+    affected files and which verified documents a change would leave pending."""
+    engine = _get_engine(project_id)
+    project = get_project(project_id)
+    result = insight.impact(engine.collection, body.targets)
+    try:
+        result["experts"] = expertise.experts(project.repo_path, result["files"][:10])["overall"] if result["files"] else []
+    except (git.GitError, expertise.InvalidPathError):
+        result["experts"] = []
+    key = _hub_public_key()
+    docs_dir = Path(project.docs_dir)
+    result["docs"] = [{"file_path": f, **verification.doc_status(docs_dir.parent, docs_dir, f, key)} for f in result["files"]
+                      if (docs_dir / f"{f}.md").exists()]
+    return result
+
+
+class QAPlanRequest(BaseModel):
+    targets: list[str] = Field(..., min_length=1, max_length=6)
+    issue: Optional[dict] = None
+    language: str = Field(default="es", pattern="^(es|en)$")
+
+
+@app.post("/projects/{project_id}/qa-plan")
+def qa_test_plan(project_id: str, body: QAPlanRequest):
+    """«What should we test?»: test cases for a change, from its impact and the existing tests (for QA)."""
+    engine = _get_engine(project_id)
+    result = insight.impact(engine.collection, body.targets)
+    plan = _model_call(lambda: assist.qa_plan(engine, result, body.issue, body.language))
+    return {"impact": result, "plan": plan}
+
+
+class HandoverRequest(BaseModel):
+    person: str = Field(..., min_length=1, max_length=80)
+    git_author: Optional[str] = None
+    issues: list = Field(default_factory=list, max_length=100)
+    commits: list = Field(default_factory=list, max_length=200)
+    language: str = Field(default="es", pattern="^(es|en)$")
+
+
+@app.post("/projects/{project_id}/handover")
+def handover(project_id: str, body: HandoverRequest):
+    """Summary of what a person leaves in progress, for whoever picks up their work."""
+    engine = _get_engine(project_id)
+    local = []
+    author = body.git_author or body.person
+    try:
+        repo = git.Repo(get_project(project_id).repo_path)
+        raw = repo.git.log("--no-merges", "-n40", f"--author={author}", "--name-only", "--format=@@%aI\t%s")
+        for line in raw.splitlines():
+            if line.startswith("@@"):
+                date, msg = line[2:].split("\t", 1)
+                local.append({"date": date, "message": msg[:200], "files": []})
+            elif line.strip() and local:
+                local[-1]["files"].append(line.strip())
+    except git.GitError:
+        pass
+    summary = _model_call(lambda: assist.handover_summary(engine, body.person, body.issues, body.commits, local, body.language))
+    return {"summary": summary, "local_commits": local[:15]}
+
+
+@app.get("/projects/{project_id}/knowledge")
+def knowledge(project_id: str, depth: int = 2):
+    """Who knows each module and its bus factor, from the git history (names and counts only)."""
+    try:
+        return insight.knowledge_map(get_project(project_id).repo_path, max(1, min(depth, 4)))
+    except git.GitError as e:
+        raise HTTPException(status_code=409, detail=f"No se pudo leer el historial de git del proyecto: {e}")
+
+
+@app.get("/projects/{project_id}/summary")
+def sprint_summary(project_id: str, days: int = 14):
+    """What changed in the code in the last days, grouped by issue: material for the sprint review."""
+    try:
+        return insight.sprint_summary(get_project(project_id).repo_path, max(1, min(days, 90)))
+    except git.GitError as e:
+        raise HTTPException(status_code=409, detail=f"No se pudo leer el historial de git del proyecto: {e}")
+
+
+@app.get("/projects/{project_id}/insights")
+def project_insights(project_id: str):
+    """Documentation gaps and the radar of code that is hard to understand, from the anonymous usage per module."""
+    project = get_project(project_id)
+    docs_dir = Path(project.docs_dir)
+    key = _hub_public_key()
+    files = [p.relative_to(docs_dir).as_posix()[: -len(".md")] for p in docs_dir.rglob("*.md")
+             if not p.name.endswith(".draft.md") and p.name != "OVERVIEW.md"] if docs_dir.exists() else []
+    reviews = {f: verification.doc_status(docs_dir.parent, docs_dir, f, key)["status"] for f in files}
+    return insight.insights(docs_dir.parent, docs_dir, reviews)
 
 
 @app.get("/projects/{project_id}/experts")
