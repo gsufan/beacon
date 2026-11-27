@@ -18,15 +18,26 @@ export interface StoredSession {
 
 const KEY = "beacon:session";
 
-export function getSession(): StoredSession | null {
+const REFRESH_GRACE_MS = 12 * 3600 * 1000;
+
+function stored(): StoredSession | null {
   try {
     const raw = localStorage.getItem(KEY);
-    if (!raw) return null;
-    const s = JSON.parse(raw) as StoredSession;
-    return s.user.exp * 1000 > Date.now() ? s : null;
+    return raw ? (JSON.parse(raw) as StoredSession) : null;
   } catch {
     return null;
   }
+}
+
+export function getSession(): StoredSession | null {
+  const s = stored();
+  return s && s.user.exp * 1000 > Date.now() ? s : null;
+}
+
+// A session that expired recently can still be renewed with the Hub (if the person is still active).
+export function getRenewableSession(): StoredSession | null {
+  const s = stored();
+  return s && s.user.exp * 1000 + REFRESH_GRACE_MS > Date.now() ? s : null;
 }
 
 export function setSession(s: StoredSession | null) {
@@ -35,6 +46,6 @@ export function setSession(s: StoredSession | null) {
 }
 
 export function sessionHeaders(): Record<string, string> {
-  const s = getSession();
+  const s = getRenewableSession();
   return s ? { Authorization: `Bearer ${s.session}`, "X-Beacon-License": s.license } : {};
 }

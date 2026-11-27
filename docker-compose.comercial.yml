@@ -1,0 +1,33 @@
+# Commercial edition: Beacon Hub and Beacon Local built from Dockerfile.comercial (Beacon's code compiled with
+# Nuitka, no source files). Beacon Local serves only after an administrator registers it with the Hub.
+#   docker compose -f docker-compose.yml -f docker-compose.comercial.yml up -d --build
+# In production the Hub runs in the cloud, operated by the company that sells Beacon; here it is one more container.
+services:
+  hub:
+    build:
+      context: .
+      dockerfile: Dockerfile.comercial
+    command: ["beacon-hub", "--host", "0.0.0.0", "--port", "8100", "--data", "/app/hub-data"]
+    ports:
+      - "8100:8100"
+    volumes:
+      - hub_data:/app/hub-data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  beacon:
+    build:
+      context: .
+      dockerfile: Dockerfile.comercial
+    environment:
+      - BEACON_HUB_URL=http://hub:8100
+    depends_on:
+      hub:
+        condition: service_healthy
+
+volumes:
+  hub_data:

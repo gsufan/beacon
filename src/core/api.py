@@ -16,7 +16,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from core import expertise, services, storage, team
+from core import edition, expertise, instance, services, storage, team
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -50,6 +50,8 @@ _shutdown_hooks: list = []
 async def _lifespan(_app):
     stop = threading.Event()
     threading.Thread(target=_auto_watch_loop, args=(stop,), daemon=True, name="beacon-auto-watch").start()
+    if team.hub_url():
+        threading.Thread(target=instance.run, args=(stop, _instance_settings, VERSION), daemon=True, name="beacon-instance").start()
     if MONITOR_INTERVAL_SECONDS > 0 and os.environ.get("BEACON_STUDY") != "1":
         threading.Thread(target=_monitor.run, args=(stop, MONITOR_INTERVAL_SECONDS), daemon=True, name="beacon-monitor").start()
     yield
@@ -98,10 +100,21 @@ def _hub_settings():
         raise HTTPException(status_code=503, detail=f"No se pudo contactar al Beacon Hub configurado: {e}")
 
 
+def _instance_settings():
+    try:
+        return team.hub_settings()
+    except (httpx.HTTPError, KeyError, ValueError):
+        return None
+
+
 @app.middleware("http")
 async def access_middleware(request: Request, call_next):
     if not request.url.path.startswith(_PROTECTED_PREFIXES):
         return await call_next(request)
+    try:
+        instance.check()
+    except instance.InstanceBlockedError as e:
+        return JSONResponse({"detail": str(e), "instance_blocked": True}, status_code=403)
     try:
         settings = _hub_settings()
     except HTTPException as e:
@@ -281,9 +294,47 @@ class CleanRequest(BaseModel):
 
 @app.get("/auth/status")
 def auth_status():
-    """Whether this instance works in team mode (with a Hub) or on its own."""
+    """Whether this instance works in team mode (with a Hub) or on its own, its edition and installation state."""
     url = team.hub_url()
-    return {"mode": "team" if url else "standalone", "hub_url": url}
+    state = instance.read_state()
+    try:
+        instance.check()
+        blocked = None
+    except instance.InstanceBlockedError as e:
+        blocked = str(e)
+    return {"mode": "team" if url else "standalone", "hub_url": url, "edition": edition.EDITION,
+            "instance": {"registered": instance.credentials() is not None, "revoked": bool(state.get("revoked")),
+                         "lease_exp": state.get("lease_exp"), "blocked": blocked}}
+
+
+class InstanceRegisterRequest(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    personal: bool = False
+
+
+@app.post("/auth/instance")
+def register_instance(body: InstanceRegisterRequest, request: Request):
+    """Registers this Beacon Local with the Hub, using the session of the person who asks (an administrator for a
+    shared server, anyone for their personal installation), and obtains the first lease."""
+    settings = _hub_settings()
+    if settings is None:
+        raise HTTPException(status_code=409, detail="Esta instancia no está conectada a un Beacon Hub.")
+    if instance.credentials() is not None and not instance.read_state().get("revoked"):
+        raise HTTPException(status_code=409, detail="Esta instalación ya está registrada.")
+    try:
+        res = httpx.post(f"{settings.url}/instances", json=body.model_dump(),
+                         headers={"Authorization": request.headers.get("authorization", "")}, timeout=_HUB_TIMEOUT)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=503, detail=f"No se pudo contactar al Beacon Hub: {e}")
+    if res.status_code != 201:
+        raise HTTPException(status_code=res.status_code, detail=res.json().get("detail", "No se pudo registrar."))
+    data = res.json()
+    instance.save_credentials(data["instance_id"], data["secret"], settings.url)
+    try:
+        instance.heartbeat(settings.url, settings.public_key, VERSION)
+    except (httpx.HTTPError, InvalidTokenError) as e:
+        raise HTTPException(status_code=503, detail=f"La instalación se registró, pero no se obtuvo la licencia: {e}")
+    return {"status": "ok", "instance_id": data["instance_id"]}
 
 
 _HUB_TIMEOUT = 20

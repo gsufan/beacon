@@ -113,10 +113,34 @@ export interface Experts {
   overall: { name: string; commits: number; last: string | null }[];
 }
 
+export interface InstanceStatus {
+  registered: boolean;
+  revoked: boolean;
+  lease_exp: number | null;
+  blocked: string | null;
+}
+
+export interface Installation {
+  id: string;
+  name: string;
+  user_id: number | null;
+  user_name: string | null;
+  created: number;
+  last_seen: number | null;
+  revoked: number;
+  wiped: number;
+  version: string | null;
+}
+
 const json = (body: unknown) => ({ body: JSON.stringify(body) });
 
 export const hub = {
-  status: () => request<{ mode: "team" | "standalone"; hub_url: string | null }>("/auth/status"),
+  status: () =>
+    request<{ mode: "team" | "standalone"; hub_url: string | null; edition?: string; instance?: InstanceStatus }>("/auth/status"),
+  registerInstance: (name: string, personal: boolean) =>
+    request<{ status: string; instance_id: string }>("/auth/instance", { method: "POST", ...json({ name, personal }) }),
+  instances: () => request<{ instances: Installation[] }>("/hub/instances"),
+  revokeInstance: (id: string) => request<{ status: string }>(`/hub/instances/${id}/revoke`, { method: "POST" }),
   login: (email: string, password: string) =>
     request<StoredSession>("/hub/auth/login", { method: "POST", ...json({ email, password }) }),
   signup: (body: { org_name: string; name: string; email: string; password: string }) =>

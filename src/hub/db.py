@@ -61,6 +61,18 @@ CREATE TABLE IF NOT EXISTS audit (
     ts REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS audit_org_ts ON audit(org_id, ts);
+CREATE TABLE IF NOT EXISTS instances (
+    id TEXT PRIMARY KEY,
+    org_id INTEGER NOT NULL REFERENCES orgs(id),
+    user_id INTEGER,
+    name TEXT NOT NULL,
+    secret_hash TEXT NOT NULL,
+    created REAL NOT NULL,
+    last_seen REAL,
+    version TEXT,
+    revoked INTEGER NOT NULL DEFAULT 0,
+    wiped INTEGER NOT NULL DEFAULT 0
+);
 """
 
 # Columns added after the first version; existing databases get them on start.

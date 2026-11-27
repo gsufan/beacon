@@ -81,6 +81,14 @@ def main(
                                  help=tr("Muestra la versión y sale.", "Show the version and exit.")),
 ):
     """Beacon"""
+    from core import edition, instance
+    # serve starts anyway: the server itself blocks every route until an administrator registers the installation.
+    if edition.is_commercial() and ctx.invoked_subcommand not in (None, "doctor", "serve"):
+        try:
+            instance.check()
+        except instance.InstanceBlockedError as e:
+            console.print(f"[red]{e}[/red]")
+            raise typer.Exit(1)
     if ctx.invoked_subcommand is not None:
         return
     console.print()

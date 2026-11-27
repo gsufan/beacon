@@ -5,6 +5,7 @@ import { LanguageProvider, LanguageSelector, useLanguage } from "./components/La
 import { ProjectProvider, ProjectSelector, useChunkCount, useProject } from "./components/ProjectSelector";
 import ThemeToggle from "./components/ThemeToggle";
 import { Avatar } from "./components/Colorful";
+import { InstanceRegisterBanner, InstanceRevoked } from "./components/InstanceGate";
 import Chat from "./routes/Chat";
 import Docs from "./routes/Docs";
 import Login from "./routes/Login";
@@ -135,8 +136,9 @@ function LicenseBanner() {
 }
 
 function Shell() {
-  const { mode, user, isAdmin } = useAuth();
+  const { mode, user, isAdmin, instance } = useAuth();
   if (mode === "loading") return <div className="h-screen bg-ground" />;
+  if (instance?.revoked) return <InstanceRevoked />;
   if (mode === "team" && !user) return <Login />;
   const team = mode === "team";
   return (
@@ -145,6 +147,7 @@ function Shell() {
         <Sidebar />
         <main className="min-w-0 flex-1 overflow-y-auto">
           <LicenseBanner />
+          {team && <InstanceRegisterBanner />}
           <Routes>
             <Route path="/" element={team ? <Work /> : <Chat />} />
             <Route path="/chat" element={<Chat />} />

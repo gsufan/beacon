@@ -4,7 +4,7 @@ import { useAuth } from "../components/AuthProvider";
 import { useLanguage } from "../components/LanguageSelector";
 import { useProject } from "../components/ProjectSelector";
 import { ApiError } from "../lib/api";
-import { hub, ROLES, type AuditEvent, type HubProject, type Invitation, type Org, type Plan, type Role, type TeamUser } from "../lib/hub";
+import { hub, ROLES, type AuditEvent, type HubProject, type Installation, type Invitation, type Org, type Plan, type Role, type TeamUser } from "../lib/hub";
 import { cardClass, inputClass, primaryButton, secondaryButton } from "../lib/ui";
 import { Avatar, RoleBadge } from "../components/Colorful";
 
@@ -32,6 +32,7 @@ export default function Team() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [projects, setProjects] = useState<HubProject[]>([]);
   const [audit, setAudit] = useState<AuditEvent[] | null>(null);
+  const [installations, setInstallations] = useState<Installation[]>([]);
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [lastCode, setLastCode] = useState<{ code: string; email: string } | null>(null);
@@ -50,6 +51,7 @@ export default function Team() {
     hub.projects().then((p) => setProjects(p.projects)).catch(() => {});
     hub.audit().then((a) => setAudit(a.events)).catch(() => setAudit(null));
     if (isAdmin) hub.invitations().then((i) => setInvitations(i.invitations)).catch(() => {});
+    if (isAdmin) hub.instances().then((i) => setInstallations(i.instances)).catch(() => {});
   }, [isAdmin]);
 
   useEffect(load, [load]);
@@ -406,6 +408,52 @@ export default function Team() {
           </form>
         )}
       </Section>
+
+      {isAdmin && (
+        <Section title={t("team_instances")} description={t("team_instances_hint")}>
+          <div className={`${cardClass} overflow-x-auto p-0`}>
+            <table className="w-full text-sm">
+              <thead className="text-left text-xs text-muted">
+                <tr className="border-b border-line">
+                  <th className="px-4 py-2 font-semibold">{t("instance_name")}</th>
+                  <th className="px-4 py-2 font-semibold">{t("team_instance_kind")}</th>
+                  <th className="px-4 py-2 font-semibold">{t("team_instance_last_seen")}</th>
+                  <th className="px-4 py-2" />
+                </tr>
+              </thead>
+              <tbody>
+                {installations.length === 0 && (
+                  <tr>
+                    <td colSpan={4} className="px-4 py-3 text-muted">
+                      {t("team_instances_none")}
+                    </td>
+                  </tr>
+                )}
+                {installations.map((i) => (
+                  <tr key={i.id} className={`border-b border-line last:border-0 ${i.revoked ? "text-muted" : ""}`}>
+                    <td className="px-4 py-2 font-medium">{i.name}</td>
+                    <td className="px-4 py-2 text-ink-2">{i.user_name ? t("team_instance_personal_of", { name: i.user_name }) : t("team_instance_shared")}</td>
+                    <td className="px-4 py-2 text-ink-2">{i.last_seen ? dateTime(i.last_seen) : "—"}</td>
+                    <td className="px-4 py-2 text-right">
+                      {i.revoked ? (
+                        <span className="text-xs text-danger-ink">{i.wiped ? t("team_instance_wiped") : t("team_instance_revoked")}</span>
+                      ) : (
+                        <button
+                          type="button"
+                          className={secondaryButton}
+                          onClick={() => window.confirm(t("team_instance_revoke_confirm", { name: i.name })) && run(() => hub.revokeInstance(i.id), t("team_saved"))}
+                        >
+                          {t("team_instance_revoke")}
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+      )}
 
       {isAdmin && org && (
         <Section title={t("team_integrations")} description={t("team_integrations_hint")}>

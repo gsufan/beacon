@@ -21,7 +21,12 @@ from hub.security import (
     InvalidTokenError, hash_password, load_or_create_key, new_code, public_key_text, sign_token, verify_password, verify_token,
 )
 
-SESSION_TTL = 8 * 3600
+# Short sessions: a person who is deactivated loses access in minutes, not hours (the interface renews them).
+SESSION_TTL = 15 * 60
+# Licenses are leased: a browser license lasts a week at most, an installation's lease three days without contact.
+LICENSE_LEASE = 7 * 86400
+INSTANCE_LEASE = 3 * 86400
+REFRESH_GRACE = 12 * 3600
 TRIAL_DAYS = 30
 PLANS = {
     "trial": {"label": "Prueba", "seats": 5, "price_per_user": 0},
@@ -57,9 +62,12 @@ class Hub:
                 "admin": bool(user["is_admin"]), "github": user["github_login"], "roles": self.roles_of(user),
                 "exp": int(time.time()) + SESSION_TTL}
 
-    def license_token(self, org: dict) -> str:
+    def license_token(self, org: dict, lease: int = LICENSE_LEASE) -> str:
+        """The organization's license, leased: it expires at the end of the paid period or after `lease`, whichever is
+        first, so a customer who stops paying (or whose license is revoked) stops working within days."""
+        now = int(time.time())
         return sign_token(self.key, {"typ": "license", "org": org["id"], "org_name": org["name"], "plan": org["plan"],
-                                     "seats": org["seats"], "iat": int(time.time()), "exp": int(org["period_end"])})
+                                     "seats": org["seats"], "iat": now, "exp": int(min(org["period_end"], now + lease))})
 
     def session_response(self, user: dict) -> dict:
         org = self.db.one("SELECT * FROM orgs WHERE id = ?", (user["org_id"],))
@@ -147,6 +155,17 @@ class PlanBody(BaseModel):
     plan: str
 
 
+class InstanceRegister(BaseModel):
+    name: str = Field(..., min_length=1, max_length=80)
+    personal: bool = False
+
+
+class Heartbeat(BaseModel):
+    instance_id: str
+    secret: str
+    version: str = Field(default="", max_length=40)
+
+
 def create_app(hub: Hub) -> FastAPI:
     app = FastAPI(title="Beacon Hub", docs_url="/api/docs", redoc_url=None)
     db = hub.db
@@ -231,8 +250,16 @@ def create_app(hub: Hub) -> FastAPI:
         return hub.session_response(user)
 
     @app.post("/auth/refresh")
-    def refresh(user: dict = Depends(current)):
-        """New session and license with the current roles and plan (they may have changed since the login)."""
+    def refresh(authorization: str = Header(default="")):
+        """New session and license with the current roles and plan. Accepts a session that expired up to 12 hours ago,
+        so a short session does not force a new login after a pause, but only while the person is still active."""
+        try:
+            claims = verify_token(hub.public_key, authorization.removeprefix("Bearer ").strip(), "session", leeway=REFRESH_GRACE)
+        except InvalidTokenError as e:
+            raise HTTPException(401, f"Sesión inválida: {e}")
+        user = db.one("SELECT * FROM users WHERE id = ? AND active = 1", (claims["sub"],))
+        if not user:
+            raise HTTPException(401, "La cuenta no existe o fue desactivada.")
         return hub.session_response(user)
 
     @app.get("/me")
@@ -322,6 +349,54 @@ def create_app(hub: Hub) -> FastAPI:
             raise HTTPException(502, str(e))
         return {"status": "ok"}
 
+    # --- Beacon Local installations: registration, heartbeat with the lease, and remote revocation (wipe)
+    @app.post("/instances", status_code=201)
+    def register_instance(body: InstanceRegister, user: dict = Depends(current)):
+        """Registers a Beacon Local. A shared server is registered by an administrator; a personal installation
+        belongs to the person who registers it and is revoked when that person is deactivated."""
+        if not body.personal and not user["admin"]:
+            raise HTTPException(403, "Solo un administrador registra una instalación compartida.")
+        instance_id, secret = new_code(12), new_code(24)
+        db.execute("INSERT INTO instances (id, org_id, user_id, name, secret_hash, created, last_seen) VALUES (?,?,?,?,?,?,?)",
+                   (instance_id, user["org_id"], user["id"] if body.personal else None, body.name.strip(),
+                    hash_password(secret), time.time(), time.time()))
+        db.audit(user["org_id"], user, "instalación registrada", detail=f"{body.name.strip()} ({'personal' if body.personal else 'compartida'})")
+        return {"instance_id": instance_id, "secret": secret, "public_key": hub.public_key}
+
+    @app.post("/instances/heartbeat")
+    def instance_heartbeat(body: Heartbeat):
+        """Called by Beacon Local every few minutes. Returns a signed status: the leased license, or the order to wipe."""
+        inst = db.one("SELECT * FROM instances WHERE id = ?", (body.instance_id,))
+        if not inst or not verify_password(body.secret, inst["secret_hash"]):
+            raise HTTPException(401, "Instalación desconocida.")
+        org = db.one("SELECT * FROM orgs WHERE id = ?", (inst["org_id"],))
+        owner = db.one("SELECT active FROM users WHERE id = ?", (inst["user_id"],)) if inst["user_id"] else None
+        revoked = bool(inst["revoked"]) or (owner is not None and not owner["active"])
+        db.execute("UPDATE instances SET last_seen = ?, version = ? WHERE id = ?", (time.time(), body.version, inst["id"]))
+        status = {"typ": "instance", "instance": inst["id"], "org": org["id"], "revoked": revoked,
+                  "iat": int(time.time()), "exp": int(time.time()) + INSTANCE_LEASE}
+        if revoked and not inst["wiped"]:
+            db.execute("UPDATE instances SET wiped = 1 WHERE id = ?", (inst["id"],))
+            db.audit(org["id"], None, "instalación borrada a distancia", detail=inst["name"])
+        return {"status": sign_token(hub.key, status), "license": None if revoked else hub.license_token(org, INSTANCE_LEASE)}
+
+    @app.get("/instances")
+    def list_instances(user: dict = Depends(admin)):
+        rows = db.query("SELECT i.id, i.name, i.user_id, u.name AS user_name, i.created, i.last_seen, i.revoked, i.wiped, i.version "
+                        "FROM instances i LEFT JOIN users u ON u.id = i.user_id WHERE i.org_id = ? ORDER BY i.created",
+                        (user["org_id"],))
+        return {"instances": rows}
+
+    @app.post("/instances/{instance_id}/revoke")
+    def revoke_instance(instance_id: str, user: dict = Depends(admin)):
+        inst = db.one("SELECT name FROM instances WHERE id = ? AND org_id = ?", (instance_id, user["org_id"]))
+        if not inst:
+            raise HTTPException(404, "Instalación no encontrada.")
+        db.execute("UPDATE instances SET revoked = 1 WHERE id = ?", (instance_id,))
+        db.audit(user["org_id"], user, "instalación revocada", detail=inst["name"])
+        notify(user["org_id"], f":no_entry: La instalación {inst['name']} fue revocada; sus datos se borrarán en su próximo contacto.")
+        return {"status": "ok"}
+
     @app.get("/users")
     def list_users(user: dict = Depends(current)):
         rows = db.query("SELECT id, email, name, is_admin, github_login, active FROM users WHERE org_id = ? ORDER BY name",
@@ -343,6 +418,11 @@ def create_app(hub: Hub) -> FastAPI:
         for field, value in changes.items():
             db.execute(f"UPDATE users SET {field} = ? WHERE id = ?", (value.strip() if isinstance(value, str) else int(value), user_id))
         db.audit(user["org_id"], user, "usuario modificado", detail=f"{target['name']}: {', '.join(changes)}")
+        if body.active is False:
+            # Offboarding: no roles left, and the installations on that person's own machine are wiped on their next contact.
+            db.execute("DELETE FROM memberships WHERE org_id = ? AND user_id = ?", (user["org_id"], user_id))
+            n = db.execute("UPDATE instances SET revoked = 1 WHERE org_id = ? AND user_id = ? AND revoked = 0", (user["org_id"], user_id))
+            db.audit(user["org_id"], user, "baja de persona", detail=f"{target['name']}: roles quitados e instalaciones personales revocadas")
         return {"status": "ok"}
 
     @app.get("/invitations")

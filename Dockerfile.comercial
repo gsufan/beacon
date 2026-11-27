@@ -1,0 +1,52 @@
+# Commercial image of Beacon Local: Beacon's own code (packages core and hub) is compiled to native modules with
+# Nuitka and the image carries no .py files of it. The build marks the edition as "comercial", which only serves
+# while registered with Beacon Hub and holding a valid lease.
+#   docker build -f Dockerfile.comercial -t beacon-local:comercial .
+
+# --- Stage 1: frontend build (React + Vite) ---
+FROM node:20-slim AS frontend-build
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+# --- Stage 2: compile Beacon's packages to native modules ---
+FROM python:3.11 AS compile
+WORKDIR /build
+COPY requirements.txt ./
+RUN pip install --no-cache-dir -r requirements.txt nuitka==4.3.5
+COPY src/ ./src/
+RUN sed -i 's/^EDITION = "desarrollo"/EDITION = "comercial"/' src/core/edition.py \
+    && grep -q '^EDITION = "comercial"' src/core/edition.py
+WORKDIR /build/src
+RUN python -m nuitka --mode=module core --include-package=core --output-dir=/out --remove-output --no-pyi-file \
+        --assume-yes-for-downloads \
+    && python -m nuitka --mode=module hub --include-package=hub --output-dir=/out --remove-output --no-pyi-file \
+        --assume-yes-for-downloads \
+    && ls -la /out
+
+# --- Stage 3: runtime with the compiled modules only ---
+FROM python:3.11-slim AS runtime
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt LICENSE ./
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY --from=compile /out/*.so /app/src/
+COPY --from=frontend-build /app/frontend/dist ./frontend/dist
+ENV PYTHONPATH=/app/src
+
+RUN printf '#!/bin/sh\nexec python -c "from core.cli import app; app()" "$@"\n' > /usr/local/bin/beacon \
+    && printf '#!/bin/sh\nexec python -c "from hub.cli import main; main()" "$@"\n' > /usr/local/bin/beacon-hub \
+    && chmod +x /usr/local/bin/beacon /usr/local/bin/beacon-hub
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=5 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/healthz', timeout=2)" || exit 1
+
+CMD ["beacon", "serve", "--host", "0.0.0.0"]

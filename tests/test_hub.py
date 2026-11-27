@@ -69,13 +69,15 @@ def test_passwords_are_hashed_and_verified():
     assert verify_password("una clave", stored) and not verify_password("otra", stored)
 
 
-def test_signup_creates_an_admin_with_a_30_day_trial_license(client):
+def test_signup_creates_an_admin_with_a_30_day_trial_and_a_leased_license(client):
     res = _signup(client)
     body = res.json()
     assert body["user"]["admin"] is True
     lic = verify_token(body["public_key"], body["license"], "license")
     assert lic["plan"] == "trial" and lic["seats"] == 5
-    assert 29 * 86400 < lic["exp"] - time.time() <= 30 * 86400
+    # The license is leased: one week at most, even though the trial lasts 30 days (it is renewed while active).
+    assert 6 * 86400 < lic["exp"] - time.time() <= 7 * 86400
+    assert client.get("/org", headers={"Authorization": f"Bearer {body['session']}"}).json()["days_left"] >= 29
     with pytest.raises(InvalidTokenError):  # a license is not a session
         verify_token(body["public_key"], body["license"], "session")
 

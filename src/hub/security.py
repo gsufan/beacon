@@ -79,8 +79,9 @@ def sign_token(key: Ed25519PrivateKey, claims: dict) -> str:
     return f"{body}.{_b64(key.sign(body.encode()))}"
 
 
-def verify_token(public_key: str, token: str, typ: str, now: Optional[float] = None) -> dict:
-    """Claims of a valid, unexpired token of type `typ`; InvalidTokenError otherwise."""
+def verify_token(public_key: str, token: str, typ: str, now: Optional[float] = None, leeway: float = 0) -> dict:
+    """Claims of a valid, unexpired token of type `typ` (or expired less than `leeway` seconds ago); InvalidTokenError
+    otherwise."""
     try:
         body, sig = token.split(".")
         Ed25519PublicKey.from_public_bytes(_unb64(public_key)).verify(_unb64(sig), body.encode())
@@ -89,6 +90,6 @@ def verify_token(public_key: str, token: str, typ: str, now: Optional[float] = N
         raise InvalidTokenError("Token inválido.") from e
     if claims.get("typ") != typ:
         raise InvalidTokenError("Tipo de token incorrecto.")
-    if claims.get("exp", 0) < (now if now is not None else time.time()):
+    if claims.get("exp", 0) + leeway < (now if now is not None else time.time()):
         raise InvalidTokenError("Token vencido.")
     return claims

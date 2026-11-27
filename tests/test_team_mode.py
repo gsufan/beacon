@@ -44,7 +44,8 @@ def client():
 
 def test_standalone_mode_without_a_hub(client, monkeypatch):
     monkeypatch.setattr(team, "hub_url", lambda: None)
-    assert client.get("/auth/status").json() == {"mode": "standalone", "hub_url": None}
+    status = client.get("/auth/status").json()
+    assert status["mode"] == "standalone" and status["hub_url"] is None and status["edition"] == "desarrollo"
 
 
 def test_team_mode_requires_a_signed_session(client, hub_key, tmp_path):
