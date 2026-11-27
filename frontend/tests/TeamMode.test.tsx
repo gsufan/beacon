@@ -126,6 +126,26 @@ describe("modo equipo", () => {
     expect(String((comment?.body as { body: string }).body)).toContain("auth.py (10-30)");
   });
 
+  it("el líder técnico verifica un documento y el chat muestra una respuesta verificada", async () => {
+    localStorage.setItem("beacon:session", JSON.stringify(sessionFor(false, { api: "tech_lead" })));
+    installFakeServer({
+      "POST /hub/auth/refresh": () => ({ body: sessionFor(false, { api: "tech_lead" }) }),
+      "GET /projects/api/docs/tree": () => ({ body: { files: ["auth.py"], reviews: { "auth.py": "draft" } } }),
+      "GET /projects/api/docs": () => ({ body: { file_path: "auth.py", content_markdown: "# auth.py", review: { status: "draft" }, draft_markdown: null } }),
+      "POST /projects/api/docs/verify": () => ({ body: { review: { status: "verified", reviewer: "Diego Dev", ts: 1 } } }),
+      "POST /projects/api/query": () => ({
+        body: { answer: "Respuesta del modelo", sources: [],
+                verified: { id: "a1", question: "¿Dónde está el login?", answer: "En auth.login.", reviewer: "Tania", ts: 1, corrected: true, similarity: 0.95, stale_files: [] } },
+      }),
+    });
+    const user = userEvent.setup();
+    renderApp("/docs");
+    await user.click(await screen.findByRole("button", { name: "auth.py" }));
+    expect(await screen.findByText("Borrador IA")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Verificar" }));
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/projects/api/docs/verify")).toBe(true));
+  });
+
   it("una licencia vencida muestra el aviso", async () => {
     localStorage.setItem("beacon:session", JSON.stringify(sessionFor(true, {})));
     installFakeServer({ "GET /projects": () => ({ status: 402, body: { detail: "La licencia venció." } }) });

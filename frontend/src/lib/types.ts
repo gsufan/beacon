@@ -42,18 +42,41 @@ export interface SourceItem {
   code?: string;
 }
 
+export interface VerifiedMatch {
+  id: string;
+  question: string;
+  answer: string;
+  reviewer: string;
+  ts: number;
+  corrected: boolean;
+  similarity: number;
+  stale_files: string[];
+}
+
 export interface QueryResponse {
   answer: string;
   sources: SourceItem[];
+  verified?: VerifiedMatch | null;
 }
 
 export interface DocsTreeResponse {
   files: string[];
+  reviews?: Record<string, string>;
+}
+
+export interface DocReviewInfo {
+  status: "draft" | "verified" | "pending";
+  reviewer?: string;
+  ts?: number;
+  corrected?: boolean;
+  new_draft?: boolean;
 }
 
 export interface DocContent {
   file_path: string;
   content_markdown: string;
+  review?: DocReviewInfo;
+  draft_markdown?: string | null;
 }
 
 export interface AIProviderConfig {

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import MarkdownViewer from "../components/MarkdownViewer";
 import SourceCitation from "../components/SourceCitation";
+import { VerifiedCard, VerifyAnswerButton } from "../components/VerifiedAnswer";
 import { useLanguage } from "../components/LanguageSelector";
 import { useProject } from "../components/ProjectSelector";
 import { api, ApiError } from "../lib/api";
@@ -333,6 +334,7 @@ export default function Chat() {
                     </article>
                   )}
 
+                  {turn.status === "done" && turn.result?.verified && <VerifiedCard match={turn.result.verified} />}
                   {turn.status === "done" && turn.result && (
                     <article className="flex flex-col gap-3 rounded-[14px] border border-line bg-surface px-5 py-5">
                       <MarkdownViewer content={turn.result.answer} />
@@ -348,6 +350,7 @@ export default function Chat() {
                           {t("chat_based_on", { n: turn.result.sources.length })}
                         </span>
                       </div>
+                      {projectId && <VerifyAnswerButton projectId={projectId} question={turn.question} result={turn.result} />}
                     </article>
                   )}
 

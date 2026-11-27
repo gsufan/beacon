@@ -3,8 +3,8 @@ import { request } from "./api";
 import type { StoredSession } from "./session";
 import type { QueryResponse } from "./types";
 
-export type Role = "product_owner" | "scrum_master" | "developer";
-export const ROLES: Role[] = ["product_owner", "scrum_master", "developer"];
+export type Role = "product_owner" | "scrum_master" | "tech_lead" | "developer";
+export const ROLES: Role[] = ["product_owner", "scrum_master", "tech_lead", "developer"];
 
 export interface Org {
   id: number;

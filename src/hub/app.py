@@ -34,7 +34,7 @@ PLANS = {
     "empresa": {"label": "Empresa", "seats": 60, "price_per_user": 11990},
 }
 _PROJECT_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
-_ROLE_LABEL = {R.PRODUCT_OWNER: "Product Owner", R.SCRUM_MASTER: "Scrum Master", R.DEVELOPER: "Desarrollador"}
+_ROLE_LABEL = {R.PRODUCT_OWNER: "Product Owner", R.SCRUM_MASTER: "Scrum Master", R.TECH_LEAD: "Líder técnico", R.DEVELOPER: "Desarrollador"}
 # Actions reported by Beacon Local that the team hears about in Slack (queries are not announced).
 _NOTIFY_LOCAL = {"sincronización": ":arrows_counterclockwise:", "proyecto quitado de Beacon Local": ":wastebasket:",
                  "proyecto registrado en Beacon Local": ":new:"}
@@ -153,6 +153,12 @@ class GitHubBody(BaseModel):
 
 class PlanBody(BaseModel):
     plan: str
+
+
+class VerificationBody(BaseModel):
+    kind: str = Field(..., pattern="^(doc|answer)$")
+    ref: str = Field(..., min_length=1, max_length=500)
+    digest: str = Field(..., pattern="^[0-9a-f]{64}$")
 
 
 class InstanceRegister(BaseModel):
@@ -647,6 +653,29 @@ def create_app(hub: Hub) -> FastAPI:
             raise HTTPException(502, str(e))
         db.audit(user["org_id"], user, "compartido en Slack", project_id)
         return {"status": "ok"}
+
+    @app.post("/projects/{project_id}/verifications")
+    def sign_verification(project_id: str, body: VerificationBody, user: dict = Depends(current)):
+        """Signs that a tech lead verified a document or an answer. The Hub receives only a digest of the content,
+        never the content; Beacon Local keeps the text and checks it against this signature."""
+        project_of(user["org_id"], project_id)
+        require(user, R.VERIFY, project_id)
+        ts = time.time()
+        db.execute("INSERT INTO verifications (org_id, project_id, kind, ref, digest, user_id, ts) VALUES (?,?,?,?,?,?,?)",
+                   (user["org_id"], project_id, body.kind, body.ref, body.digest, user["id"], ts))
+        db.audit(user["org_id"], user, "documento verificado" if body.kind == "doc" else "respuesta verificada", project_id, body.ref[:200])
+        token = sign_token(hub.key, {"typ": "verification", "org": user["org_id"], "project": project_id, "kind": body.kind,
+                                     "ref": body.ref, "digest": body.digest, "reviewer": user["name"], "iat": int(ts),
+                                     "exp": int(ts) + 3650 * 86400})
+        return {"token": token, "reviewer": user["name"]}
+
+    @app.get("/projects/{project_id}/verifications/summary")
+    def verification_summary(project_id: str, user: dict = Depends(current)):
+        project_of(user["org_id"], project_id)
+        require(user, R.ASK, project_id)
+        rows = db.query("SELECT kind, COUNT(DISTINCT ref) AS n FROM verifications WHERE org_id = ? AND project_id = ? GROUP BY kind",
+                        (user["org_id"], project_id))
+        return {r["kind"]: r["n"] for r in rows}
 
     @app.get("/projects/{project_id}/github/issues")
     def github_issues(project_id: str, mine: bool = False, user: dict = Depends(current)):

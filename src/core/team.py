@@ -96,6 +96,8 @@ def required_permission(method: str, path: str) -> Tuple[Optional[str], Optional
             return ADMIN, None
         if rest in ("/sync", "/auto-watch") and method in ("POST", "PUT"):
             return R.SYNC, project_id
+        if (rest == "/docs" and method == "PUT") or rest in ("/docs/verify", "/answers/verify") or (rest.startswith("/answers/") and method == "DELETE"):
+            return R.VERIFY, project_id
         return R.ASK, project_id
     if path == "/projects":
         return (ADMIN, None) if method == "POST" else (None, None)  # the list is filtered by role in the endpoint
@@ -121,6 +123,8 @@ def audit_action(method: str, path: str) -> Optional[Tuple[str, Optional[str]]]:
     if method == "POST" and rest.startswith("/issues/") and rest.endswith("/start"):
         ref = rest.split("/")[2]
         return f"¿por dónde empiezo? (issue {'#' + ref if ref.isdigit() else ref})", project_id
+    if method == "PUT" and rest == "/docs":
+        return "documento corregido", project_id
     if method == "POST" and rest == "/sync":
         return "sincronización", project_id
     if method == "PUT" and rest == "/auto-watch":

@@ -1,10 +1,12 @@
 import { ChevronRight, FileText, Folder, FolderOpen } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router";
+import DocReview, { ReviewBadge } from "../components/DocReview";
 import MarkdownViewer from "../components/MarkdownViewer";
 import { useLanguage } from "../components/LanguageSelector";
 import { useProject } from "../components/ProjectSelector";
 import { api, ApiError } from "../lib/api";
+import type { DocContent } from "../lib/types";
 
 interface TreeNode {
   name: string;
@@ -52,9 +54,10 @@ interface TreeProps {
   isOpen: (path: string, depth: number) => boolean;
   onToggle: (path: string, depth: number) => void;
   onSelect: (file: string) => void;
+  reviews?: Record<string, string>;
 }
 
-function TreeLevel({ node, depth, selected, isOpen, onToggle, onSelect }: TreeProps) {
+function TreeLevel({ node, depth, selected, isOpen, onToggle, onSelect, reviews }: TreeProps) {
   return (
     <>
       {node.dirs.map((dir) => {
@@ -86,6 +89,7 @@ function TreeLevel({ node, depth, selected, isOpen, onToggle, onSelect }: TreePr
                   isOpen={isOpen}
                   onToggle={onToggle}
                   onSelect={onSelect}
+                  reviews={reviews}
                 />
               </div>
             )}
@@ -106,6 +110,11 @@ function TreeLevel({ node, depth, selected, isOpen, onToggle, onSelect }: TreePr
         >
           <FileText size={14} aria-hidden="true" className="shrink-0 opacity-70" />
           <span className="truncate font-mono">{baseName(file)}</span>
+          {reviews?.[file] && reviews[file] !== "draft" && (
+            <span className="ml-auto">
+              <ReviewBadge status={reviews[file]} />
+            </span>
+          )}
         </button>
       ))}
     </>
@@ -121,6 +130,9 @@ export default function Docs() {
   const [openOverrides, setOpenOverrides] = useState<Record<string, boolean>>({});
   const [selected, setSelected] = useState<string | null>(null);
   const [content, setContent] = useState<string | null>(null);
+  const [meta, setMeta] = useState<DocContent | null>(null);
+  const [reviews, setReviews] = useState<Record<string, string>>({});
+  const [reloadKey, setReloadKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -133,7 +145,10 @@ export default function Docs() {
     setError(null);
     api
       .docsTree(projectId)
-      .then((res) => setFiles(res.files))
+      .then((res) => {
+        setFiles(res.files);
+        setReviews(res.reviews ?? {});
+      })
       .catch((e) => setError(e instanceof ApiError ? e.message : t("settings_error_generic")));
   }, [projectId]);
 
@@ -143,9 +158,13 @@ export default function Docs() {
     setError(null);
     api
       .doc(projectId, selected)
-      .then((res) => setContent(res.content_markdown))
+      .then((res) => {
+        setContent(res.content_markdown);
+        setMeta(res);
+        if (res.review) setReviews((prev) => ({ ...prev, [selected]: res.review!.status }));
+      })
       .catch((e) => setError(e instanceof ApiError ? e.message : t("settings_error_generic")));
-  }, [projectId, selected]);
+  }, [projectId, selected, reloadKey]);
 
   const needle = filter.trim().toLowerCase();
   const visibleFiles = useMemo(
@@ -204,6 +223,7 @@ export default function Docs() {
               isOpen={isOpen}
               onToggle={toggleFolder}
               onSelect={setSelected}
+              reviews={reviews}
             />
           </div>
         </aside>
@@ -223,18 +243,24 @@ export default function Docs() {
 
           {selected && !error && (
             <article aria-busy={loadingDoc} className="rounded-[14px] border border-line bg-surface">
-              <div className="break-all border-b border-line px-6 py-3 font-mono text-xs text-muted">{selected}</div>
-              <div className="px-6 py-5">
-                {loadingDoc ? (
-                  <div className="flex flex-col gap-2.5" aria-hidden="true">
-                    {["40%", "92%", "78%", "85%"].map((w) => (
-                      <div key={w} className="h-3 animate-pulse rounded-md bg-accent-tint" style={{ width: w }} />
-                    ))}
-                  </div>
-                ) : (
+              {loadingDoc || !projectId ? (
+                <div className="flex flex-col gap-2.5 px-6 py-5" aria-hidden="true">
+                  {["40%", "92%", "78%", "85%"].map((w) => (
+                    <div key={w} className="h-3 animate-pulse rounded-md bg-accent-tint" style={{ width: w }} />
+                  ))}
+                </div>
+              ) : (
+                <DocReview
+                  projectId={projectId}
+                  filePath={selected}
+                  content={content ?? ""}
+                  review={meta?.review ?? null}
+                  draft={meta?.draft_markdown ?? null}
+                  onChanged={() => setReloadKey((k) => k + 1)}
+                >
                   <MarkdownViewer content={content ?? ""} />
-                )}
-              </div>
+                </DocReview>
+              )}
             </article>
           )}
         </section>

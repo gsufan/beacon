@@ -220,6 +220,11 @@ class DocGenerator:
     def write_doc(self, file_path: str, content: str):
         out = self._doc_output_path(file_path)
         out.parent.mkdir(parents=True, exist_ok=True)
+        from core import verification
+        if verification.has_review(Path(self.project.docs_dir).parent, file_path):
+            # A tech lead reviewed this document: the new AI draft goes next to it and never overwrites the reviewed text.
+            verification.draft_path(out).write_text(content, encoding="utf-8")
+            return
         out.write_text(content, encoding="utf-8")
 
     def delete_doc(self, file_path: str):

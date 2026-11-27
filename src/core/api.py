@@ -10,13 +10,15 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
+import uuid
+
 import git
 from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from core import edition, expertise, instance, services, storage, team
+from core import edition, expertise, instance, services, storage, team, verification
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -29,6 +31,7 @@ from core.engine.backends import (
 )
 from core.engine.chroma_utils import read_index_version
 from core.engine.indexer import IndexModelMismatchError
+from core.engine.embeddings import embed_query
 from core.engine.rag_engine import RAGEngine
 from core.monitor import ModelMonitor
 from core.project_lock import ProjectBusyError
@@ -262,6 +265,7 @@ class SourceItem(BaseModel):
 class QueryResponse(BaseModel):
     answer: str
     sources: list[SourceItem]
+    verified: Optional[dict] = None
 
 
 class AIProviderUpdate(BaseModel):
@@ -381,6 +385,15 @@ def query(project_id: str, req: QueryRequest):
     engine = _get_engine(project_id)
     if engine.collection.count() == 0:
         raise HTTPException(status_code=409, detail=f"El índice de '{project_id}' está vacío. Corre 'beacon sync {project_id}' primero.")
+    verified = None
+    key = _hub_public_key()
+    if key:
+        try:
+            emb = embed_query(engine.backend, engine.ai_config.embedding_model, req.question)
+            project = get_project(project_id)
+            verified = verification.match(Path(project.docs_dir).parent, project.repo_path, emb, key)
+        except Exception:  # noqa: BLE001 - a verified answer is a bonus; the normal answer must not fail because of it
+            logger.exception("búsqueda de respuestas verificadas falló")
     try:
         result = engine.ask(req.question, top_k=req.top_k, language=req.language)
     except _DOMAIN_ERRORS:
@@ -389,7 +402,7 @@ def query(project_id: str, req: QueryRequest):
         raise _model_server_down(engine.ai_config.provider, engine.ai_config.host)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error en el motor RAG: {e}")
-    return result.to_dict()
+    return {**result.to_dict(), "verified": verified}
 
 
 class StartIssueRequest(BaseModel):
@@ -436,9 +449,12 @@ def docs_tree(project_id: str):
         return {"files": []}
     files = sorted(
         p.relative_to(docs_dir).as_posix()[: -len(".md")]
-        for p in docs_dir.rglob("*.md")
+        for p in docs_dir.rglob("*.md") if not p.name.endswith(".draft.md")
     )
-    return {"files": files}
+    key = _hub_public_key()
+    project_dir = docs_dir.parent
+    reviews = {f: verification.doc_status(project_dir, docs_dir, f, key)["status"] for f in files} if key else {}
+    return {"files": files, "reviews": reviews}
 
 
 @app.get("/projects/{project_id}/docs")
@@ -449,7 +465,104 @@ def docs(project_id: str, file_path: str):
         raise HTTPException(status_code=403, detail="Ruta fuera del directorio de documentación del proyecto.")
     if not doc_path.exists():
         raise HTTPException(status_code=404, detail=f"No hay documentación generada para '{file_path}'.")
-    return {"file_path": file_path, "content_markdown": doc_path.read_text(encoding="utf-8")}
+    draft = verification.draft_path(doc_path)
+    return {"file_path": file_path, "content_markdown": doc_path.read_text(encoding="utf-8"),
+            "review": verification.doc_status(docs_dir.parent, docs_dir, file_path, _hub_public_key()),
+            "draft_markdown": draft.read_text(encoding="utf-8") if draft.exists() else None}
+
+
+class DocUpdate(BaseModel):
+    content: str = Field(..., min_length=1, max_length=200_000)
+
+
+def _hub_public_key() -> Optional[str]:
+    try:
+        settings = team.hub_settings()
+    except (httpx.HTTPError, KeyError, ValueError):
+        return None
+    return settings.public_key if settings else None
+
+
+def _sign(request: Request, project_id: str, kind: str, ref: str, content: str) -> dict:
+    url = team.hub_url()
+    if not url:
+        raise HTTPException(status_code=409, detail="Verificar requiere el modo equipo (Beacon Hub).")
+    try:
+        res = httpx.post(f"{url}/projects/{project_id}/verifications", json={"kind": kind, "ref": ref, "digest": verification.digest(content)},
+                         headers={"Authorization": request.headers.get("authorization", "")}, timeout=_HUB_TIMEOUT)
+    except httpx.HTTPError as e:
+        raise HTTPException(status_code=503, detail=f"No se pudo contactar al Beacon Hub: {e}")
+    if res.status_code != 200:
+        raise HTTPException(status_code=res.status_code, detail=res.json().get("detail", "No se pudo firmar la verificación."))
+    return res.json()
+
+
+def _doc_paths(project_id: str, file_path: str):
+    docs_dir = Path(get_project(project_id).docs_dir).resolve()
+    doc_path = (docs_dir / f"{file_path}.md").resolve()
+    if not doc_path.is_relative_to(docs_dir):
+        raise HTTPException(status_code=403, detail="Ruta fuera del directorio de documentación del proyecto.")
+    return docs_dir, doc_path
+
+
+@app.put("/projects/{project_id}/docs")
+def update_doc(project_id: str, file_path: str, body: DocUpdate, request: Request, verify: bool = True):
+    """A tech lead corrects a generated document (by default it is verified at the same time). Accepting the new AI
+    draft is the same operation with the draft's text."""
+    docs_dir, doc_path = _doc_paths(project_id, file_path)
+    if not doc_path.exists():
+        raise HTTPException(status_code=404, detail=f"No hay documentación generada para '{file_path}'.")
+    doc_path.write_text(body.content, encoding="utf-8")
+    verification.draft_path(doc_path).unlink(missing_ok=True)
+    if verify:
+        signed = _sign(request, project_id, "doc", file_path, body.content)
+        verification.record_doc(docs_dir.parent, file_path, signed["token"], signed["reviewer"], corrected=True)
+    return {"review": verification.doc_status(docs_dir.parent, docs_dir, file_path, _hub_public_key())}
+
+
+@app.post("/projects/{project_id}/docs/verify")
+def verify_doc(project_id: str, file_path: str, request: Request):
+    """A tech lead verifies a document as it is."""
+    docs_dir, doc_path = _doc_paths(project_id, file_path)
+    if not doc_path.exists():
+        raise HTTPException(status_code=404, detail=f"No hay documentación generada para '{file_path}'.")
+    signed = _sign(request, project_id, "doc", file_path, doc_path.read_text(encoding="utf-8"))
+    verification.record_doc(docs_dir.parent, file_path, signed["token"], signed["reviewer"], corrected=False)
+    return {"review": verification.doc_status(docs_dir.parent, docs_dir, file_path, _hub_public_key())}
+
+
+class AnswerVerify(BaseModel):
+    question: str = Field(..., min_length=3, max_length=4000)
+    answer: str = Field(..., min_length=1, max_length=40000)
+    sources: list = Field(default_factory=list)
+    corrected: bool = False
+
+
+@app.post("/projects/{project_id}/answers/verify")
+def verify_answer(project_id: str, body: AnswerVerify, request: Request):
+    """A tech lead verifies (and possibly corrects) an answer: it is offered first when someone asks something similar."""
+    engine = _get_engine(project_id)
+    project = get_project(project_id)
+    answer_id = uuid.uuid4().hex[:12]
+    signed = _sign(request, project_id, "answer", answer_id, body.answer)
+    embedding = embed_query(engine.backend, engine.ai_config.embedding_model, body.question)
+    item = verification.add_answer(Path(project.docs_dir).parent, project.repo_path, body.question, body.answer, body.sources,
+                                   embedding, signed["token"], signed["reviewer"], body.corrected, answer_id=answer_id)
+    return item
+
+
+@app.get("/projects/{project_id}/answers")
+def verified_answers(project_id: str):
+    project = get_project(project_id)
+    return {"answers": verification.list_answers(Path(project.docs_dir).parent, project.repo_path, _hub_public_key())}
+
+
+@app.delete("/projects/{project_id}/answers/{answer_id}")
+def delete_verified_answer(project_id: str, answer_id: str):
+    project = get_project(project_id)
+    if not verification.remove_answer(Path(project.docs_dir).parent, answer_id):
+        raise HTTPException(status_code=404, detail="Respuesta verificada no encontrada.")
+    return {"status": "ok"}
 
 
 @app.get("/config")

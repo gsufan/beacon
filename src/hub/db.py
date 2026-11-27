@@ -61,6 +61,16 @@ CREATE TABLE IF NOT EXISTS audit (
     ts REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS audit_org_ts ON audit(org_id, ts);
+CREATE TABLE IF NOT EXISTS verifications (
+    id INTEGER PRIMARY KEY,
+    org_id INTEGER NOT NULL,
+    project_id TEXT NOT NULL,
+    kind TEXT NOT NULL,
+    ref TEXT NOT NULL,
+    digest TEXT NOT NULL,
+    user_id INTEGER NOT NULL,
+    ts REAL NOT NULL
+);
 CREATE TABLE IF NOT EXISTS instances (
     id TEXT PRIMARY KEY,
     org_id INTEGER NOT NULL REFERENCES orgs(id),
