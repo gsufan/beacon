@@ -7,6 +7,12 @@ ai_provider:
   # more context and enough video memory it can be raised, for example to 16384 or 32768.
   # llm_num_ctx: 8192
 
+# Team mode (optional): connects this Beacon to a Beacon Hub, which manages accounts, Scrum roles per project,
+# the license and the GitHub connection. Without it, Beacon works on its own. The Hub's public key is pinned here
+# the first time Beacon connects (see docs/en/team-mode.md).
+# hub:
+#   url: https://hub.example.com
+
 # Repositories to analyze. The simplest way is to register them with the CLI or the UI, which edit
 # this list for you:
 #   beacon add my-project --repo-path ../my-project

@@ -38,11 +38,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refresh = useCallback(async () => {
     if (!getSession()) return;
     try {
-      signIn(await hub.refresh());
+      const s = await hub.refresh();
+      setSession(s); // keeps the license warning: a refresh does not renew an expired license
+      setUser(s.user);
     } catch {
       /* the request itself handles an expired session */
     }
-  }, [signIn]);
+  }, []);
 
   useEffect(() => {
     hub

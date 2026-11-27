@@ -48,3 +48,6 @@ Thumbs.db
 # Local-only files, not part of the software
 /privado/
 *.docx
+
+# Beacon Hub data (organizations, users, audit trail and its signing key)
+hub-data/

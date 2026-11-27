@@ -1,0 +1,28 @@
+# Team mode: adds Beacon Hub (accounts, Scrum roles, license, audit trail and GitHub) and connects Beacon to it.
+#   docker compose -f docker-compose.yml -f docker-compose.equipo.yml up -d --build
+# In production the Hub runs in the cloud and each Beacon points to it with BEACON_HUB_URL; here it runs as one
+# more container on the same machine.
+services:
+  hub:
+    build: .
+    command: ["beacon-hub", "--host", "0.0.0.0", "--port", "8100", "--data", "/app/hub-data"]
+    ports:
+      - "8100:8100"
+    volumes:
+      - hub_data:/app/hub-data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/healthz', timeout=2)"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+  beacon:
+    environment:
+      - BEACON_HUB_URL=http://hub:8100
+    depends_on:
+      hub:
+        condition: service_healthy
+
+volumes:
+  hub_data:

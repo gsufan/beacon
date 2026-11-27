@@ -24,7 +24,7 @@ export function ProjectProvider({ children }: { children: React.ReactNode }) {
       if (!projectId && list.length > 0) {
         setProjectId(list[0].id);
       }
-    });
+    }).catch(() => setProjects([]));
   };
 
   useEffect(() => {
