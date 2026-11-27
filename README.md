@@ -4,7 +4,7 @@
 
 [![Tests](https://github.com/gsufan/beacon/actions/workflows/tests.yml/badge.svg)](https://github.com/gsufan/beacon/actions/workflows/tests.yml)
 
-A **self-hosted (on-premise)** service that helps you understand and document the technical debt of a code repository using RAG (retrieval-augmented generation) on language models that run on your own machine or server: no cost per query and no code sent to external services. Answers cite the file and lines they come from, so they can be verified.
+A **developer support center**: it helps each member of a team understand, document and work on code they do not fully know, using RAG (retrieval-augmented generation) on language models that run on the organization's own machine or server, so the code is never sent to external services. Answers cite the file and lines they come from, so they can be verified. In team mode, each person signs in with a Scrum role per project, sees their GitHub issues and the team's activity, and asks Beacon where to start an issue.
 
 Degree project — INACAP, 2026.
 
@@ -15,10 +15,12 @@ Degree project — INACAP, 2026.
 3. Answers questions through a RAG engine with **call-graph expansion** (if the cited code calls another indexed function, it is added to the context automatically) and explicit anti-hallucination rules.
 4. Generates one `.md` documentation file per source file, incrementally: it only regenerates what changed since the last indexed commit. From that documentation it builds a repository overview (one summary per folder and one for the project) that answers open questions such as "what does this project do?".
 5. All of this is available through a **CLI** and a **web interface** (chat, documentation browser, settings) served by the same backend.
+6. **Team mode** with **Beacon Hub** (the cloud side: accounts, Scrum roles per project, license with a 30-day trial, audit trail and read-only GitHub), where the interface adds *My work*, *Where do I start?* and *Team*. The Hub only stores metadata; see [team mode](docs/en/team-mode.md).
 
 ## Ways to use it
 
 - **One person:** local installation from the repository and the console (`beacon ask`, `beacon sync`). Run `python tools/install.py` for a one-step setup, then use the `beacon` launcher; the [manual installation guide](docs/en/manual-installation.md) also has the long step-by-step process.
+- **A team with roles (team mode):** Beacon connected to Beacon Hub, with `docker compose -f docker-compose.yml -f docker-compose.equipo.yml up -d --build`; see [team mode](docs/en/team-mode.md).
 - **A team:** one server running Docker Compose with a single shared index, accessed from the browser, the console or the REST API. This is the recommended way and is described below.
 
 ## Quick start with Docker (recommended)
@@ -70,6 +72,7 @@ The assistant opens in the browser and guides you: you accept participation, cho
 | Document | Contents |
 |---|---|
 | [Manual installation](docs/en/manual-installation.md) | Without Docker, on Windows and Linux/macOS (macOS verified in CI only); how to share it with a team |
+| [Team mode](docs/en/team-mode.md) | Beacon Hub: accounts, Scrum roles, license and trial, audit trail, GitHub, My work and Where do I start? |
 | [Usage](docs/en/usage.md) | CLI, web interface, automatic sync, exporting and importing projects |
 | [Docker](docs/en/docker.md) | Details and special cases of the container deployment |
 | [Measured quality](docs/en/measured-quality.md) | Results for search, answers and load tests |
@@ -86,4 +89,4 @@ On `psf/requests` (30 questions), the fragment that answers the question appears
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+Proprietary — see [LICENSE](LICENSE). Versions published before November 27, 2026 remain under the MIT License.

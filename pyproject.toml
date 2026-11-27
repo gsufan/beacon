@@ -1,7 +1,7 @@
 [project]
 name = "beacon"
 version = "0.3.0"
-description = "Plataforma local (RAG) para detectar y mitigar deuda técnica en repositorios de código"
+description = "Centro de apoyo al desarrollador: RAG sobre modelos locales para comprender y documentar el código, con modo equipo (Beacon Hub)"
 readme = "README.md"
 license = { file = "LICENSE" }
 # <3.13: tree-sitter-languages 1.10.2 (requirements.txt) publishes no wheels for Python 3.13+, so

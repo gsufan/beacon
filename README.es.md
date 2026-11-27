@@ -4,7 +4,7 @@
 
 [![Tests](https://github.com/gsufan/beacon/actions/workflows/tests.yml/badge.svg)](https://github.com/gsufan/beacon/actions/workflows/tests.yml)
 
-Servicio **autoalojado (on-premise)** de apoyo para comprender y documentar la deuda técnica de un repositorio de código, usando RAG (retrieval-augmented generation) sobre modelos de lenguaje que se ejecutan en la propia máquina o servidor de la organización: sin costo por consulta y sin enviar el código a servicios externos. Las respuestas citan el archivo y las líneas de donde salen, para que puedan verificarse.
+**Centro de apoyo al desarrollador**: ayuda a cada integrante de un equipo a comprender, documentar y trabajar sobre un código que no conoce del todo, usando RAG (retrieval-augmented generation) sobre modelos de lenguaje que se ejecutan en la propia máquina o servidor de la organización, sin enviar el código a servicios externos. Las respuestas citan el archivo y las líneas de donde salen, para que puedan verificarse. En modo equipo, cada persona entra con un rol Scrum por proyecto, ve sus issues de GitHub y la actividad del equipo, y pregunta a Beacon por dónde empezar una issue.
 
 Proyecto de título — INACAP, 2026.
 
@@ -15,10 +15,12 @@ Proyecto de título — INACAP, 2026.
 3. Responde preguntas sobre el código vía un motor RAG con **expansión por grafo de llamadas** (si el código citado llama a otra función indexada, se agrega automáticamente al contexto) y reglas explícitas anti-alucinación.
 4. Genera documentación `.md` por archivo, incremental — solo regenera lo que cambió desde el último commit indexado. Con esa documentación arma un resumen del repositorio (uno por carpeta y uno del proyecto) que responde preguntas abiertas como «¿qué hace este proyecto?».
 5. Todo esto disponible por **CLI** y por una **interfaz web** (chat, navegador de documentación, configuración) servida por el mismo backend.
+6. **Modo equipo** con **Beacon Hub** (la parte en la nube: cuentas, roles Scrum por proyecto, licencia con 30 días de prueba, auditoría y GitHub de solo lectura), donde la interfaz agrega *Mi trabajo*, *¿Por dónde empiezo?* y *Equipo*. El Hub solo guarda metadatos; ver [modo equipo](docs/es/modo-equipo.md).
 
 ## Modos de uso
 
 - **Una persona:** instalación local desde el repositorio y la consola (`beacon ask`, `beacon sync`). Ejecuta `python tools/install.py` para prepararlo todo en un paso y usa después el lanzador `beacon`; la [instalación manual](docs/es/instalacion-manual.md) incluye también el proceso largo paso a paso.
+- **Un equipo con roles (modo equipo):** Beacon conectado a Beacon Hub, con `docker compose -f docker-compose.yml -f docker-compose.equipo.yml up -d --build`; ver [modo equipo](docs/es/modo-equipo.md).
 - **Un equipo:** un servidor con Docker Compose, con un único índice compartido, al que se accede desde el navegador, la consola o la API REST. Es la forma recomendada y se describe a continuación.
 
 ## Inicio rápido con Docker (recomendado)
@@ -70,6 +72,7 @@ El asistente se abre en el navegador y te guía: aceptas la participación, elig
 | Documento | Contenido |
 |---|---|
 | [Instalación manual](docs/es/instalacion-manual.md) | Sin Docker, en Windows y Linux/macOS (macOS verificado solo en el CI); cómo compartirlo con un equipo |
+| [Modo equipo](docs/es/modo-equipo.md) | Beacon Hub: cuentas, roles Scrum, licencia y prueba, auditoría, GitHub, Mi trabajo y ¿Por dónde empiezo? |
 | [Uso](docs/es/uso.md) | CLI, interfaz web, sincronización automática, exportar e importar proyectos |
 | [Docker](docs/es/docker.md) | Detalles y casos particulares del despliegue con contenedores |
 | [Calidad medida](docs/es/calidad-medida.md) | Resultados de la búsqueda, de las respuestas y de las pruebas de carga |
@@ -84,4 +87,4 @@ Sobre `psf/requests` (30 preguntas), el fragmento que responde aparece entre los
 
 ## Licencia
 
-MIT — ver [LICENSE](LICENSE).
+Propietaria — ver [LICENSE](LICENSE). Las versiones publicadas antes del 27 de noviembre de 2026 conservan la licencia MIT.
