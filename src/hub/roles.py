@@ -1,10 +1,20 @@
-"""Scrum roles per project and what each one may do. Shared by the Hub and Beacon Local."""
+"""Roles per project (Scrum plus the rest of the company) and what each one may do. Shared by the Hub and Beacon Local."""
 
 PRODUCT_OWNER = "product_owner"
 SCRUM_MASTER = "scrum_master"
 TECH_LEAD = "tech_lead"      # the senior who reviews and corrects what the AI drafts
 DEVELOPER = "developer"
-ROLES = (PRODUCT_OWNER, SCRUM_MASTER, TECH_LEAD, DEVELOPER)
+QA = "qa"
+SUPPORT = "support"          # answers customers: plain-language explanations, no code
+PRODUCT = "product"          # analysts and designers: what the system does, in business terms
+SECURITY = "security"        # reviews access and who did what
+OBSERVER = "observer"        # management or stakeholders: plain language, no individual metrics
+ROLES = (PRODUCT_OWNER, SCRUM_MASTER, TECH_LEAD, DEVELOPER, QA, SUPPORT, PRODUCT, SECURITY, OBSERVER)
+LABELS = {PRODUCT_OWNER: "Product Owner", SCRUM_MASTER: "Scrum Master", TECH_LEAD: "Líder técnico", DEVELOPER: "Desarrollador",
+          QA: "QA", SUPPORT: "Soporte", PRODUCT: "Producto", SECURITY: "Seguridad", OBSERVER: "Observador"}
+
+# Roles whose answers are explained without code.
+PLAIN_LANGUAGE = frozenset({SUPPORT, PRODUCT, OBSERVER})
 
 # Actions on a project. The organization administrator may do all of them, plus everything that is not tied to a
 # project (people, projects, license, model server, disk space).
@@ -20,6 +30,11 @@ PERMISSIONS = {
     SCRUM_MASTER: {ASK, SYNC, VIEW_AUDIT},
     TECH_LEAD: {ASK, SYNC, VIEW_AUDIT, VERIFY},
     DEVELOPER: {ASK},
+    QA: {ASK},
+    SUPPORT: {ASK},
+    PRODUCT: {ASK},
+    SECURITY: {ASK, VIEW_AUDIT},
+    OBSERVER: {ASK},
 }
 
 

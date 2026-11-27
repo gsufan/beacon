@@ -182,3 +182,15 @@ def test_repository_names_and_issue_references():
     with pytest.raises(ValueError):
         normalize_repo("no es un repo")
     assert issue_refs("fix #12 y #3, no a/b#9") == [3, 12]
+
+
+def test_every_role_can_be_assigned_and_has_a_label(client):
+    from hub import roles as R
+
+    assert set(R.LABELS) == set(R.ROLES) and R.PLAIN_LANGUAGE <= set(R.ROLES)
+    admin = _auth(_signup(client))
+    uid = _invite(client, admin, "ana@acme.cl", "Ana").json()["user"]["sub"]
+    client.post("/projects", json={"id": "api", "name": "API"}, headers=admin)
+    for role in R.ROLES:
+        assert client.put(f"/projects/api/members/{uid}", json={"role": role}, headers=admin).status_code == 200, role
+    assert client.put(f"/projects/api/members/{uid}", json={"role": "jefe"}, headers=admin).status_code == 400

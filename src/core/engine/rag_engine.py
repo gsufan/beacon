@@ -112,16 +112,16 @@ class RAGEngine:
 
     def ask(
         self, question: str, top_k: int = DEFAULT_TOP_K, expand_call_graph: bool = True, language: str = "es",
-        max_seconds: Optional[float] = None, should_stop: Optional[Callable[[], bool]] = None,
+        max_seconds: Optional[float] = None, should_stop: Optional[Callable[[], bool]] = None, plain: bool = False,
     ) -> RAGResponse:
         with priority.query():  # background documentation yields the model server meanwhile
-            return self._ask(question, top_k, expand_call_graph, language, max_seconds, should_stop)
+            return self._ask(question, top_k, expand_call_graph, language, max_seconds, should_stop, plain)
 
-    def _ask(self, question, top_k, expand_call_graph, language, max_seconds, should_stop) -> RAGResponse:
+    def _ask(self, question, top_k, expand_call_graph, language, max_seconds, should_stop, plain=False) -> RAGResponse:
         chunks, general = self._context(question, top_k, expand_call_graph)
-        system = prompting.system_prompt(language, general)
+        system = prompting.system_prompt(language, general, plain)
         chunks = prompting.fit_to_budget(question, system, chunks, self.ai_config.llm_num_ctx)
-        result = chat(self.backend, self.ai_config.llm_model, system, prompting.build_prompt(question, chunks),
+        result = chat(self.backend, self.ai_config.llm_model, system, prompting.build_prompt(question, chunks, plain),
                       self.ai_config.llm_num_ctx, max_tokens=prompting.ANSWER_RESERVE_TOKENS,
                       max_seconds=max_seconds, should_stop=should_stop)
         answer = strip_preamble(result.content, heading_marker="\x00")

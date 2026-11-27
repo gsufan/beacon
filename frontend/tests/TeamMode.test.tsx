@@ -186,6 +186,24 @@ describe("modo equipo", () => {
     expect(screen.getByText("Ana Rojas")).toBeInTheDocument();
   });
 
+  it("Soporte recibe las respuestas sin código: la opción viene marcada y no se puede quitar", async () => {
+    localStorage.setItem("beacon:session", JSON.stringify(sessionFor(false, { api: "support" })));
+    installFakeServer({
+      "POST /hub/auth/refresh": () => ({ body: sessionFor(false, { api: "support" }) }),
+      "POST /projects/api/query": () => ({ body: { answer: "El sistema rechaza nombres con tildes.", sources: [], plain: true } }),
+    });
+    const user = userEvent.setup();
+    renderApp("/chat");
+    const box = await screen.findByRole("checkbox", { name: "Explicar sin código" });
+    expect(box).toBeChecked();
+    expect(box).toBeDisabled();
+    expect(screen.getAllByText("Soporte").length).toBeGreaterThan(0);
+    await user.type(screen.getByPlaceholderText(/./, { selector: "textarea" }), "¿Por qué falla el login?");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    expect(await screen.findByText("El sistema rechaza nombres con tildes.")).toBeInTheDocument();
+    expect((calls.find((c) => c.path === "/projects/api/query")?.body as { plain: boolean }).plain).toBe(true);
+  });
+
   it("una licencia vencida muestra el aviso", async () => {
     localStorage.setItem("beacon:session", JSON.stringify(sessionFor(true, {})));
     installFakeServer({ "GET /projects": () => ({ status: 402, body: { detail: "La licencia venció." } }) });

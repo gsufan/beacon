@@ -47,9 +47,22 @@ TRUNCATED_NOTES = {
 }
 
 
-def system_prompt(language: str, general: bool) -> str:
+# For people who do not program (support, product, management): same grounding rules, different wording.
+PLAIN_LANGUAGE_RULES = """
+AUDIENCIA: quien pregunta no programa (soporte, producto o gerencia). Esto reemplaza las reglas de estilo anteriores:
+- Explica en lenguaje simple qué hace el sistema, por qué pasa lo que se pregunta y qué significa para el usuario.
+- No escribas código, nombres de funciones, clases, variables ni rutas de archivos en la explicación.
+- Termina con una sola línea "Para el equipo de desarrollo:" seguida de las rutas de los archivos donde revisar, sin enlaces.
+- La regla de usar solo el CONTEXTO sigue vigente: si no está ahí, dilo.
+"""
+PLAIN_LANGUAGE_REMINDER = ("Responde para alguien que no programa: en lenguaje simple, sin código ni nombres de funciones, "
+                           "y deja los archivos solo en la última línea.")
+
+
+def system_prompt(language: str, general: bool, plain: bool = False) -> str:
     instruction = LANGUAGE_INSTRUCTIONS.get(language, LANGUAGE_INSTRUCTIONS["es"])
-    return instruction + "\n\n" + (GENERAL_SYSTEM_PROMPT if general else SYSTEM_PROMPT)
+    rules = GENERAL_SYSTEM_PROMPT if general else SYSTEM_PROMPT
+    return instruction + "\n\n" + rules + (PLAIN_LANGUAGE_RULES if plain else "")
 
 
 def truncated_note(language: str) -> str:
@@ -60,10 +73,11 @@ def context_budget_tokens(num_ctx: int) -> int:
     return prompt_budget_tokens(ANSWER_RESERVE_TOKENS, num_ctx)
 
 
-def build_prompt(question: str, chunks: List[RetrievedChunk]) -> str:
+def build_prompt(question: str, chunks: List[RetrievedChunk], plain: bool = False) -> str:
     context = "(No se encontraron fragmentos relevantes.)" if not chunks else \
         "\n\n".join(c.as_context_block() for c in chunks)
-    return f"CONTEXTO:\n\n{context}\n\n---\n\nPREGUNTA: {question}\n\nResponde siguiendo las reglas del sistema."
+    closing = PLAIN_LANGUAGE_REMINDER if plain else "Responde siguiendo las reglas del sistema."
+    return f"CONTEXTO:\n\n{context}\n\n---\n\nPREGUNTA: {question}\n\n{closing}"
 
 
 def fit_to_budget(question: str, system: str, chunks: List[RetrievedChunk], num_ctx: int) -> List[RetrievedChunk]:

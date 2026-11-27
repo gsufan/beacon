@@ -41,8 +41,9 @@ function Sidebar() {
   const { mode, user, isAdmin, roleIn, signOut } = useAuth();
   const { projectId } = useProject();
   const team = mode === "team";
-  const managesSomething = isAdmin || Object.values(user?.roles ?? {}).some((r) => r === "product_owner" || r === "scrum_master");
-  const guidesSomething = managesSomething || Object.values(user?.roles ?? {}).some((r) => r === "tech_lead");
+  const roles = Object.values(user?.roles ?? {});
+  const managesSomething = isAdmin || roles.some((r) => r === "product_owner" || r === "scrum_master" || r === "security");
+  const guidesSomething = managesSomething || roles.some((r) => r === "tech_lead");
   const navItems = team
     ? [
         { to: "/", label: t("nav_work"), icon: Briefcase, end: true },

@@ -15,12 +15,16 @@ as before.
 
 ## Roles
 
-Each person has a Scrum role in each project:
+Each person has a role in each project: the Scrum ones and those of the rest of the company, who use Beacon without changing their tools.
 
 | Role | Can |
 |---|---|
-| Developer | Ask the code, read the documentation, see their issues and the team's activity, use "Where do I start?" |
-| Scrum Master | The above, sync the project and see its audit trail |
+| Developer | Ask the code, read the documentation, see their issues and the team's activity, use "Where do I start?", the implementation plan, "What should we test?" and the impact radius |
+| QA | Same as a developer; their main tool is "What should we test?" |
+| Support, Product and Observer | Ask and read the documentation; answers come in plain language, without code, with the reference files at the end |
+| Security | Ask, see the project's audit trail and the Overview |
+| Tech lead | What a developer can, plus correct and verify documentation and answers, and see the Overview |
+| Scrum Master | What a developer can, plus sync the project, see its audit trail and the Overview |
 | Product Owner | The above, manage who takes part in the project and link its GitHub repository |
 | Organization administrator | Everything: people, projects, plan, model server, disk space, and deleting projects |
 

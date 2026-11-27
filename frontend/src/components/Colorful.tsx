@@ -26,7 +26,9 @@ export function Avatar({ name, size = 28 }: { name: string; size?: number }) {
   );
 }
 
-const ROLE_COLOR: Record<string, number> = { admin: 5, product_owner: 2, scrum_master: 3, tech_lead: 4, developer: 1 };
+const ROLE_COLOR: Record<string, number> = {
+  admin: 5, product_owner: 2, scrum_master: 3, tech_lead: 4, developer: 1, qa: 6, support: 2, product: 3, security: 5, observer: 6,
+};
 
 export function RoleBadge({ role, label }: { role: string; label: string }) {
   const c = ROLE_COLOR[role] ?? 6;

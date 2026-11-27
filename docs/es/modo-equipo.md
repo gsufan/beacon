@@ -14,12 +14,16 @@ Hub en cada solicitud, sin consultarlo. Sin un Hub configurado, Beacon funciona 
 
 ## Roles
 
-Cada persona tiene un rol Scrum en cada proyecto:
+Cada persona tiene un rol en cada proyecto: los de Scrum y los del resto de la empresa, que usan Beacon sin cambiar sus herramientas.
 
 | Rol | Puede |
 |---|---|
-| Desarrollador | Preguntar al código, leer la documentación, ver sus issues y la actividad del equipo, usar «¿Por dónde empiezo?» |
-| Scrum Master | Lo anterior, sincronizar el proyecto y ver su auditoría |
+| Desarrollador | Preguntar al código, leer la documentación, ver sus issues y la actividad del equipo, usar «¿Por dónde empiezo?», el plan de implementación, «¿Qué probar?» y el radio de impacto |
+| QA | Lo mismo que el desarrollador; su herramienta principal es «¿Qué probar?» |
+| Soporte, Producto y Observador | Preguntar y leer la documentación; las respuestas llegan en lenguaje simple, sin código, con los archivos de referencia al final |
+| Seguridad | Preguntar, ver la auditoría del proyecto y el Panorama |
+| Líder técnico | Lo del desarrollador, corregir y verificar la documentación y las respuestas, y ver el Panorama |
+| Scrum Master | Lo del desarrollador, sincronizar el proyecto, ver su auditoría y el Panorama |
 | Product Owner | Lo anterior, gestionar quién participa en el proyecto y vincular su repositorio de GitHub |
 | Administrador de la organización | Todo: personas, proyectos, plan, servidor de modelos, espacio en disco, y borrar proyectos |
 

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router";
 import MarkdownViewer from "../components/MarkdownViewer";
 import SourceCitation from "../components/SourceCitation";
+import { useAuth } from "../components/AuthProvider";
 import { VerifiedCard, VerifyAnswerButton } from "../components/VerifiedAnswer";
 import { useLanguage } from "../components/LanguageSelector";
 import { useProject } from "../components/ProjectSelector";
@@ -149,6 +150,11 @@ function SourcesPanel({ turn, index }: { turn: Turn | null; index: number }) {
 export default function Chat() {
   const { projects, projectId } = useProject();
   const { language, t } = useLanguage();
+  const { mode, isAdmin, roleIn } = useAuth();
+  // Support, product and observers always get plain-language answers; anyone else may ask for them.
+  const plainForced = mode === "team" && !isAdmin && ["support", "product", "observer"].includes(roleIn(projectId) ?? "");
+  const [plainChosen, setPlainChosen] = useState(false);
+  const plain = plainForced || plainChosen;
   const [question, setQuestion] = useState("");
   const [turns, setTurns] = useState<Turn[]>([]);
   const [selectedId, setSelectedId] = useState<number | null>(null);
@@ -195,7 +201,7 @@ export default function Chat() {
     if (!projectId) return;
     patchTurn(id, { status: "loading", error: undefined, result: undefined });
     try {
-      const result = await api.query(projectId, text, 5, language);
+      const result = await api.query(projectId, text, 5, language, plain);
       patchTurn(id, { status: "done", result });
     } catch (e) {
       patchTurn(id, { status: "error", error: e instanceof ApiError ? e.message : t("settings_error_generic") });
@@ -410,7 +416,13 @@ export default function Chat() {
               className="w-full resize-none bg-transparent text-[15px] outline-none placeholder:text-muted disabled:opacity-60"
             />
             <div className="flex items-center justify-between gap-3">
-              <span className="text-xs text-muted">{t("chat_send_hint")}</span>
+              <span className="flex flex-wrap items-center gap-3 text-xs text-muted">
+                {t("chat_send_hint")}
+                <label className="flex items-center gap-1.5" title={plainForced ? t("chat_plain_forced") : undefined}>
+                  <input type="checkbox" checked={plain} disabled={plainForced} onChange={(e) => setPlainChosen(e.target.checked)} />
+                  {t("chat_plain")}
+                </label>
+              </span>
               <button
                 type="submit"
                 disabled={loading || !projectId}

@@ -61,10 +61,10 @@ export const api = {
   health: (projectId: string) =>
     request<{ status: string; total_chunks_indexados: number }>(`/projects/${projectId}/health`),
 
-  query: (projectId: string, question: string, topK = 5, language = "es") =>
+  query: (projectId: string, question: string, topK = 5, language = "es", plain = false) =>
     request<QueryResponse>(`/projects/${projectId}/query`, {
       method: "POST",
-      body: JSON.stringify({ question, top_k: topK, language }),
+      body: JSON.stringify({ question, top_k: topK, language, plain }),
     }),
 
   docsTree: (projectId: string) => request<DocsTreeResponse>(`/projects/${projectId}/docs/tree`),

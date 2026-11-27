@@ -57,6 +57,7 @@ export interface QueryResponse {
   answer: string;
   sources: SourceItem[];
   verified?: VerifiedMatch | null;
+  plain?: boolean;
 }
 
 export interface DocsTreeResponse {

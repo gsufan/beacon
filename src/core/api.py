@@ -249,6 +249,7 @@ class QueryRequest(BaseModel):
     question: str = Field(..., min_length=3)
     top_k: int = Field(default=5, ge=1, le=20)
     language: str = Field(default="es", pattern="^(es|en)$")
+    plain: bool = False  # explain without code (forced for support, product and observer roles)
 
 
 class SourceItem(BaseModel):
@@ -266,6 +267,7 @@ class QueryResponse(BaseModel):
     answer: str
     sources: list[SourceItem]
     verified: Optional[dict] = None
+    plain: bool = False
 
 
 class AIProviderUpdate(BaseModel):
@@ -381,8 +383,9 @@ def project_health(project_id: str):
 
 
 @app.post("/projects/{project_id}/query", response_model=QueryResponse)
-def query(project_id: str, req: QueryRequest):
+def query(project_id: str, req: QueryRequest, request: Request):
     engine = _get_engine(project_id)
+    plain = req.plain or team.plain_language(getattr(request.state, "user", None), project_id)
     if engine.collection.count() == 0:
         raise HTTPException(status_code=409, detail=f"El índice de '{project_id}' está vacío. Corre 'beacon sync {project_id}' primero.")
     verified = None
@@ -395,7 +398,7 @@ def query(project_id: str, req: QueryRequest):
         except Exception:  # noqa: BLE001 - a verified answer is a bonus; the normal answer must not fail because of it
             logger.exception("búsqueda de respuestas verificadas falló")
     try:
-        result = engine.ask(req.question, top_k=req.top_k, language=req.language)
+        result = engine.ask(req.question, top_k=req.top_k, language=req.language, plain=plain)
     except _DOMAIN_ERRORS:
         raise
     except (BackendUnavailableError, ConnectionError, httpx.TransportError):
@@ -407,7 +410,7 @@ def query(project_id: str, req: QueryRequest):
         insight.record_usage(Path(get_project(project_id).docs_dir).parent, out["sources"], out["answer"])
     except Exception:  # noqa: BLE001 - the usage log must never break an answer
         logger.warning("no se pudo registrar el uso del proyecto %s", project_id)
-    return {**out, "verified": verified}
+    return {**out, "verified": verified, "plain": plain}
 
 
 class StartIssueRequest(BaseModel):
@@ -430,7 +433,7 @@ def start_issue(project_id: str, ref: str, req: StartIssueRequest, request: Requ
     if res.status_code != 200:
         raise HTTPException(status_code=res.status_code, detail=res.json().get("detail", "No se pudo leer la issue."))
     issue = res.json()
-    answer = query(project_id, QueryRequest(question=team.issue_question(issue, req.language), top_k=8, language=req.language))
+    answer = query(project_id, QueryRequest(question=team.issue_question(issue, req.language), top_k=8, language=req.language), request)
     return {"issue": {k: issue.get(k) for k in ("id", "ref", "source", "number", "title", "url", "labels")}, **answer}
 
 
@@ -462,7 +465,7 @@ def _model_call(fn):
 def issue_plan(project_id: str, ref: str, req: StartIssueRequest, request: Request):
     """Implementation plan for an issue: steps, files and functions to change, tests, risks and a size estimate."""
     issue = _fetch_issue(request, project_id, ref)
-    answer = query(project_id, QueryRequest(question=assist.plan_question(issue, req.language), top_k=8, language=req.language))
+    answer = query(project_id, QueryRequest(question=assist.plan_question(issue, req.language), top_k=8, language=req.language), request)
     return {"issue": {k: issue.get(k) for k in ("id", "ref", "source", "title", "url")}, **answer}
 
 

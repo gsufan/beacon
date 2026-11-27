@@ -108,6 +108,13 @@ def required_permission(method: str, path: str) -> Tuple[Optional[str], Optional
     return None, None  # any person of the organization (model server status, providers, monitor)
 
 
+def plain_language(claims: Optional[dict], project_id: str) -> bool:
+    """Whether answers for this person must be explained without code (support, product, observers)."""
+    if not claims or claims.get("admin"):
+        return False
+    return (claims.get("roles") or {}).get(project_id) in R.PLAIN_LANGUAGE
+
+
 def allowed(claims: dict, action: Optional[str], project_id: Optional[str]) -> bool:
     if action is None:
         return True

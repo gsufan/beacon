@@ -103,7 +103,7 @@ def test_start_issue_asks_the_code_with_the_issue_text(client, hub_key, monkeypa
     calls = {}
     monkeypatch.setattr(api.httpx, "get", lambda url, headers, timeout: calls.setdefault("url", url) and FakeResponse())
 
-    def fake_query(project_id, req):
+    def fake_query(project_id, req, request=None):
         calls["question"] = req.question
         return {"answer": "Revisa auth.py", "sources": []}
 
@@ -124,3 +124,30 @@ def test_route_permission_table():
     assert team.required_permission("GET", "/system/ai-status") == (None, None)
     assert team.audit_action("POST", "/projects/api/query") == ("consulta al código", "api")
     assert team.audit_action("GET", "/projects/api/docs") is None
+
+
+def test_support_product_and_observer_get_answers_without_code(client, hub_key, monkeypatch):
+    from core.engine import prompting
+    from hub import roles as R
+
+    asked = []
+
+    class FakeEngine:
+        collection = SimpleNamespace(count=lambda: 10)
+
+        def ask(self, question, top_k=5, language="es", plain=False):
+            asked.append(plain)
+            return SimpleNamespace(to_dict=lambda: {"answer": "El sistema valida el nombre.", "sources": []})
+
+    monkeypatch.setattr(api, "_get_engine", lambda pid: FakeEngine())
+    monkeypatch.setattr(api, "_hub_public_key", lambda: None)
+    for role, plain in (("support", True), ("product", True), ("observer", True), ("developer", False), ("qa", False)):
+        res = client.post("/projects/api/query", json={"question": "¿qué pasa al iniciar sesión?"}, headers=_headers(hub_key, roles={"api": role}))
+        assert res.status_code == 200 and res.json()["plain"] is plain, (role, res.text)
+    # Anyone may ask for it; the admin is never forced.
+    client.post("/projects/api/query", json={"question": "¿qué pasa al iniciar sesión?", "plain": True}, headers=_headers(hub_key, roles={"api": "developer"}))
+    assert asked == [True, True, True, False, False, True]
+    assert "No escribas código" in prompting.system_prompt("es", False, plain=True) and "sin código" in prompting.build_prompt("q", [], plain=True)
+    assert "No escribas código" not in prompting.system_prompt("es", False)
+    # Security reviews the audit trail; the plain-language roles only ask.
+    assert R.can({"roles": {"api": "security"}}, R.VIEW_AUDIT, "api") and not R.can({"roles": {"api": "support"}}, R.SYNC, "api")

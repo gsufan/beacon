@@ -251,7 +251,7 @@ def test_read_key_may_ask_questions(monkeypatch):
     from core.engine.rag_engine import RAGResponse
     monkeypatch.setattr(api, "API_KEY", "admin")
     monkeypatch.setattr(api, "READ_KEY", "consulta")
-    monkeypatch.setattr(api, "_get_engine", lambda project_id: _FakeEngine(lambda question, top_k, language: RAGResponse("ok", [])))
+    monkeypatch.setattr(api, "_get_engine", lambda project_id: _FakeEngine(lambda question, top_k, language, plain=False: RAGResponse("ok", [])))
     resp = client.post("/projects/demo/query", json={"question": "que hace este repo?"}, headers={"X-API-Key": "consulta"})
     assert resp.status_code == 200
 
@@ -356,7 +356,7 @@ class _FakeEngine:
 
 
 def test_query_returns_503_when_ollama_is_down(monkeypatch):
-    def ask(question, top_k, language):
+    def ask(question, top_k, language, plain=False):
         raise ConnectionError("Failed to connect to Ollama")
 
     monkeypatch.setattr(api, "_get_engine", lambda project_id: _FakeEngine(ask))
@@ -371,7 +371,7 @@ def test_query_includes_source_code(monkeypatch):
     chunk = RetrievedChunk(file_path="a.py", chunk_type="function", name="f", start_line=1,
                            end_line=2, code="def f():\n    return 1", distance=0.2)
     monkeypatch.setattr(api, "_get_engine",
-                        lambda project_id: _FakeEngine(lambda question, top_k, language: RAGResponse("ok", [chunk])))
+                        lambda project_id: _FakeEngine(lambda question, top_k, language, plain=False: RAGResponse("ok", [chunk])))
     resp = client.post("/projects/demo/query", json={"question": "que hace este repo?"})
     assert resp.status_code == 200
     assert resp.json()["sources"][0]["code"] == "def f():\n    return 1"
@@ -397,7 +397,7 @@ def test_watcher_runs_only_while_the_server_is_up():
     (api.BackendAuthError("sin acceso"), 502),
 ])
 def test_query_domain_errors_keep_their_status(monkeypatch, error, status):
-    def ask(question, top_k, language):
+    def ask(question, top_k, language, plain=False):
         raise error
 
     monkeypatch.setattr(api, "_get_engine", lambda project_id: _FakeEngine(ask))

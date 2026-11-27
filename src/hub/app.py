@@ -34,7 +34,6 @@ PLANS = {
     "empresa": {"label": "Empresa", "seats": 60, "price_per_user": 11990},
 }
 _PROJECT_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
-_ROLE_LABEL = {R.PRODUCT_OWNER: "Product Owner", R.SCRUM_MASTER: "Scrum Master", R.TECH_LEAD: "Líder técnico", R.DEVELOPER: "Desarrollador"}
 # Actions reported by Beacon Local that the team hears about in Slack (queries are not announced).
 _NOTIFY_LOCAL = {"sincronización": ":arrows_counterclockwise:", "proyecto quitado de Beacon Local": ":wastebasket:",
                  "proyecto registrado en Beacon Local": ":new:"}
@@ -527,7 +526,7 @@ def create_app(hub: Hub) -> FastAPI:
                    "ON CONFLICT (org_id, project_id, user_id) DO UPDATE SET role = excluded.role",
                    (user["org_id"], project_id, user_id, body.role))
         db.audit(user["org_id"], user, "rol asignado", project_id, f"{target['name']}: {body.role}")
-        notify(user["org_id"], f":busts_in_silhouette: {target['name']} tiene ahora el rol {_ROLE_LABEL[body.role]} en {project_id}.")
+        notify(user["org_id"], f":busts_in_silhouette: {target['name']} tiene ahora el rol {R.LABELS[body.role]} en {project_id}.")
         return {"status": "ok"}
 
     @app.delete("/projects/{project_id}/members/{user_id}")
