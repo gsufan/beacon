@@ -78,7 +78,7 @@ describe("navegación", () => {
   it("cambia de vista con los enlaces de la barra lateral", async () => {
     const user = userEvent.setup();
     renderApp();
-    await user.click(screen.getByRole("link", { name: /Docs/ }));
+    await user.click(await screen.findByRole("link", { name: /Docs/ }));
     expect(await screen.findByText("Archivos documentados")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: /Docs/ })).toHaveAttribute("aria-current", "page");
 

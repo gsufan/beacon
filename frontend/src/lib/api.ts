@@ -13,6 +13,7 @@ import type {
   SystemProvider,
   SyncStatus,
 } from "./types";
+import { sessionHeaders } from "./session";
 
 export class ApiError extends Error {
   status: number;
@@ -33,17 +34,21 @@ export function setApiKey(key: string) {
   else localStorage.removeItem(API_KEY_STORAGE_KEY);
 }
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+export async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const apiKey = getApiKey();
   const res = await fetch(path, {
     headers: {
       "Content-Type": "application/json",
       ...(apiKey ? { "X-API-Key": apiKey } : {}),
+      ...sessionHeaders(),
     },
     ...init,
   });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
+    // Team mode: an expired or rejected session sends the person back to the login screen.
+    if (res.status === 401 && sessionHeaders().Authorization) window.dispatchEvent(new Event("beacon:session-expired"));
+    if (res.status === 402) window.dispatchEvent(new Event("beacon:license-expired"));
     throw new ApiError(res.status, body.detail ?? res.statusText);
   }
   if (res.status === 204) return undefined as T;
