@@ -63,6 +63,12 @@ CREATE TABLE IF NOT EXISTS audit (
 CREATE INDEX IF NOT EXISTS audit_org_ts ON audit(org_id, ts);
 """
 
+# Columns added after the first version; existing databases get them on start.
+MIGRATIONS = [
+    ("orgs", "jira_site", "TEXT"), ("orgs", "jira_email", "TEXT"), ("orgs", "jira_token", "TEXT"),
+    ("orgs", "slack_webhook", "TEXT"), ("projects", "jira_project", "TEXT"), ("users", "jira_user", "TEXT"),
+]
+
 
 class Database:
     def __init__(self, path: Path):
@@ -73,6 +79,11 @@ class Database:
         self._lock = threading.Lock()
         with self._lock:
             self._conn.executescript(SCHEMA)
+            for table, column, kind in MIGRATIONS:
+                cols = {r[1] for r in self._conn.execute(f"PRAGMA table_info({table})")}
+                if column not in cols:
+                    self._conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {kind}")
+            self._conn.commit()
 
     def query(self, sql: str, args: tuple = ()) -> list:
         with self._lock:

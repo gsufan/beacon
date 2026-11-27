@@ -38,14 +38,17 @@ class GitHubClient:
         self._http = httpx.Client(base_url=API, headers=headers, timeout=15, transport=transport)
 
     def _get(self, path: str, params: Optional[dict] = None):
+        return self._call("GET", path, params=params)
+
+    def _call(self, method: str, path: str, **kw):
         try:
-            res = self._http.get(path, params=params)
+            res = self._http.request(method, path, **kw)
         except httpx.HTTPError as e:
             raise GitHubError(f"No se pudo conectar con GitHub: {e}") from e
         if res.status_code == 404:
             raise GitHubError("GitHub no encontró el repositorio o el recurso (¿el token tiene acceso?).", 404)
         if res.status_code in (401, 403):
-            raise GitHubError("GitHub rechazó el acceso: revisa el token de la organización o el límite de consultas.", 502)
+            raise GitHubError("GitHub rechazó el acceso: revisa el token de la organización (para comentar necesita permiso de escritura en issues) o el límite de consultas.", 502)
         if res.status_code >= 400:
             raise GitHubError(f"GitHub respondió {res.status_code}.")
         return res.json()
@@ -53,6 +56,7 @@ class GitHubClient:
     @staticmethod
     def _issue(raw: dict) -> dict:
         return {
+            "id": str(raw["number"]), "ref": f"#{raw['number']}", "source": "github",
             "number": raw["number"],
             "title": raw["title"],
             "body": (raw.get("body") or "")[:8000],
@@ -91,3 +95,7 @@ class GitHubClient:
                 "issues": issue_refs(message),
             })
         return out
+
+    def comment(self, repo: str, number: int, body: str) -> str:
+        """Comments on an issue; needs a token with write access to issues. Returns the comment's address."""
+        return self._call("POST", f"/repos/{repo}/issues/{number}/comments", json={"body": body[:60000]}).get("html_url", "")

@@ -41,6 +41,29 @@ cites its sources like any other.
 To see "my issues", each person enters their GitHub username (in My work or in Team > People). Without a GitHub token
 for the organization, the Hub only reads public repositories, within GitHub's rate limit.
 
+## Team integrations
+
+They are set up in Team > Integrations (administrator only); the credentials stay in the Hub and never reach the
+browsers.
+
+| Tool | What it does in Beacon | What it needs |
+|---|---|---|
+| GitHub | The project's backlog (open issues, assigned to each person) and commit activity; commenting on an issue | A repository linked to the project; the organization's token (read, plus write on issues to comment) |
+| Jira Cloud | The project's backlog from Jira (if the project has a Jira key, it is used instead of GitHub); commenting on an issue | Site `https://<site>.atlassian.net`, email and API token; the project key (for example, `BEAC`); each person enters their Jira email or accountId |
+| Slack | Team notices (someone joined, a role changed, a project was added or synced, the plan was contracted) and "Share in Slack" for an answer | An incoming webhook (`https://hooks.slack.com/services/...`), which picks the channel |
+
+From a "Where do I start?" answer you can **comment on the issue** (GitHub or Jira) or **share it in Slack**; both
+ask for confirmation, because they send the answer and its reference files (not the code) to that tool, and both are
+recorded in the audit trail. Beacon sends nothing to Slack on its own except the team notices, which carry no
+questions or code.
+
+**Who knows these files.** Next to each answer, Beacon Local shows who changed the cited files the most, read from the
+repository's git history (names and number of commits, no emails). It needs a clone with history; a copy without
+history only shows whoever imported it.
+
+**See someone else's work.** In My work, "See the work of…" shows the issues assigned to a project member and their
+recent commits: useful to pick up their work, for example, if they went on vacation.
+
 ## Getting started
 
 ### With Docker Compose (Hub and Beacon on the same machine)

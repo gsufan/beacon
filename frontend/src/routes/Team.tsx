@@ -35,9 +35,12 @@ export default function Team() {
   const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
   const [inviteEmail, setInviteEmail] = useState("");
   const [lastCode, setLastCode] = useState<{ code: string; email: string } | null>(null);
-  const [newProject, setNewProject] = useState({ id: "", name: "", github_repo: "" });
+  const [newProject, setNewProject] = useState({ id: "", name: "", github_repo: "", jira_project: "" });
   const [githubToken, setGithubToken] = useState("");
+  const [jira, setJira] = useState({ site: "", email: "", token: "" });
+  const [slackWebhook, setSlackWebhook] = useState("");
   const [repoDrafts, setRepoDrafts] = useState<Record<string, string>>({});
+  const [jiraDrafts, setJiraDrafts] = useState<Record<string, string>>({});
   const [addMember, setAddMember] = useState<Record<string, { user: string; role: Role }>>({});
 
   const load = useCallback(() => {
@@ -140,6 +143,7 @@ export default function Team() {
                 <th className="px-4 py-2 font-semibold">{t("login_name")}</th>
                 {isAdmin && <th className="px-4 py-2 font-semibold">{t("login_email")}</th>}
                 <th className="px-4 py-2 font-semibold">GitHub</th>
+                {org?.jira_connected && <th className="px-4 py-2 font-semibold">Jira</th>}
                 {isAdmin && <th className="px-4 py-2" />}
               </tr>
             </thead>
@@ -169,6 +173,22 @@ export default function Team() {
                       <span className="font-mono text-[13px]">{u.github_login ?? "—"}</span>
                     )}
                   </td>
+                  {org?.jira_connected && (
+                    <td className="px-4 py-2">
+                      {isAdmin || u.id === user?.sub ? (
+                        <input
+                          className={`${inputClass} h-[30px] w-44 font-mono text-[13px]`}
+                          defaultValue={u.jira_user ?? ""}
+                          placeholder={t("team_jira_user")}
+                          onBlur={(e) =>
+                            e.target.value.trim() !== (u.jira_user ?? "") && run(() => hub.patchUser(u.id, { jira_user: e.target.value.trim() }))
+                          }
+                        />
+                      ) : (
+                        <span className="font-mono text-[13px]">{u.jira_user ?? "—"}</span>
+                      )}
+                    </td>
+                  )}
                   {isAdmin && (
                     <td className="px-4 py-2 text-right">
                       {u.id !== user?.sub && (
@@ -266,6 +286,27 @@ export default function Team() {
                   <span className="font-mono text-[13px]">{p.github_repo ?? "—"}</span>
                 )}
               </div>
+              {(org?.jira_connected || p.jira_project) && (
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <span className="text-xs font-semibold text-muted">{t("team_jira_project")}</span>
+                  {canManage(p) ? (
+                    <>
+                      <input
+                        className={`${inputClass} h-[30px] w-32 font-mono text-[13px]`}
+                        placeholder="CLAVE"
+                        value={jiraDrafts[p.id] ?? p.jira_project ?? ""}
+                        onChange={(e) => setJiraDrafts({ ...jiraDrafts, [p.id]: e.target.value })}
+                      />
+                      <button type="button" className={secondaryButton} onClick={() => run(() => hub.patchProject(p.id, { jira_project: jiraDrafts[p.id] ?? "" }), t("team_saved"))}>
+                        {t("settings_save")}
+                      </button>
+                      <span className="text-xs text-muted">{t("team_jira_project_hint")}</span>
+                    </>
+                  ) : (
+                    <span className="font-mono text-[13px]">{p.jira_project ?? "—"}</span>
+                  )}
+                </div>
+              )}
               <ul className="flex flex-col divide-y divide-line text-sm">
                 {p.members.map((m) => (
                   <li key={m.id} className="flex items-center justify-between gap-2 py-1.5">
@@ -324,14 +365,19 @@ export default function Team() {
             onSubmit={(e) => {
               e.preventDefault();
               run(async () => {
-                await hub.createProject({ id: newProject.id, name: newProject.name, github_repo: newProject.github_repo || undefined });
-                setNewProject({ id: "", name: "", github_repo: "" });
+                await hub.createProject({
+                  id: newProject.id,
+                  name: newProject.name,
+                  github_repo: newProject.github_repo || undefined,
+                  jira_project: newProject.jira_project || undefined,
+                });
+                setNewProject({ id: "", name: "", github_repo: "", jira_project: "" });
               }, t("team_saved"));
             }}
           >
             <span className="text-sm font-semibold">{t("team_add_project")}</span>
             <p className="text-[13px] text-ink-2">{t("team_add_project_hint")}</p>
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className={`grid gap-2 ${org?.jira_connected ? "sm:grid-cols-4" : "sm:grid-cols-3"}`}>
               <select
                 className={inputClass}
                 required
@@ -350,6 +396,9 @@ export default function Team() {
               </select>
               <input className={inputClass} required placeholder={t("settings_name_placeholder")} value={newProject.name} onChange={(e) => setNewProject({ ...newProject, name: e.target.value })} />
               <input className={`${inputClass} font-mono`} placeholder="owner/repo (GitHub)" value={newProject.github_repo} onChange={(e) => setNewProject({ ...newProject, github_repo: e.target.value })} />
+              {org?.jira_connected && (
+                <input className={`${inputClass} font-mono`} placeholder={t("team_jira_project_placeholder")} value={newProject.jira_project} onChange={(e) => setNewProject({ ...newProject, jira_project: e.target.value })} />
+              )}
             </div>
             <button type="submit" className={primaryButton} disabled={!newProject.id}>
               {t("team_add")}
@@ -359,7 +408,7 @@ export default function Team() {
       </Section>
 
       {isAdmin && org && (
-        <Section title="GitHub" description={t("team_github_hint")}>
+        <Section title={t("team_integrations")} description={t("team_integrations_hint")}>
           <form
             className={`${cardClass} flex flex-col gap-2`}
             onSubmit={(e) => {
@@ -370,16 +419,83 @@ export default function Team() {
               }, t("team_saved"));
             }}
           >
+            <span className="text-sm font-semibold">GitHub</span>
             <span className="text-sm">
               <span className={`mr-2 inline-block h-2 w-2 rounded-full ${org.github_connected ? "bg-ok" : "bg-line-strong"}`} />
               {org.github_connected ? t("team_github_connected") : t("team_github_not_connected")}
             </span>
+            <p className="text-xs text-muted">{t("team_github_hint")}</p>
             <div className="flex gap-2">
               <input className={inputClass} type="password" placeholder={t("team_github_token")} value={githubToken} onChange={(e) => setGithubToken(e.target.value)} />
               <button type="submit" className={primaryButton + " shrink-0"}>
                 {t("settings_save")}
               </button>
             </div>
+          </form>
+          <form
+            className={`${cardClass} flex flex-col gap-2`}
+            onSubmit={(e) => {
+              e.preventDefault();
+              run(async () => {
+                await hub.setJira(jira.site, jira.email, jira.token);
+                setJira({ site: "", email: "", token: "" });
+              }, t("team_saved"));
+            }}
+          >
+            <span className="text-sm font-semibold">Jira</span>
+            <span className="text-sm">
+              <span className={`mr-2 inline-block h-2 w-2 rounded-full ${org.jira_connected ? "bg-ok" : "bg-line-strong"}`} />
+              {org.jira_connected ? t("team_jira_connected", { site: org.jira_site ?? "" }) : t("team_jira_not_connected")}
+            </span>
+            <p className="text-xs text-muted">{t("team_jira_hint")}</p>
+            <div className="grid gap-2 sm:grid-cols-3">
+              <input className={inputClass} placeholder="https://<sitio>.atlassian.net" value={jira.site} onChange={(e) => setJira({ ...jira, site: e.target.value })} />
+              <input className={inputClass} type="email" placeholder={t("team_jira_email")} value={jira.email} onChange={(e) => setJira({ ...jira, email: e.target.value })} />
+              <input className={inputClass} type="password" placeholder={t("team_jira_token")} value={jira.token} onChange={(e) => setJira({ ...jira, token: e.target.value })} />
+            </div>
+            <div className="flex gap-2">
+              <button type="submit" className={primaryButton}>
+                {t("settings_save")}
+              </button>
+              {org.jira_connected && (
+                <button type="button" className={secondaryButton} onClick={() => run(() => hub.setJira("", "", ""), t("team_saved"))}>
+                  {t("team_disconnect")}
+                </button>
+              )}
+            </div>
+          </form>
+          <form
+            className={`${cardClass} flex flex-col gap-2`}
+            onSubmit={(e) => {
+              e.preventDefault();
+              run(async () => {
+                await hub.setSlack(slackWebhook);
+                setSlackWebhook("");
+              }, t("team_saved"));
+            }}
+          >
+            <span className="text-sm font-semibold">Slack</span>
+            <span className="text-sm">
+              <span className={`mr-2 inline-block h-2 w-2 rounded-full ${org.slack_connected ? "bg-ok" : "bg-line-strong"}`} />
+              {org.slack_connected ? t("team_slack_connected") : t("team_slack_not_connected")}
+            </span>
+            <p className="text-xs text-muted">{t("team_slack_hint")}</p>
+            <div className="flex gap-2">
+              <input className={inputClass} type="password" placeholder="https://hooks.slack.com/services/..." value={slackWebhook} onChange={(e) => setSlackWebhook(e.target.value)} />
+              <button type="submit" className={primaryButton + " shrink-0"}>
+                {t("settings_save")}
+              </button>
+            </div>
+            {org.slack_connected && (
+              <div className="flex gap-2">
+                <button type="button" className={secondaryButton} onClick={() => run(() => hub.testSlack(), t("team_slack_test_done"))}>
+                  {t("team_slack_test")}
+                </button>
+                <button type="button" className={secondaryButton} onClick={() => run(() => hub.setSlack(""), t("team_saved"))}>
+                  {t("team_disconnect")}
+                </button>
+              </div>
+            )}
           </form>
         </Section>
       )}

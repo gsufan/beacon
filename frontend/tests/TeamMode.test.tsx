@@ -17,6 +17,7 @@ function sessionFor(admin: boolean, roles: Record<string, string>) {
 }
 
 const ISSUE = {
+  id: "7", ref: "#7", source: "github",
   number: 7, title: "Login falla con tildes", body: "Al ingresar «José» se cae.", state: "open",
   url: "https://github.com/acme/api/issues/7", author: "ana", assignees: ["diego"], labels: ["bug"],
   updated_at: new Date().toISOString(), comments: 0,
@@ -31,7 +32,11 @@ function installFakeServer(overrides: Record<string, Handler> = {}) {
     "POST /hub/auth/refresh": () => ({ body: sessionFor(false, { api: "developer" }) }),
     "GET /projects": () => ({ body: [{ id: "api", name: "API" }] }),
     "GET /projects/api/health": () => ({ body: { status: "ok", total_chunks_indexados: 120 } }),
-    "GET /hub/projects/api/github/issues": () => ({ body: { repo: "acme/api", issues: [ISSUE] } }),
+    "GET /hub/projects/api/issues": () => ({ body: { source: "github", where: "acme/api", issues: [ISSUE] } }),
+    "GET /hub/org": () => ({ body: { id: 1, name: "Acme", plan: "trial", plan_label: "Prueba", seats: 5, seats_used: 2, period_end: Date.now() / 1000 + 86400,
+                                     days_left: 29, expired: false, github_connected: true, jira_connected: false, jira_site: null, slack_connected: true } }),
+    "POST /hub/projects/api/issues/7/comment": () => ({ body: { url: "https://github.com/acme/api/issues/7#c1" } }),
+    "GET /projects/api/experts": () => ({ body: { files: [], overall: [{ name: "Ana Rojas", commits: 12, last: null }] } }),
     "GET /hub/projects/api/github/activity": () => ({
       body: { repo: "acme/api", commits: [{ sha: "abc1234", message: "fix: normaliza tildes (#7)", author: "ana",
                                             date: new Date().toISOString(), url: "c", issues: [7] }] },
@@ -83,7 +88,7 @@ describe("modo equipo", () => {
     expect(await screen.findByRole("heading", { name: "Hola, Diego" })).toBeInTheDocument();
     expect(await screen.findByText(/Login falla con tildes/)).toBeInTheDocument();
     // Later requests carry the session and the license signed by the Hub.
-    const issues = calls.find((c) => c.path === "/hub/projects/api/github/issues");
+    const issues = calls.find((c) => c.path === "/hub/projects/api/issues");
     expect(issues?.headers.Authorization).toBe("Bearer s.sig");
     expect(issues?.headers["X-Beacon-License"]).toBe("l.sig");
   });
@@ -104,6 +109,21 @@ describe("modo equipo", () => {
     await user.click(await screen.findByRole("button", { name: /Por dónde empiezo/ }));
     expect(await screen.findByText("normalize_name", { selector: "code" })).toBeInTheDocument();
     expect(calls.some((c) => c.method === "POST" && c.path === "/projects/api/issues/7/start")).toBe(true);
+  });
+
+  it("comenta la respuesta en la issue y muestra quién conoce los archivos", async () => {
+    localStorage.setItem("beacon:session", JSON.stringify(sessionFor(false, { api: "developer" })));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    const user = userEvent.setup();
+    renderApp();
+    await user.click(await screen.findByRole("button", { name: /Por dónde empiezo/ }));
+    expect(await screen.findByText("Ana Rojas")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Compartir en Slack/ })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Comentar en la issue/ }));
+    expect(await screen.findByText("Comentario publicado.")).toBeInTheDocument();
+    const comment = calls.find((c) => c.path === "/hub/projects/api/issues/7/comment");
+    expect(String((comment?.body as { body: string }).body)).toContain("normalize_name");
+    expect(String((comment?.body as { body: string }).body)).toContain("auth.py (10-30)");
   });
 
   it("una licencia vencida muestra el aviso", async () => {

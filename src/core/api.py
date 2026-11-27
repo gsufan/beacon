@@ -10,12 +10,13 @@ from pathlib import Path
 from typing import Optional
 
 import httpx
-from fastapi import BackgroundTasks, FastAPI, HTTPException, Request
+import git
+from fastapi import BackgroundTasks, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from core import services, storage, team
+from core import expertise, services, storage, team
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -344,16 +345,16 @@ class StartIssueRequest(BaseModel):
     language: str = Field(default="es", pattern="^(es|en)$")
 
 
-@app.post("/projects/{project_id}/issues/{number}/start")
-def start_issue(project_id: str, number: int, req: StartIssueRequest, request: Request):
-    """«Where do I start with this issue?»: takes the issue's title and description from GitHub (through the Hub)
-    and asks the code which files and functions to review, with sources.
+@app.post("/projects/{project_id}/issues/{ref}/start")
+def start_issue(project_id: str, ref: str, req: StartIssueRequest, request: Request):
+    """«Where do I start with this issue?»: takes the issue's title and description from the project's backlog (GitHub
+    or Jira, through the Hub) and asks the code which files and functions to review, with sources.
     """
     url = team.hub_url()
     if not url:
         raise HTTPException(status_code=409, detail="Las issues requieren conectar Beacon a un Beacon Hub.")
     try:
-        res = httpx.get(f"{url}/projects/{project_id}/github/issues/{number}",
+        res = httpx.get(f"{url}/projects/{project_id}/issues/{ref}",
                         headers={"Authorization": request.headers.get("authorization", "")}, timeout=_HUB_TIMEOUT)
     except httpx.HTTPError as e:
         raise HTTPException(status_code=503, detail=f"No se pudo contactar al Beacon Hub: {e}")
@@ -361,7 +362,20 @@ def start_issue(project_id: str, number: int, req: StartIssueRequest, request: R
         raise HTTPException(status_code=res.status_code, detail=res.json().get("detail", "No se pudo leer la issue."))
     issue = res.json()
     answer = query(project_id, QueryRequest(question=team.issue_question(issue, req.language), top_k=8, language=req.language))
-    return {"issue": {k: issue.get(k) for k in ("number", "title", "url", "labels")}, **answer}
+    return {"issue": {k: issue.get(k) for k in ("id", "ref", "source", "number", "title", "url", "labels")}, **answer}
+
+
+@app.get("/projects/{project_id}/experts")
+def project_experts(project_id: str, path: list[str] = Query(default=[])):
+    """Who changed the given files most, from the local git history (names and counts, no emails)."""
+    if not path:
+        raise HTTPException(status_code=400, detail="Indica al menos un archivo (parámetro path).")
+    try:
+        return expertise.experts(get_project(project_id).repo_path, path)
+    except expertise.InvalidPathError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except git.GitError as e:
+        raise HTTPException(status_code=409, detail=f"No se pudo leer el historial de git del proyecto: {e}")
 
 
 @app.get("/projects/{project_id}/docs/tree")

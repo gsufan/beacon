@@ -1,17 +1,18 @@
-import { ExternalLink, Sparkles } from "lucide-react";
+import { ExternalLink, MessageSquarePlus, Send, Sparkles, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { useAuth } from "../components/AuthProvider";
+import { Avatar, LabelChip } from "../components/Colorful";
 import { useLanguage } from "../components/LanguageSelector";
 import MarkdownViewer from "../components/MarkdownViewer";
 import { useProject } from "../components/ProjectSelector";
 import SourceCitation from "../components/SourceCitation";
 import { ApiError } from "../lib/api";
-import { hub, type Commit, type Issue, type StartIssueResponse } from "../lib/hub";
+import { hub, type Commit, type Experts, type HubProject, type Issue, type IssuesResponse, type Org, type StartIssueResponse } from "../lib/hub";
 import { inputClass, primaryButton, secondaryButton } from "../lib/ui";
-import { Avatar, LabelChip } from "../components/Colorful";
 
 type Load<T> = { status: "loading" } | { status: "ok"; data: T } | { status: "error"; code: number; message: string };
+type Filter = "mine" | "all" | number;
 
 function relativeDate(iso: string | null, language: string) {
   if (!iso) return "";
@@ -20,7 +21,11 @@ function relativeDate(iso: string | null, language: string) {
   return Math.abs(days) < 1 ? rtf.format(-Math.round((Date.now() - new Date(iso).getTime()) / 3600000), "hour") : rtf.format(-days, "day");
 }
 
-function GitHubLoginForm({ onSaved }: { onSaved: () => void }) {
+function errorText(e: unknown) {
+  return e instanceof ApiError ? e.message : String(e);
+}
+
+function TrackerLoginForm({ source, onSaved }: { source: "github" | "jira"; onSaved: () => void }) {
   const { t } = useLanguage();
   const { user, refresh } = useAuth();
   const [login, setLogin] = useState("");
@@ -29,18 +34,24 @@ function GitHubLoginForm({ onSaved }: { onSaved: () => void }) {
     e.preventDefault();
     if (!user) return;
     try {
-      await hub.patchUser(user.sub, { github_login: login.trim() });
+      await hub.patchUser(user.sub, source === "jira" ? { jira_user: login.trim() } : { github_login: login.trim() });
       await refresh();
       onSaved();
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : String(err));
+      setError(errorText(err));
     }
   };
   return (
     <form onSubmit={save} className="flex flex-col gap-2 rounded-xl border border-line bg-surface p-4 text-sm">
-      <p className="text-ink-2">{t("work_need_github_login")}</p>
+      <p className="text-ink-2">{source === "jira" ? t("work_need_jira_user") : t("work_need_github_login")}</p>
       <div className="flex gap-2">
-        <input className={inputClass} placeholder={t("work_github_login_placeholder")} value={login} onChange={(e) => setLogin(e.target.value)} required />
+        <input
+          className={inputClass}
+          placeholder={source === "jira" ? t("work_jira_user_placeholder") : t("work_github_login_placeholder")}
+          value={login}
+          onChange={(e) => setLogin(e.target.value)}
+          required
+        />
         <button type="submit" className={primaryButton}>
           {t("settings_save")}
         </button>
@@ -59,17 +70,18 @@ function IssueCard({ issue, active, onStart }: { issue: Issue; active: boolean; 
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
           <span className="text-[14px] font-semibold leading-snug">
-            <span className="mr-1.5 font-mono text-[13px] text-muted">#{issue.number}</span>
+            <span className="mr-1.5 font-mono text-[13px] text-muted">{issue.ref}</span>
             {issue.title}
           </span>
-          <span className="flex items-center gap-1.5 text-xs text-muted">
+          <span className="flex flex-wrap items-center gap-1.5 text-xs text-muted">
             {issue.assignees.map((a) => (
               <Avatar key={a} name={a} size={18} />
             ))}
-            {issue.assignees.length > 0 ? issue.assignees.join(", ") : t("work_unassigned")} · {relativeDate(issue.updated_at, language)}
+            {issue.assignees.length > 0 ? issue.assignees.join(", ") : t("work_unassigned")}
+            {issue.state && issue.source === "jira" && <> · {issue.state}</>} · {relativeDate(issue.updated_at, language)}
           </span>
         </div>
-        <a href={issue.url} target="_blank" rel="noreferrer" className="shrink-0 text-muted hover:text-ink" aria-label={t("work_open_github")}>
+        <a href={issue.url} target="_blank" rel="noreferrer" className="shrink-0 text-muted hover:text-ink" aria-label={t("work_open_issue")}>
           <ExternalLink size={15} />
         </a>
       </div>
@@ -110,8 +122,54 @@ function ActivityList({ commits }: { commits: Commit[] }) {
   );
 }
 
-function StartPanel({ state }: { state: { issue: Issue; result?: StartIssueResponse; error?: string } | null }) {
+function ExpertsBox({ projectId, result }: { projectId: string; result: StartIssueResponse }) {
   const { t } = useLanguage();
+  const [data, setData] = useState<Experts | null>(null);
+  useEffect(() => {
+    const paths = [...new Set(result.sources.filter((s) => s.chunk_type !== "overview").map((s) => s.file_path))].slice(0, 6);
+    if (paths.length === 0) return;
+    hub.experts(projectId, paths).then(setData, () => setData(null));
+  }, [projectId, result]);
+  if (!data || data.overall.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface px-4 py-3 text-sm">
+      <span className="flex items-center gap-1.5 text-[13px] font-semibold text-muted">
+        <Users size={14} /> {t("work_experts")}
+      </span>
+      <ul className="flex flex-col gap-1.5">
+        {data.overall.map((a) => (
+          <li key={a.name} className="flex items-center gap-2">
+            <Avatar name={a.name} size={22} />
+            <span className="font-medium">{a.name}</span>
+            <span className="text-xs text-muted">{t("work_experts_commits", { n: a.commits })}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="text-xs text-muted">{t("work_experts_hint")}</p>
+    </div>
+  );
+}
+
+function shareText(project: string, issue: Issue, result: StartIssueResponse) {
+  const files = [...new Set(result.sources.filter((s) => s.chunk_type !== "overview").map((s) => `${s.file_path} (${s.start_line}-${s.end_line})`))].slice(0, 8);
+  return `${issue.ref} ${issue.title}\n\n${result.answer.slice(0, 2500)}\n\nFuentes:\n${files.map((f) => `- ${f}`).join("\n")}\n\n(${project})`;
+}
+
+function StartPanel({
+  projectId,
+  projectName,
+  org,
+  state,
+}: {
+  projectId: string;
+  projectName: string;
+  org: Org | null;
+  state: { issue: Issue; result?: StartIssueResponse; error?: string } | null;
+}) {
+  const { t } = useLanguage();
+  const [action, setAction] = useState<{ ok: boolean; text: string; url?: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  useEffect(() => setAction(null), [state?.issue.id, state?.result]);
   if (!state) {
     return (
       <div className="flex flex-col gap-2 rounded-2xl border border-line bg-gradient-to-br from-[var(--c5-tint)] to-[var(--c2-tint)] p-5 text-sm text-ink-2">
@@ -123,12 +181,24 @@ function StartPanel({ state }: { state: { issue: Issue; result?: StartIssueRespo
       </div>
     );
   }
+  const run = async (fn: () => Promise<{ url?: string } | unknown>, ok: string) => {
+    setBusy(true);
+    setAction(null);
+    try {
+      const res = (await fn()) as { url?: string };
+      setAction({ ok: true, text: ok, url: res?.url });
+    } catch (e) {
+      setAction({ ok: false, text: errorText(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <div className="flex flex-col gap-3" aria-busy={!state.result && !state.error}>
       <div className="flex flex-col gap-0.5 border-b border-line pb-3">
         <span className="text-xs font-semibold text-muted">{t("work_where_to_start")}</span>
         <span className="text-[15px] font-semibold">
-          <span className="mr-1.5 font-mono text-muted">#{state.issue.number}</span>
+          <span className="mr-1.5 font-mono text-muted">{state.issue.ref}</span>
           {state.issue.title}
         </span>
       </div>
@@ -143,6 +213,43 @@ function StartPanel({ state }: { state: { issue: Issue; result?: StartIssueRespo
           <div className="rounded-xl border border-line bg-surface px-4 py-3">
             <MarkdownViewer content={state.result.answer} />
           </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              className={`${secondaryButton} flex items-center gap-1.5`}
+              onClick={() =>
+                window.confirm(t("work_comment_confirm", { ref: state.issue.ref })) &&
+                run(() => hub.comment(projectId, state.issue.id, shareText(projectName, state.issue, state.result!)), t("work_comment_done"))
+              }
+            >
+              <MessageSquarePlus size={14} /> {t("work_comment")}
+            </button>
+            {org?.slack_connected && (
+              <button
+                type="button"
+                disabled={busy}
+                className={`${secondaryButton} flex items-center gap-1.5`}
+                onClick={() =>
+                  window.confirm(t("work_slack_confirm")) &&
+                  run(() => hub.shareSlack(projectId, shareText(projectName, state.issue, state.result!)), t("work_slack_done"))
+                }
+              >
+                <Send size={14} /> {t("work_slack")}
+              </button>
+            )}
+          </div>
+          {action && (
+            <p role={action.ok ? "status" : "alert"} className={`text-sm ${action.ok ? "text-ok" : "text-danger-ink"}`}>
+              {action.text}{" "}
+              {action.url && (
+                <a href={action.url} target="_blank" rel="noreferrer" className="underline">
+                  {t("work_open_comment")}
+                </a>
+              )}
+            </p>
+          )}
+          <ExpertsBox projectId={projectId} result={state.result} />
           <h3 className="text-[13px] font-semibold text-muted">{t("sources_count", { n: state.result.sources.length })}</h3>
           <div className="flex flex-col gap-2">
             {state.result.sources.map((s, i) => (
@@ -159,25 +266,38 @@ export default function Work() {
   const { t, language } = useLanguage();
   const { user, isAdmin, roleIn } = useAuth();
   const { projectId, projects } = useProject();
-  const [mine, setMine] = useState(true);
-  const [issues, setIssues] = useState<Load<{ issues: Issue[]; repo: string; needs_github_login?: boolean }>>({ status: "loading" });
+  const [filter, setFilter] = useState<Filter>("mine");
+  const [issues, setIssues] = useState<Load<IssuesResponse>>({ status: "loading" });
   const [activity, setActivity] = useState<Load<Commit[]>>({ status: "loading" });
   const [start, setStart] = useState<{ issue: Issue; result?: StartIssueResponse; error?: string } | null>(null);
+  const [org, setOrg] = useState<Org | null>(null);
+  const [team, setTeam] = useState<HubProject | null>(null);
   const project = projects.find((p) => p.id === projectId);
   const role = roleIn(projectId);
 
+  useEffect(() => {
+    hub.org().then(setOrg, () => setOrg(null));
+  }, []);
+
+  useEffect(() => {
+    setFilter("mine");
+    if (!projectId) return;
+    hub.projects().then((r) => setTeam(r.projects.find((p) => p.id === projectId) ?? null), () => setTeam(null));
+  }, [projectId]);
+
+  const other = typeof filter === "number" ? team?.members.find((m) => m.id === filter) : undefined;
+
   const load = useCallback(() => {
     if (!projectId) return;
-    const fail = (e: unknown) => ({
-      status: "error" as const,
-      code: e instanceof ApiError ? e.status : 0,
-      message: e instanceof ApiError ? e.message : String(e),
-    });
+    const fail = (e: unknown) => ({ status: "error" as const, code: e instanceof ApiError ? e.status : 0, message: errorText(e) });
     setIssues({ status: "loading" });
     setActivity({ status: "loading" });
-    hub.issues(projectId, mine).then((d) => setIssues({ status: "ok", data: d }), (e) => setIssues(fail(e)));
-    hub.activity(projectId).then((d) => setActivity({ status: "ok", data: d.commits }), (e) => setActivity(fail(e)));
-  }, [projectId, mine]);
+    hub.issues(projectId, filter).then((d) => setIssues({ status: "ok", data: d }), (e) => setIssues(fail(e)));
+    hub.activity(projectId, typeof filter === "number" ? filter : undefined).then(
+      (d) => setActivity({ status: "ok", data: d.commits }),
+      (e) => setActivity(fail(e)),
+    );
+  }, [projectId, filter]);
 
   useEffect(() => {
     setStart(null);
@@ -188,10 +308,9 @@ export default function Work() {
     if (!projectId) return;
     setStart({ issue });
     try {
-      const result = await hub.startIssue(projectId, issue.number, language);
-      setStart({ issue, result });
+      setStart({ issue, result: await hub.startIssue(projectId, issue.id, language) });
     } catch (e) {
-      setStart({ issue, error: e instanceof ApiError ? e.message : String(e) });
+      setStart({ issue, error: errorText(e) });
     }
   };
 
@@ -207,39 +326,58 @@ export default function Work() {
   }
 
   const issueError = issues.status === "error" ? issues : null;
+  const data = issues.status === "ok" ? issues.data : null;
+  const backlog = data ? (data.source === "jira" ? `Jira · ${data.where}` : `github.com/${data.where}`) : null;
+  const others = (team?.members ?? []).filter((m) => m.id !== user?.sub);
 
   return (
     <div className="flex flex-col gap-6 px-10 pb-10 pt-6 lg:flex-row lg:items-start">
       <div className="flex min-w-0 flex-1 flex-col gap-6">
         <div className="flex flex-col gap-2 rounded-2xl bg-gradient-to-r from-[var(--hero-from)] to-[var(--hero-to)] px-6 py-5 text-white shadow-sm">
-          <h1 className="font-display text-[24px] font-semibold">
-            {t("work_greeting", { name: user?.name.split(" ")[0] ?? "" })}
-          </h1>
+          <h1 className="font-display text-[24px] font-semibold">{t("work_greeting", { name: user?.name.split(" ")[0] ?? "" })}</h1>
           <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-white/85">
             <span className="font-semibold text-white">{project.name}</span>
             {role && <span className="rounded-full bg-white/20 px-2 py-px text-[11px] font-semibold text-white">{roleLabel}</span>}
-            {issues.status === "ok" && <span className="font-mono text-white/80">github.com/{issues.data.repo}</span>}
+            {backlog && <span className="font-mono text-white/80">{backlog}</span>}
           </p>
         </div>
 
         <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <h2 className="text-[17px] font-semibold">{t("work_issues")}</h2>
-            <div role="tablist" className="flex gap-1 rounded-lg bg-surface-2 p-1">
-              {[true, false].map((m) => (
-                <button
-                  key={String(m)}
-                  role="tab"
-                  type="button"
-                  aria-selected={mine === m}
-                  onClick={() => setMine(m)}
-                  className={`h-7 whitespace-nowrap rounded-md px-3 text-[13px] ${mine === m ? "bg-surface font-semibold text-accent-ink" : "text-ink-2"}`}
+            <div className="flex flex-wrap items-center gap-2">
+              <div role="tablist" className="flex gap-1 rounded-lg bg-surface-2 p-1">
+                {(["mine", "all"] as const).map((f) => (
+                  <button
+                    key={f}
+                    role="tab"
+                    type="button"
+                    aria-selected={filter === f}
+                    onClick={() => setFilter(f)}
+                    className={`h-7 whitespace-nowrap rounded-md px-3 text-[13px] ${filter === f ? "bg-surface font-semibold text-accent-ink" : "text-ink-2"}`}
+                  >
+                    {f === "mine" ? t("work_mine") : t("work_all_open")}
+                  </button>
+                ))}
+              </div>
+              {others.length > 0 && (
+                <select
+                  aria-label={t("work_of_person")}
+                  className="h-8 rounded-lg border border-line-strong bg-surface px-2 text-[13px]"
+                  value={typeof filter === "number" ? String(filter) : ""}
+                  onChange={(e) => setFilter(e.target.value ? Number(e.target.value) : "mine")}
                 >
-                  {m ? t("work_mine") : t("work_all_open")}
-                </button>
-              ))}
+                  <option value="">{t("work_of_person")}</option>
+                  {others.map((m) => (
+                    <option key={m.id} value={m.id}>
+                      {m.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           </div>
+          {other && <p className="rounded-lg bg-accent-tint px-3 py-2 text-[13px] text-accent-ink">{t("work_viewing_person", { name: other.name })}</p>}
           {issues.status === "loading" && <p className="text-sm text-muted">{t("work_loading")}</p>}
           {issueError && issueError.code === 404 && (
             <p className="rounded-xl border border-line bg-surface px-4 py-3 text-sm text-ink-2">{t("work_not_in_team")}</p>
@@ -259,31 +397,37 @@ export default function Work() {
               {issueError.message}
             </p>
           )}
-          {issues.status === "ok" && issues.data.needs_github_login && <GitHubLoginForm onSaved={load} />}
-          {issues.status === "ok" && !issues.data.needs_github_login && issues.data.issues.length === 0 && (
-            <p className="text-sm text-muted">{mine ? t("work_no_issues_mine") : t("work_no_issues")}</p>
+          {data?.needs_login && filter === "mine" && <TrackerLoginForm source={data.source} onSaved={load} />}
+          {data?.needs_login && typeof filter === "number" && (
+            <p className="text-sm text-muted">{t("work_person_no_login", { name: data.person ?? "" })}</p>
           )}
-          {issues.status === "ok" && issues.data.issues.length > 0 && (
+          {data && !data.needs_login && data.issues.length === 0 && (
+            <p className="text-sm text-muted">
+              {filter === "all" ? t("work_no_issues") : other ? t("work_no_issues_person", { name: other.name }) : t("work_no_issues_mine")}
+            </p>
+          )}
+          {data && data.issues.length > 0 && (
             <ul className="flex flex-col gap-2">
-              {issues.data.issues.map((i) => (
-                <IssueCard key={i.number} issue={i} active={start?.issue.number === i.number} onStart={() => startIssue(i)} />
+              {data.issues.map((i) => (
+                <IssueCard key={i.id} issue={i} active={start?.issue.id === i.id} onStart={() => startIssue(i)} />
               ))}
             </ul>
           )}
         </section>
 
         <section className="flex flex-col gap-2">
-          <h2 className="text-[17px] font-semibold">{t("work_activity")}</h2>
+          <h2 className="text-[17px] font-semibold">{other ? t("work_activity_of", { name: other.name }) : t("work_activity")}</h2>
           <p className="text-[13px] text-ink-2">{t("work_activity_hint")}</p>
           {activity.status === "loading" && <p className="text-sm text-muted">{t("work_loading")}</p>}
+          {activity.status === "error" && activity.code === 409 && <p className="text-sm text-muted">{t("work_activity_github_only")}</p>}
           {activity.status === "error" && activity.code !== 404 && activity.code !== 409 && (
             <p className="text-sm text-danger-ink">{activity.message}</p>
           )}
           {activity.status === "ok" && <ActivityList commits={activity.data} />}
         </section>
       </div>
-      <aside className="w-full shrink-0 lg:sticky lg:top-6 lg:w-[440px]">
-        <StartPanel state={start} />
+      <aside className="w-full shrink-0 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:w-[440px] lg:overflow-y-auto lg:pr-1">
+        <StartPanel projectId={projectId} projectName={project.name} org={org} state={start} />
       </aside>
     </div>
   );

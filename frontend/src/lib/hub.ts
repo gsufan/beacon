@@ -17,6 +17,9 @@ export interface Org {
   days_left: number;
   expired: boolean;
   github_connected: boolean;
+  jira_connected: boolean;
+  jira_site: string | null;
+  slack_connected: boolean;
 }
 
 export interface Plan {
@@ -32,6 +35,7 @@ export interface TeamUser {
   email?: string;
   is_admin?: number;
   github_login: string | null;
+  jira_user?: string | null;
   active: number;
 }
 
@@ -46,6 +50,7 @@ export interface HubProject {
   id: string;
   name: string;
   github_repo: string | null;
+  jira_project: string | null;
   role: Role | "admin" | null;
   members: Member[];
 }
@@ -67,7 +72,10 @@ export interface AuditEvent {
 }
 
 export interface Issue {
-  number: number;
+  id: string;
+  ref: string;
+  source: "github" | "jira";
+  number?: number;
   title: string;
   body: string;
   state: string;
@@ -89,7 +97,20 @@ export interface Commit {
 }
 
 export interface StartIssueResponse extends QueryResponse {
-  issue: { number: number; title: string; url: string; labels: string[] };
+  issue: { id: string; ref: string; source: string; title: string; url: string; labels: string[] };
+}
+
+export interface IssuesResponse {
+  source: "github" | "jira";
+  where: string;
+  issues: Issue[];
+  needs_login?: boolean;
+  person?: string | null;
+}
+
+export interface Experts {
+  files: { path: string; commits: number; authors: { name: string; commits: number }[] }[];
+  overall: { name: string; commits: number; last: string | null }[];
 }
 
 const json = (body: unknown) => ({ body: JSON.stringify(body) });
@@ -108,18 +129,22 @@ export const hub = {
   plans: () => request<{ plans: Plan[]; trial_days: number }>("/hub/plans"),
   choosePlan: (plan: string) => request<StoredSession>("/hub/org/plan", { method: "POST", ...json({ plan }) }),
   setGitHubToken: (token: string) => request<{ github_connected: boolean }>("/hub/org/github", { method: "PUT", ...json({ token }) }),
+  setJira: (site: string, email: string, token: string) =>
+    request<{ jira_connected: boolean }>("/hub/org/jira", { method: "PUT", ...json({ site, email, token }) }),
+  setSlack: (webhook: string) => request<{ slack_connected: boolean }>("/hub/org/slack", { method: "PUT", ...json({ webhook }) }),
+  testSlack: () => request<{ status: string }>("/hub/org/slack/test", { method: "POST" }),
 
   users: () => request<{ users: TeamUser[] }>("/hub/users"),
-  patchUser: (id: number, body: Partial<{ github_login: string; is_admin: boolean; active: boolean }>) =>
+  patchUser: (id: number, body: Partial<{ github_login: string; jira_user: string; is_admin: boolean; active: boolean }>) =>
     request<{ status: string }>(`/hub/users/${id}`, { method: "PATCH", ...json(body) }),
   invitations: () => request<{ invitations: Invitation[] }>("/hub/invitations"),
   invite: (email: string) => request<{ code: string; email: string }>("/hub/invitations", { method: "POST", ...json({ email }) }),
   revokeInvitation: (code: string) => request<{ status: string }>(`/hub/invitations/${code}`, { method: "DELETE" }),
 
   projects: () => request<{ projects: HubProject[] }>("/hub/projects"),
-  createProject: (body: { id: string; name: string; github_repo?: string }) =>
+  createProject: (body: { id: string; name: string; github_repo?: string; jira_project?: string }) =>
     request<HubProject>("/hub/projects", { method: "POST", ...json(body) }),
-  patchProject: (id: string, body: { github_repo?: string; name?: string }) =>
+  patchProject: (id: string, body: { github_repo?: string; jira_project?: string; name?: string }) =>
     request<{ status: string }>(`/hub/projects/${id}`, { method: "PATCH", ...json(body) }),
   deleteProject: (id: string) => request<{ status: string }>(`/hub/projects/${id}`, { method: "DELETE" }),
   setMember: (projectId: string, userId: number, role: Role) =>
@@ -130,11 +155,20 @@ export const hub = {
   audit: (projectId?: string) =>
     request<{ events: AuditEvent[] }>(`/hub/audit${projectId ? `?project_id=${encodeURIComponent(projectId)}` : ""}`),
 
-  issues: (projectId: string, mine: boolean) =>
-    request<{ repo: string; issues: Issue[]; needs_github_login?: boolean }>(
-      `/hub/projects/${projectId}/github/issues?mine=${mine}`,
+  issues: (projectId: string, filter: "mine" | "all" | number) => {
+    const qs = filter === "mine" ? "?mine=true" : filter === "all" ? "" : `?assignee_id=${filter}`;
+    return request<IssuesResponse>(`/hub/projects/${projectId}/issues${qs}`);
+  },
+  activity: (projectId: string, assigneeId?: number) =>
+    request<{ repo: string; commits: Commit[]; needs_login?: boolean }>(
+      `/hub/projects/${projectId}/github/activity${assigneeId !== undefined ? `?assignee_id=${assigneeId}` : ""}`,
     ),
-  activity: (projectId: string) => request<{ repo: string; commits: Commit[] }>(`/hub/projects/${projectId}/github/activity`),
-  startIssue: (projectId: string, number: number, language: string) =>
-    request<StartIssueResponse>(`/projects/${projectId}/issues/${number}/start`, { method: "POST", ...json({ language }) }),
+  comment: (projectId: string, ref: string, body: string) =>
+    request<{ url: string }>(`/hub/projects/${projectId}/issues/${encodeURIComponent(ref)}/comment`, { method: "POST", ...json({ body }) }),
+  shareSlack: (projectId: string, text: string) =>
+    request<{ status: string }>(`/hub/projects/${projectId}/slack`, { method: "POST", ...json({ text }) }),
+  experts: (projectId: string, paths: string[]) =>
+    request<Experts>(`/projects/${projectId}/experts?${paths.map((p) => `path=${encodeURIComponent(p)}`).join("&")}`),
+  startIssue: (projectId: string, ref: string, language: string) =>
+    request<StartIssueResponse>(`/projects/${projectId}/issues/${encodeURIComponent(ref)}/start`, { method: "POST", ...json({ language }) }),
 };

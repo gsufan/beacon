@@ -40,6 +40,29 @@ primero; la respuesta cita sus fuentes como cualquier otra.
 Para ver «mis issues», cada persona anota su usuario de GitHub (en Mi trabajo o en Equipo > Personas). Sin token de
 GitHub en la organización, el Hub solo lee repositorios públicos, con el límite de consultas de GitHub.
 
+## Integraciones del equipo
+
+Se configuran en Equipo > Integraciones (solo el administrador); las credenciales quedan en el Hub y nunca llegan a
+los navegadores.
+
+| Herramienta | Qué hace en Beacon | Qué se necesita |
+|---|---|---|
+| GitHub | Backlog del proyecto (issues abiertas, asignadas a cada persona) y actividad de commits; comentar en una issue | Repositorio vinculado al proyecto; token de la organización (lectura, y escritura en issues para comentar) |
+| Jira Cloud | Backlog del proyecto desde Jira (si el proyecto tiene una clave de Jira, se usa en lugar de GitHub); comentar en una issue | Sitio `https://<sitio>.atlassian.net`, correo y token de API; clave del proyecto (por ejemplo, `BEAC`); cada persona anota su correo o accountId de Jira |
+| Slack | Avisos del equipo (alguien se unió, cambió un rol, se agregó o sincronizó un proyecto, se contrató el plan) y «Compartir en Slack» de una respuesta | Un webhook entrante (`https://hooks.slack.com/services/...`), que elige el canal |
+
+Desde una respuesta de «¿Por dónde empiezo?» se puede **comentar en la issue** (GitHub o Jira) o **compartir en
+Slack**; ambas piden confirmación, porque envían la respuesta y los archivos de referencia (no el código) a esa
+herramienta, y quedan en la auditoría. Beacon no envía nada a Slack por su cuenta salvo los avisos del equipo, que
+no incluyen preguntas ni código.
+
+**Quién conoce estos archivos.** Junto a cada respuesta, Beacon Local muestra quiénes cambiaron más los archivos
+citados, leído del historial de git del repositorio (nombres y número de commits, sin correos). Requiere un clon con
+historial; una copia sin historial muestra solo quien la importó.
+
+**Ver el trabajo de otra persona.** En Mi trabajo, «Ver el trabajo de…» muestra las issues asignadas a un integrante
+del proyecto y sus commits recientes: sirve para retomar su trabajo, por ejemplo, si salió de vacaciones.
+
 ## Puesta en marcha
 
 ### Con Docker Compose (Hub y Beacon en el mismo equipo)

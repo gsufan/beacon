@@ -110,7 +110,7 @@ def test_start_issue_asks_the_code_with_the_issue_text(client, hub_key, monkeypa
     res = client.post("/projects/api/issues/7/start", json={"language": "es"}, headers=_headers(hub_key, roles={"api": "developer"}))
     assert res.status_code == 200, res.text
     assert res.json()["issue"]["title"] == "Login falla con tildes" and res.json()["answer"] == "Revisa auth.py"
-    assert calls["url"] == f"{HUB}/projects/api/github/issues/7"
+    assert calls["url"] == f"{HUB}/projects/api/issues/7"
     assert "Login falla con tildes" in calls["question"] and "José" in calls["question"]
     assert hub_key.reported == [("¿por dónde empiezo? (issue #7)", "api")]
 

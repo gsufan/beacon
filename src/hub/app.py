@@ -1,5 +1,6 @@
 """Beacon Hub: the cloud side of Beacon. Organizations, people and Scrum roles, licenses with a free trial, the
-audit trail and the GitHub connection. It stores metadata only; source code stays in Beacon Local.
+audit trail and the team's tools (GitHub or Jira for the backlog, Slack for notices). It stores metadata only; source
+code stays in Beacon Local.
 """
 
 import os
@@ -14,6 +15,8 @@ from pydantic import BaseModel, Field
 from hub import roles as R
 from hub.db import Database
 from hub.github import GitHubClient, GitHubError, normalize_repo
+from hub.jira import JiraClient, JiraError, normalize_project, normalize_site
+from hub.slack import SlackClient, SlackError, normalize_webhook
 from hub.security import (
     InvalidTokenError, hash_password, load_or_create_key, new_code, public_key_text, sign_token, verify_password, verify_token,
 )
@@ -26,17 +29,23 @@ PLANS = {
     "empresa": {"label": "Empresa", "seats": 60, "price_per_user": 11990},
 }
 _PROJECT_ID = re.compile(r"^[A-Za-z0-9._-]{1,64}$")
+_ROLE_LABEL = {R.PRODUCT_OWNER: "Product Owner", R.SCRUM_MASTER: "Scrum Master", R.DEVELOPER: "Desarrollador"}
+# Actions reported by Beacon Local that the team hears about in Slack (queries are not announced).
+_NOTIFY_LOCAL = {"sincronización": ":arrows_counterclockwise:", "proyecto quitado de Beacon Local": ":wastebasket:",
+                 "proyecto registrado en Beacon Local": ":new:"}
 _EMAIL = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 class Hub:
     """State of one Hub instance: database, signing key and the GitHub client factory (replaceable in tests)."""
 
-    def __init__(self, data_dir: Path, github_factory=None):
+    def __init__(self, data_dir: Path, github_factory=None, jira_factory=None, slack_factory=None):
         self.db = Database(data_dir / "hub.sqlite3")
         self.key = load_or_create_key(data_dir / "hub_signing_key.pem")
         self.public_key = public_key_text(self.key)
         self.github_factory = github_factory or (lambda token: GitHubClient(token))
+        self.jira_factory = jira_factory or (lambda site, email, token: JiraClient(site, email, token))
+        self.slack_factory = slack_factory or (lambda webhook: SlackClient(webhook))
 
     # --- tokens
     def roles_of(self, user: dict) -> dict:
@@ -84,6 +93,7 @@ class AcceptBody(BaseModel):
 
 class UserPatch(BaseModel):
     github_login: Optional[str] = None
+    jira_user: Optional[str] = None
     is_admin: Optional[bool] = None
     active: Optional[bool] = None
 
@@ -92,11 +102,31 @@ class ProjectBody(BaseModel):
     id: str
     name: str = Field(..., min_length=1, max_length=80)
     github_repo: Optional[str] = None
+    jira_project: Optional[str] = None
 
 
 class ProjectPatch(BaseModel):
     name: Optional[str] = None
     github_repo: Optional[str] = None
+    jira_project: Optional[str] = None
+
+
+class JiraBody(BaseModel):
+    site: str = Field(default="", max_length=200)
+    email: str = Field(default="", max_length=200)
+    token: str = Field(default="", max_length=300)
+
+
+class SlackBody(BaseModel):
+    webhook: str = Field(default="", max_length=300)
+
+
+class CommentBody(BaseModel):
+    body: str = Field(..., min_length=1, max_length=20000)
+
+
+class SlackMessage(BaseModel):
+    text: str = Field(..., min_length=1, max_length=3500)
 
 
 class MemberBody(BaseModel):
@@ -154,7 +184,14 @@ def create_app(hub: Hub) -> FastAPI:
         return {"id": org["id"], "name": org["name"], "plan": org["plan"], "plan_label": PLANS[org["plan"]]["label"],
                 "seats": org["seats"], "seats_used": seats_used, "period_end": org["period_end"],
                 "days_left": max(0, int((org["period_end"] - time.time()) // 86400)),
-                "expired": org["period_end"] < time.time(), "github_connected": bool(org["github_token"])}
+                "expired": org["period_end"] < time.time(), "github_connected": bool(org["github_token"]),
+                "jira_connected": bool(org["jira_token"]), "jira_site": org["jira_site"], "slack_connected": bool(org["slack_webhook"])}
+
+    def notify(org_id: int, text: str) -> None:
+        """Team notice in the organization's Slack channel, if it set one up. Never blocks the action."""
+        org = db.one("SELECT slack_webhook FROM orgs WHERE id = ?", (org_id,))
+        if org and org["slack_webhook"]:
+            hub.slack_factory(org["slack_webhook"]).send_later(text)
 
     @app.get("/healthz", include_in_schema=False)
     def healthz():
@@ -218,6 +255,7 @@ def create_app(hub: Hub) -> FastAPI:
         db.execute("UPDATE invitations SET used = 1 WHERE code = ?", (inv["code"],))
         user = db.one("SELECT * FROM users WHERE id = ?", (user_id,))
         db.audit(inv["org_id"], user, "invitación aceptada")
+        notify(inv["org_id"], f":wave: {user['name']} se unió al equipo en Beacon.")
         return hub.session_response(user)
 
     # --- organization (administrator)
@@ -237,6 +275,7 @@ def create_app(hub: Hub) -> FastAPI:
         db.execute("UPDATE orgs SET plan = ?, seats = ?, period_end = ? WHERE id = ?",
                    (body.plan, PLANS[body.plan]["seats"], start + 30 * 86400, org["id"]))
         db.audit(org["id"], user, "plan contratado", detail=f"{PLANS[body.plan]['label']} (pago simulado)")
+        notify(org["id"], f":white_check_mark: Plan {PLANS[body.plan]['label']} activo en Beacon por 30 días.")
         return hub.session_response(db.one("SELECT * FROM users WHERE id = ?", (user["id"],)))
 
     @app.put("/org/github")
@@ -244,6 +283,44 @@ def create_app(hub: Hub) -> FastAPI:
         db.execute("UPDATE orgs SET github_token = ? WHERE id = ?", (body.token.strip() or None, user["org_id"]))
         db.audit(user["org_id"], user, "token de GitHub actualizado" if body.token.strip() else "token de GitHub quitado")
         return {"github_connected": bool(body.token.strip())}
+
+    @app.put("/org/jira")
+    def set_jira(body: JiraBody, user: dict = Depends(admin)):
+        if not body.token.strip():
+            db.execute("UPDATE orgs SET jira_site = NULL, jira_email = NULL, jira_token = NULL WHERE id = ?", (user["org_id"],))
+            db.audit(user["org_id"], user, "Jira desconectado")
+            return {"jira_connected": False}
+        try:
+            site = normalize_site(body.site)
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        if not _EMAIL.match(body.email.strip()):
+            raise HTTPException(400, "Correo de Jira no válido.")
+        db.execute("UPDATE orgs SET jira_site = ?, jira_email = ?, jira_token = ? WHERE id = ?",
+                   (site, body.email.strip(), body.token.strip(), user["org_id"]))
+        db.audit(user["org_id"], user, "Jira conectado", detail=site)
+        return {"jira_connected": True}
+
+    @app.put("/org/slack")
+    def set_slack(body: SlackBody, user: dict = Depends(admin)):
+        try:
+            webhook = normalize_webhook(body.webhook) if body.webhook.strip() else None
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        db.execute("UPDATE orgs SET slack_webhook = ? WHERE id = ?", (webhook, user["org_id"]))
+        db.audit(user["org_id"], user, "Slack conectado" if webhook else "Slack desconectado")
+        return {"slack_connected": bool(webhook)}
+
+    @app.post("/org/slack/test")
+    def test_slack(user: dict = Depends(admin)):
+        org = db.one("SELECT slack_webhook, name FROM orgs WHERE id = ?", (user["org_id"],))
+        if not org["slack_webhook"]:
+            raise HTTPException(409, "La organización no tiene Slack conectado.")
+        try:
+            hub.slack_factory(org["slack_webhook"]).send(f":satellite_antenna: Beacon quedó conectado a este canal ({org['name']}).")
+        except SlackError as e:
+            raise HTTPException(502, str(e))
+        return {"status": "ok"}
 
     @app.get("/users")
     def list_users(user: dict = Depends(current)):
@@ -294,7 +371,7 @@ def create_app(hub: Hub) -> FastAPI:
     # --- projects and roles
     @app.get("/projects")
     def list_projects(user: dict = Depends(current)):
-        rows = db.query("SELECT id, name, github_repo FROM projects WHERE org_id = ? ORDER BY name", (user["org_id"],))
+        rows = db.query("SELECT id, name, github_repo, jira_project FROM projects WHERE org_id = ? ORDER BY name", (user["org_id"],))
         if not user["admin"]:
             rows = [r for r in rows if r["id"] in user["roles"]]
         for r in rows:
@@ -312,12 +389,14 @@ def create_app(hub: Hub) -> FastAPI:
             raise HTTPException(409, f"El proyecto '{body.id}' ya existe.")
         try:
             repo = normalize_repo(body.github_repo) if body.github_repo else None
+            jira_key = normalize_project(body.jira_project) if body.jira_project else None
         except ValueError as e:
             raise HTTPException(400, str(e))
-        db.execute("INSERT INTO projects (org_id, id, name, github_repo, created) VALUES (?,?,?,?,?)",
-                   (user["org_id"], body.id, body.name.strip(), repo, time.time()))
-        db.audit(user["org_id"], user, "proyecto creado", body.id, repo or "")
-        return {"id": body.id, "name": body.name.strip(), "github_repo": repo}
+        db.execute("INSERT INTO projects (org_id, id, name, github_repo, jira_project, created) VALUES (?,?,?,?,?,?)",
+                   (user["org_id"], body.id, body.name.strip(), repo, jira_key, time.time()))
+        db.audit(user["org_id"], user, "proyecto creado", body.id, repo or jira_key or "")
+        notify(user["org_id"], f":new: Proyecto {body.name.strip()} agregado al equipo en Beacon.")
+        return {"id": body.id, "name": body.name.strip(), "github_repo": repo, "jira_project": jira_key}
 
     @app.patch("/projects/{project_id}")
     def patch_project(project_id: str, body: ProjectPatch, user: dict = Depends(current)):
@@ -330,6 +409,13 @@ def create_app(hub: Hub) -> FastAPI:
                 raise HTTPException(400, str(e))
             db.execute("UPDATE projects SET github_repo = ? WHERE org_id = ? AND id = ?", (repo, user["org_id"], project_id))
             db.audit(user["org_id"], user, "repositorio de GitHub vinculado", project_id, repo or "ninguno")
+        if body.jira_project is not None:
+            try:
+                key = normalize_project(body.jira_project) if body.jira_project.strip() else None
+            except ValueError as e:
+                raise HTTPException(400, str(e))
+            db.execute("UPDATE projects SET jira_project = ? WHERE org_id = ? AND id = ?", (key, user["org_id"], project_id))
+            db.audit(user["org_id"], user, "proyecto de Jira vinculado", project_id, key or "ninguno")
         if body.name:
             db.execute("UPDATE projects SET name = ? WHERE org_id = ? AND id = ?", (body.name.strip(), user["org_id"], project_id))
         return {"status": "ok"}
@@ -355,6 +441,7 @@ def create_app(hub: Hub) -> FastAPI:
                    "ON CONFLICT (org_id, project_id, user_id) DO UPDATE SET role = excluded.role",
                    (user["org_id"], project_id, user_id, body.role))
         db.audit(user["org_id"], user, "rol asignado", project_id, f"{target['name']}: {body.role}")
+        notify(user["org_id"], f":busts_in_silhouette: {target['name']} tiene ahora el rol {_ROLE_LABEL[body.role]} en {project_id}.")
         return {"status": "ok"}
 
     @app.delete("/projects/{project_id}/members/{user_id}")
@@ -371,6 +458,8 @@ def create_app(hub: Hub) -> FastAPI:
     def post_audit(body: AuditBody, user: dict = Depends(current)):
         """Events that Beacon Local reports (queries, syncs, deletions). Without the question text or any code."""
         db.audit(user["org_id"], user, body.action, body.project_id, body.detail, source="local")
+        if body.action in _NOTIFY_LOCAL:
+            notify(user["org_id"], f"{_NOTIFY_LOCAL[body.action]} {user['name']}: {body.action} en {body.project_id or 'Beacon'}.")
         return {"status": "ok"}
 
     @app.get("/audit")
@@ -406,6 +495,79 @@ def create_app(hub: Hub) -> FastAPI:
         except GitHubError as e:
             raise HTTPException(e.status, str(e))
 
+    def tracker_for(user: dict, project_id: str):
+        """The project's backlog: Jira if it has a Jira project and the organization connected Jira, otherwise GitHub."""
+        project = project_of(user["org_id"], project_id)
+        require(user, R.ASK, project_id)
+        org = db.one("SELECT * FROM orgs WHERE id = ?", (user["org_id"],))
+        if project["jira_project"] and org["jira_token"]:
+            return "jira", hub.jira_factory(org["jira_site"], org["jira_email"], org["jira_token"]), project["jira_project"]
+        if project["github_repo"]:
+            return "github", hub.github_factory(org["github_token"]), project["github_repo"]
+        raise HTTPException(409, "El proyecto no tiene un backlog vinculado (repositorio de GitHub o proyecto de Jira).")
+
+    def tracker_call(fn):
+        try:
+            return fn()
+        except (GitHubError, JiraError) as e:
+            raise HTTPException(e.status, str(e))
+
+    def login_of(person: dict, source: str) -> Optional[str]:
+        return person["jira_user"] if source == "jira" else person["github_login"]
+
+    @app.get("/projects/{project_id}/issues")
+    def project_issues(project_id: str, mine: bool = False, assignee_id: Optional[int] = None, user: dict = Depends(current)):
+        """Open issues of the project's backlog: all, the person's own (mine) or another member's (assignee_id)."""
+        source, client, where = tracker_for(user, project_id)
+        person = user
+        if assignee_id is not None:
+            person = db.one("SELECT * FROM users WHERE id = ? AND org_id = ?", (assignee_id, user["org_id"]))
+            if not person:
+                raise HTTPException(404, "Usuario no encontrado.")
+        login = login_of(person, source) if (mine or assignee_id is not None) else None
+        if (mine or assignee_id is not None) and not login:
+            return {"source": source, "where": where, "issues": [], "needs_login": True, "person": person["name"]}
+        issues = tracker_call(lambda: client.issues(where, assignee=login))
+        return {"source": source, "where": where, "issues": issues, "person": person["name"] if assignee_id is not None else None}
+
+    @app.get("/projects/{project_id}/issues/{ref}")
+    def project_issue(project_id: str, ref: str, user: dict = Depends(current)):
+        source, client, where = tracker_for(user, project_id)
+        if source == "github":
+            if not ref.lstrip("#").isdigit():
+                raise HTTPException(400, "Número de issue de GitHub no válido.")
+            return tracker_call(lambda: client.issue(where, int(ref.lstrip("#"))))
+        return tracker_call(lambda: client.issue(ref))
+
+    @app.post("/projects/{project_id}/issues/{ref}/comment")
+    def comment_issue(project_id: str, ref: str, body: CommentBody, user: dict = Depends(current)):
+        """Writes in the backlog: a comment on the issue (for example, Beacon's answer to «where do I start?»)."""
+        source, client, where = tracker_for(user, project_id)
+        text = body.body.strip() + f"\n\n— Publicado desde Beacon por {user['name']}"
+        if source == "github":
+            if not ref.lstrip("#").isdigit():
+                raise HTTPException(400, "Número de issue de GitHub no válido.")
+            url = tracker_call(lambda: client.comment(where, int(ref.lstrip("#")), text))
+        else:
+            url = tracker_call(lambda: client.comment(ref, text))
+        db.audit(user["org_id"], user, "comentario en la issue", project_id, ref)
+        return {"url": url}
+
+    @app.post("/projects/{project_id}/slack")
+    def share_in_slack(project_id: str, body: SlackMessage, user: dict = Depends(current)):
+        """Shares a message in the organization's Slack channel, on the person's explicit request."""
+        project_of(user["org_id"], project_id)
+        require(user, R.ASK, project_id)
+        org = db.one("SELECT slack_webhook FROM orgs WHERE id = ?", (user["org_id"],))
+        if not org["slack_webhook"]:
+            raise HTTPException(409, "La organización no tiene Slack conectado.")
+        try:
+            hub.slack_factory(org["slack_webhook"]).send(f"*{user['name']}* compartió desde Beacon ({project_id}):\n{body.text}")
+        except SlackError as e:
+            raise HTTPException(502, str(e))
+        db.audit(user["org_id"], user, "compartido en Slack", project_id)
+        return {"status": "ok"}
+
     @app.get("/projects/{project_id}/github/issues")
     def github_issues(project_id: str, mine: bool = False, user: dict = Depends(current)):
         gh, repo = github_for(user, project_id)
@@ -420,8 +582,15 @@ def create_app(hub: Hub) -> FastAPI:
         return github_call(lambda: gh.issue(repo, number))
 
     @app.get("/projects/{project_id}/github/activity")
-    def github_activity(project_id: str, author: Optional[str] = None, user: dict = Depends(current)):
+    def github_activity(project_id: str, author: Optional[str] = None, assignee_id: Optional[int] = None, user: dict = Depends(current)):
         gh, repo = github_for(user, project_id)
+        if assignee_id is not None:
+            person = db.one("SELECT github_login FROM users WHERE id = ? AND org_id = ?", (assignee_id, user["org_id"]))
+            if not person:
+                raise HTTPException(404, "Usuario no encontrado.")
+            if not person["github_login"]:
+                return {"repo": repo, "commits": [], "needs_login": True}
+            author = person["github_login"]
         return {"repo": repo, "commits": github_call(lambda: gh.commits(repo, author=author))}
 
     return app

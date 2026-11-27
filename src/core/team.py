@@ -119,7 +119,8 @@ def audit_action(method: str, path: str) -> Optional[Tuple[str, Optional[str]]]:
     if method == "POST" and rest == "/query":
         return "consulta al código", project_id
     if method == "POST" and rest.startswith("/issues/") and rest.endswith("/start"):
-        return f"¿por dónde empiezo? (issue #{rest.split('/')[2]})", project_id
+        ref = rest.split("/")[2]
+        return f"¿por dónde empiezo? (issue {'#' + ref if ref.isdigit() else ref})", project_id
     if method == "POST" and rest == "/sync":
         return "sincronización", project_id
     if method == "PUT" and rest == "/auto-watch":
@@ -148,10 +149,11 @@ def report(settings: HubSettings, authorization: str, action: str, project_id: O
 
 def issue_question(issue: dict, language: str) -> str:
     body = (issue.get("body") or "").strip()[:1500]
+    ref = issue.get("ref") or f"#{issue.get('number')}"
     if language == "en":
-        return (f"I have to work on this backlog task (issue #{issue['number']}).\nTitle: {issue['title']}\n"
+        return (f"I have to work on this backlog task (issue {ref}).\nTitle: {issue['title']}\n"
                 f"Description: {body or '(none)'}\n\nWhich parts of the code should I review to get started, and why? "
                 "Name the specific files and functions.")
-    return (f"Tengo que trabajar en esta tarea del backlog (issue #{issue['number']}).\nTítulo: {issue['title']}\n"
+    return (f"Tengo que trabajar en esta tarea del backlog (issue {ref}).\nTítulo: {issue['title']}\n"
             f"Descripción: {body or '(sin descripción)'}\n\n¿Qué partes del código tengo que revisar para empezar, y por qué? "
             "Indica los archivos y las funciones concretas.")
