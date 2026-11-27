@@ -146,6 +146,46 @@ describe("modo equipo", () => {
     await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/projects/api/docs/verify")).toBe(true));
   });
 
+  it("«¿Qué probar?» calcula el impacto y el plan de pruebas, y la issue muestra su código asociado", async () => {
+    localStorage.setItem("beacon:session", JSON.stringify(sessionFor(false, { api: "developer" })));
+    const ref = { name: "login", file_path: "views.py", start_line: 1, end_line: 9 };
+    installFakeServer({
+      "POST /projects/api/qa-plan": () => ({
+        body: { plan: "1. Probar un nombre con tildes.", impact: { files: ["views.py"], targets: [
+          { target: "normalize_name", definitions: [], callers: [ref], indirect: [], tests: [], untested: true }] } },
+      }),
+      "GET /projects/api/issues/7/code": () => ({ body: { commits: [{ sha: "abc1234", message: "fix: tildes (#7)", author: "Ana", date: "" }],
+                                                          files: [{ path: "auth.py", commits: 1 }] } }),
+    });
+    const user = userEvent.setup();
+    renderApp();
+    await user.click(await screen.findByRole("button", { name: /Qué probar/ }));
+    expect(await screen.findByText("Probar un nombre con tildes.")).toBeInTheDocument();
+    expect(screen.getByText("sin pruebas")).toBeInTheDocument();
+    const qa = calls.find((c) => c.path === "/projects/api/qa-plan");
+    expect((qa?.body as { targets: string[] }).targets).toEqual(["normalize_name"]);
+    await user.click(screen.getByRole("button", { name: /Por dónde empiezo/ }));
+    expect(await screen.findByText("Código asociado a #7")).toBeInTheDocument();
+  });
+
+  it("un desarrollador no ve Panorama; el líder técnico ve el factor bus del proyecto", async () => {
+    localStorage.setItem("beacon:session", JSON.stringify(sessionFor(false, { api: "developer" })));
+    const { unmount } = renderApp();
+    expect(await screen.findByRole("link", { name: /Mi trabajo/ })).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /Panorama/ })).not.toBeInTheDocument();
+    unmount();
+    localStorage.setItem("beacon:session", JSON.stringify(sessionFor(false, { api: "tech_lead" })));
+    installFakeServer({
+      "POST /hub/auth/refresh": () => ({ body: sessionFor(false, { api: "tech_lead" }) }),
+      "GET /projects/api/knowledge": () => ({ body: { project_bus_factor: 1, people: 3, modules: [
+        { module: "src/auth", files: 4, commits: 20, people: 2, bus_factor: 1, risk: "alto", tests: 1, experts: [{ name: "Ana Rojas", commits: 18 }], last: null }] } }),
+    });
+    renderApp("/panorama");
+    expect(await screen.findByRole("link", { name: /Panorama/ })).toBeInTheDocument();
+    expect(await screen.findByText(/1 · riesgo alto/)).toBeInTheDocument();
+    expect(screen.getByText("Ana Rojas")).toBeInTheDocument();
+  });
+
   it("una licencia vencida muestra el aviso", async () => {
     localStorage.setItem("beacon:session", JSON.stringify(sessionFor(true, {})));
     installFakeServer({ "GET /projects": () => ({ status: 402, body: { detail: "La licencia venció." } }) });

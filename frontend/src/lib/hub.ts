@@ -132,6 +132,91 @@ export interface Installation {
   version: string | null;
 }
 
+export interface IssueCode {
+  ref: string;
+  commits: { sha: string; author: string; date: string; message: string; files: string[] }[];
+  files: { path: string; commits: number }[];
+}
+
+export interface RelatedIssue {
+  similarity: number;
+  id: string;
+  ref: string;
+  title: string;
+  url: string;
+  state: string;
+  source: string;
+}
+
+export interface ImpactRef {
+  name: string;
+  file_path: string;
+  start_line: number;
+  end_line: number;
+  via?: string;
+}
+
+export interface Impact {
+  targets: { target: string; definitions: ImpactRef[]; callers: ImpactRef[]; indirect: ImpactRef[]; tests: ImpactRef[]; untested: boolean }[];
+  files: string[];
+  experts?: { name: string; commits: number }[];
+  docs?: { file_path: string; status: string; reviewer?: string }[];
+}
+
+export interface KnowledgeModule {
+  module: string;
+  files: number;
+  commits: number;
+  people: number;
+  bus_factor: number;
+  risk: "alto" | "medio" | "bajo";
+  tests: number;
+  experts: { name: string; commits: number }[];
+  last: string | null;
+}
+
+export interface KnowledgeMap {
+  modules: KnowledgeModule[];
+  project_bus_factor: number;
+  people: number;
+}
+
+export interface SprintSummary {
+  days: number;
+  commits: number;
+  authors: { name: string; commits: number }[];
+  modules: { module: string; changes: number }[];
+  issues: { issue: string; commits: { sha: string; author: string; date: string; message: string }[] }[];
+}
+
+export interface InsightRow {
+  module: string;
+  questions: number;
+  no_info: number;
+  no_info_rate: number;
+  docs: number;
+  verified: number;
+  verified_rate: number;
+}
+
+export interface Insights {
+  questions: number;
+  no_info: number;
+  gaps: InsightRow[];
+  radar: InsightRow[];
+}
+
+export interface VerifiedAnswerItem {
+  id: string;
+  question: string;
+  answer: string;
+  reviewer: string;
+  ts: number;
+  corrected: boolean;
+  valid: boolean;
+  stale_files: string[];
+}
+
 const json = (body: unknown) => ({ body: JSON.stringify(body) });
 
 export const hub = {
@@ -193,6 +278,25 @@ export const hub = {
     request<{ status: string }>(`/hub/projects/${projectId}/slack`, { method: "POST", ...json({ text }) }),
   experts: (projectId: string, paths: string[]) =>
     request<Experts>(`/projects/${projectId}/experts?${paths.map((p) => `path=${encodeURIComponent(p)}`).join("&")}`),
+  closedIssues: (projectId: string) => request<IssuesResponse>(`/hub/projects/${projectId}/issues?state=closed`),
+  planIssue: (projectId: string, ref: string, language: string) =>
+    request<StartIssueResponse>(`/projects/${projectId}/issues/${encodeURIComponent(ref)}/plan`, { method: "POST", ...json({ language }) }),
+  issueCode: (projectId: string, ref: string) => request<IssueCode>(`/projects/${projectId}/issues/${encodeURIComponent(ref)}/code`),
+  related: (projectId: string, issue: Issue, candidates: Issue[]) =>
+    request<{ related: RelatedIssue[] }>(`/projects/${projectId}/issues/related`, { method: "POST", ...json({ issue, candidates }) }),
+  impact: (projectId: string, targets: string[]) => request<Impact>(`/projects/${projectId}/impact`, { method: "POST", ...json({ targets }) }),
+  qaPlan: (projectId: string, targets: string[], issue: Issue | null, language: string) =>
+    request<{ impact: Impact; plan: string }>(`/projects/${projectId}/qa-plan`, { method: "POST", ...json({ targets, issue, language }) }),
+  handover: (projectId: string, body: { person: string; git_author?: string; issues: Issue[]; commits: Commit[]; language: string }) =>
+    request<{ summary: string; local_commits: { date: string; message: string; files: string[] }[] }>(`/projects/${projectId}/handover`, {
+      method: "POST",
+      ...json(body),
+    }),
+  knowledge: (projectId: string) => request<KnowledgeMap>(`/projects/${projectId}/knowledge`),
+  summary: (projectId: string, days: number) => request<SprintSummary>(`/projects/${projectId}/summary?days=${days}`),
+  insights: (projectId: string) => request<Insights>(`/projects/${projectId}/insights`),
+  verifiedAnswers: (projectId: string) => request<{ answers: VerifiedAnswerItem[] }>(`/projects/${projectId}/answers`),
+  deleteVerifiedAnswer: (projectId: string, id: string) => request<{ status: string }>(`/projects/${projectId}/answers/${id}`, { method: "DELETE" }),
   startIssue: (projectId: string, ref: string, language: string) =>
     request<StartIssueResponse>(`/projects/${projectId}/issues/${encodeURIComponent(ref)}/start`, { method: "POST", ...json({ language }) }),
 };

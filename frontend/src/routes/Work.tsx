@@ -1,4 +1,4 @@
-import { ExternalLink, MessageSquarePlus, Send, Sparkles, Users } from "lucide-react";
+import { ClipboardCheck, ExternalLink, ListChecks, MessageSquarePlus, Send, Sparkles, UserRoundCog, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { useAuth } from "../components/AuthProvider";
@@ -6,13 +6,22 @@ import { Avatar, LabelChip } from "../components/Colorful";
 import { useLanguage } from "../components/LanguageSelector";
 import MarkdownViewer from "../components/MarkdownViewer";
 import { useProject } from "../components/ProjectSelector";
+import IssueTools, { functionTargets, ImpactView } from "../components/IssueTools";
 import SourceCitation from "../components/SourceCitation";
 import { ApiError } from "../lib/api";
-import { hub, type Commit, type Experts, type HubProject, type Issue, type IssuesResponse, type Org, type StartIssueResponse } from "../lib/hub";
+import { hub, type Commit, type Experts, type HubProject, type Impact, type Issue, type IssuesResponse, type Org, type StartIssueResponse } from "../lib/hub";
 import { inputClass, primaryButton, secondaryButton } from "../lib/ui";
 
 type Load<T> = { status: "loading" } | { status: "ok"; data: T } | { status: "error"; code: number; message: string };
 type Filter = "mine" | "all" | number;
+type Kind = "start" | "plan" | "qa";
+interface StartState {
+  issue: Issue;
+  kind: Kind;
+  result?: StartIssueResponse;
+  qa?: { plan: string; impact: Impact };
+  error?: string;
+}
 
 function relativeDate(iso: string | null, language: string) {
   if (!iso) return "";
@@ -61,7 +70,7 @@ function TrackerLoginForm({ source, onSaved }: { source: "github" | "jira"; onSa
   );
 }
 
-function IssueCard({ issue, active, onStart }: { issue: Issue; active: boolean; onStart: () => void }) {
+function IssueCard({ issue, active, onStart }: { issue: Issue; active: boolean; onStart: (kind: Kind) => void }) {
   const { t, language } = useLanguage();
   return (
     <li
@@ -92,9 +101,17 @@ function IssueCard({ issue, active, onStart }: { issue: Issue; active: boolean; 
           ))}
         </div>
       )}
-      <button type="button" onClick={onStart} className={`${secondaryButton} flex w-fit items-center gap-1.5`}>
-        <Sparkles size={14} /> {t("work_where_to_start")}
-      </button>
+      <div className="flex flex-wrap gap-1.5">
+        <button type="button" onClick={() => onStart("start")} className={`${secondaryButton} flex w-fit items-center gap-1.5`}>
+          <Sparkles size={14} /> {t("work_where_to_start")}
+        </button>
+        <button type="button" onClick={() => onStart("plan")} className={`${secondaryButton} flex w-fit items-center gap-1.5`}>
+          <ListChecks size={14} /> {t("work_plan")}
+        </button>
+        <button type="button" onClick={() => onStart("qa")} className={`${secondaryButton} flex w-fit items-center gap-1.5`}>
+          <ClipboardCheck size={14} /> {t("work_qa")}
+        </button>
+      </div>
     </li>
   );
 }
@@ -164,12 +181,12 @@ function StartPanel({
   projectId: string;
   projectName: string;
   org: Org | null;
-  state: { issue: Issue; result?: StartIssueResponse; error?: string } | null;
+  state: StartState | null;
 }) {
   const { t } = useLanguage();
   const [action, setAction] = useState<{ ok: boolean; text: string; url?: string } | null>(null);
   const [busy, setBusy] = useState(false);
-  useEffect(() => setAction(null), [state?.issue.id, state?.result]);
+  useEffect(() => setAction(null), [state?.issue.id, state?.result, state?.kind]);
   if (!state) {
     return (
       <div className="flex flex-col gap-2 rounded-2xl border border-line bg-gradient-to-br from-[var(--c5-tint)] to-[var(--c2-tint)] p-5 text-sm text-ink-2">
@@ -194,15 +211,30 @@ function StartPanel({
     }
   };
   return (
-    <div className="flex flex-col gap-3" aria-busy={!state.result && !state.error}>
+    <div className="flex flex-col gap-3" aria-busy={!state.result && !state.qa && !state.error}>
       <div className="flex flex-col gap-0.5 border-b border-line pb-3">
-        <span className="text-xs font-semibold text-muted">{t("work_where_to_start")}</span>
+        <span className="text-xs font-semibold text-muted">
+          {state.kind === "plan" ? t("work_plan") : state.kind === "qa" ? t("work_qa") : t("work_where_to_start")}
+        </span>
         <span className="text-[15px] font-semibold">
           <span className="mr-1.5 font-mono text-muted">{state.issue.ref}</span>
           {state.issue.title}
         </span>
       </div>
-      {!state.result && !state.error && <p className="text-sm text-ink-2">{t("work_start_loading")}</p>}
+      {!state.result && !state.qa && !state.error && (
+        <p className="text-sm text-ink-2">{state.kind === "qa" ? t("work_qa_loading") : t("work_start_loading")}</p>
+      )}
+      {state.qa && (
+        <>
+          <div className="rounded-xl border border-line bg-surface px-4 py-3">
+            <MarkdownViewer content={state.qa.plan} />
+          </div>
+          <div className="flex flex-col gap-2 rounded-xl border border-line bg-surface px-4 py-3">
+            <span className="text-[13px] font-semibold text-muted">{t("impact_title")}</span>
+            <ImpactView impact={state.qa.impact} />
+          </div>
+        </>
+      )}
       {state.error && (
         <p role="alert" className="rounded-xl border border-danger-line bg-danger-bg px-4 py-3 text-sm text-danger-ink">
           {state.error}
@@ -250,6 +282,7 @@ function StartPanel({
             </p>
           )}
           <ExpertsBox projectId={projectId} result={state.result} />
+          <IssueTools projectId={projectId} issue={state.issue} sources={state.result.sources} />
           <h3 className="text-[13px] font-semibold text-muted">{t("sources_count", { n: state.result.sources.length })}</h3>
           <div className="flex flex-col gap-2">
             {state.result.sources.map((s, i) => (
@@ -269,7 +302,8 @@ export default function Work() {
   const [filter, setFilter] = useState<Filter>("mine");
   const [issues, setIssues] = useState<Load<IssuesResponse>>({ status: "loading" });
   const [activity, setActivity] = useState<Load<Commit[]>>({ status: "loading" });
-  const [start, setStart] = useState<{ issue: Issue; result?: StartIssueResponse; error?: string } | null>(null);
+  const [start, setStart] = useState<StartState | null>(null);
+  const [handover, setHandover] = useState<{ status: "loading" | "ok" | "error"; text: string } | null>(null);
   const [org, setOrg] = useState<Org | null>(null);
   const [team, setTeam] = useState<HubProject | null>(null);
   const project = projects.find((p) => p.id === projectId);
@@ -301,16 +335,45 @@ export default function Work() {
 
   useEffect(() => {
     setStart(null);
+    setHandover(null);
     load();
   }, [load]);
 
-  const startIssue = async (issue: Issue) => {
+  const startIssue = async (issue: Issue, kind: Kind) => {
     if (!projectId) return;
-    setStart({ issue });
+    setHandover(null);
+    setStart({ issue, kind });
     try {
-      setStart({ issue, result: await hub.startIssue(projectId, issue.id, language) });
+      if (kind === "plan") {
+        setStart({ issue, kind, result: await hub.planIssue(projectId, issue.id, language) });
+      } else if (kind === "qa") {
+        const base = start?.issue.id === issue.id && start.result ? start.result : await hub.startIssue(projectId, issue.id, language);
+        const targets = functionTargets(base.sources);
+        if (targets.length === 0) throw new Error(t("work_qa_no_targets"));
+        setStart({ issue, kind, qa: await hub.qaPlan(projectId, targets, issue, language) });
+      } else {
+        setStart({ issue, kind, result: await hub.startIssue(projectId, issue.id, language) });
+      }
     } catch (e) {
-      setStart({ issue, error: errorText(e) });
+      setStart({ issue, kind, error: errorText(e) });
+    }
+  };
+
+  const runHandover = async () => {
+    if (!projectId || !other) return;
+    setStart(null);
+    setHandover({ status: "loading", text: "" });
+    try {
+      const res = await hub.handover(projectId, {
+        person: other.name,
+        git_author: other.github_login ? `${other.name}\\|${other.github_login}` : other.name,
+        issues: issues.status === "ok" ? issues.data.issues : [],
+        commits: activity.status === "ok" ? activity.data : [],
+        language,
+      });
+      setHandover({ status: "ok", text: res.summary });
+    } catch (e) {
+      setHandover({ status: "error", text: errorText(e) });
     }
   };
 
@@ -377,7 +440,14 @@ export default function Work() {
               )}
             </div>
           </div>
-          {other && <p className="rounded-lg bg-accent-tint px-3 py-2 text-[13px] text-accent-ink">{t("work_viewing_person", { name: other.name })}</p>}
+          {other && (
+            <div className="flex flex-col gap-2 rounded-lg bg-accent-tint px-3 py-2 text-[13px] text-accent-ink">
+              <p>{t("work_viewing_person", { name: other.name })}</p>
+              <button type="button" className={`${secondaryButton} flex w-fit items-center gap-1.5`} disabled={handover?.status === "loading"} onClick={runHandover}>
+                <UserRoundCog size={14} /> {handover?.status === "loading" ? t("work_loading") : t("handover_run")}
+              </button>
+            </div>
+          )}
           {issues.status === "loading" && <p className="text-sm text-muted">{t("work_loading")}</p>}
           {issueError && issueError.code === 404 && (
             <p className="rounded-xl border border-line bg-surface px-4 py-3 text-sm text-ink-2">{t("work_not_in_team")}</p>
@@ -409,7 +479,7 @@ export default function Work() {
           {data && data.issues.length > 0 && (
             <ul className="flex flex-col gap-2">
               {data.issues.map((i) => (
-                <IssueCard key={i.id} issue={i} active={start?.issue.id === i.id} onStart={() => startIssue(i)} />
+                <IssueCard key={i.id} issue={i} active={start?.issue.id === i.id} onStart={(kind) => startIssue(i, kind)} />
               ))}
             </ul>
           )}
@@ -427,7 +497,20 @@ export default function Work() {
         </section>
       </div>
       <aside className="w-full shrink-0 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:w-[440px] lg:overflow-y-auto lg:pr-1">
-        <StartPanel projectId={projectId} projectName={project.name} org={org} state={start} />
+        {handover && handover.status !== "loading" && !start ? (
+          <div className={`rounded-xl border px-4 py-3 text-sm ${handover.status === "ok" ? "border-line bg-surface" : "border-danger-line bg-danger-bg text-danger-ink"}`}>
+            {handover.status === "ok" ? (
+              <>
+                <p className="mb-1 text-[13px] font-semibold text-muted">{t("handover_title", { name: other?.name ?? "" })}</p>
+                <MarkdownViewer content={handover.text} />
+              </>
+          ) : (
+            handover.text
+          )}
+        </div>
+        ) : (
+          <StartPanel projectId={projectId} projectName={project.name} org={org} state={start} />
+        )}
       </aside>
     </div>
   );

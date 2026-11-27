@@ -1,4 +1,4 @@
-import { Briefcase, FileText, LogOut, MessageSquare, Settings as SettingsIcon, Users } from "lucide-react";
+import { Briefcase, FileText, LayoutDashboard, LogOut, MessageSquare, Settings as SettingsIcon, Users } from "lucide-react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router";
 import { AuthProvider, useAuth } from "./components/AuthProvider";
 import { LanguageProvider, LanguageSelector, useLanguage } from "./components/LanguageSelector";
@@ -9,6 +9,7 @@ import { InstanceRegisterBanner, InstanceRevoked } from "./components/InstanceGa
 import Chat from "./routes/Chat";
 import Docs from "./routes/Docs";
 import Login from "./routes/Login";
+import Panorama from "./routes/Panorama";
 import Settings from "./routes/Settings";
 import Study from "./routes/Study";
 import Team from "./routes/Team";
@@ -41,11 +42,13 @@ function Sidebar() {
   const { projectId } = useProject();
   const team = mode === "team";
   const managesSomething = isAdmin || Object.values(user?.roles ?? {}).some((r) => r === "product_owner" || r === "scrum_master");
+  const guidesSomething = managesSomething || Object.values(user?.roles ?? {}).some((r) => r === "tech_lead");
   const navItems = team
     ? [
         { to: "/", label: t("nav_work"), icon: Briefcase, end: true },
         { to: "/chat", label: t("nav_chat"), icon: MessageSquare, end: false },
         { to: "/docs", label: t("nav_docs"), icon: FileText, end: false },
+        ...(guidesSomething ? [{ to: "/panorama", label: t("nav_panorama"), icon: LayoutDashboard, end: false }] : []),
         ...(managesSomething ? [{ to: "/team", label: t("nav_team"), icon: Users, end: false }] : []),
         ...(isAdmin ? [{ to: "/settings", label: t("nav_settings"), icon: SettingsIcon, end: false }] : []),
       ]
@@ -152,6 +155,7 @@ function Shell() {
             <Route path="/" element={team ? <Work /> : <Chat />} />
             <Route path="/chat" element={<Chat />} />
             <Route path="/docs" element={<Docs />} />
+            <Route path="/panorama" element={team ? <Panorama /> : <Navigate to="/" />} />
             <Route path="/team" element={team ? <Team /> : <Navigate to="/" />} />
             <Route path="/settings" element={isAdmin ? <Settings /> : <Navigate to="/" />} />
           </Routes>

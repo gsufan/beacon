@@ -4,11 +4,11 @@ turns an issue into an implementation plan."""
 
 import math
 
-from core.engine.embeddings import embed_documents, embed_query
+from core.engine.embeddings import embed_documents
 from core.engine.llm import chat
 
 LANG = {"es": "Responde en español neutro.", "en": "Answer in English."}
-RELATED_MIN = 0.78
+RELATED_MIN = 0.58  # issue to issue, both embedded as documents (measured on psf/requests)
 
 
 def _ask_model(engine, system: str, user: str, max_tokens: int = 900) -> str:
@@ -81,7 +81,8 @@ def related_issues(engine, issue: dict, candidates: list, top: int = 3) -> list:
     if not others:
         return []
     cfg = engine.ai_config
-    q = embed_query(engine.backend, cfg.embedding_model, f"{issue.get('title', '')}\n{(issue.get('body') or '')[:800]}")
-    docs = embed_documents(engine.backend, cfg.embedding_model, [f"{c.get('title', '')}\n{(c.get('body') or '')[:800]}" for c in others])
+    # Symmetric: the model's query prefix targets question-to-code retrieval, not issue-to-issue.
+    vectors = embed_documents(engine.backend, cfg.embedding_model, [f"{c.get('title', '')}\n{(c.get('body') or '')[:800]}" for c in [issue, *others]])
+    q, docs = vectors[0], vectors[1:]
     scored = sorted(((round(_cos(q, d), 3), c) for c, d in zip(others, docs)), key=lambda x: -x[0])
     return [{"similarity": s, **{k: c.get(k) for k in ("id", "ref", "title", "url", "state", "source")}} for s, c in scored[:top] if s >= RELATED_MIN]

@@ -94,3 +94,20 @@ def test_usage_feeds_documentation_gaps_and_the_radar(tmp_path):
     assert data["radar"][0]["module"] == "src/core" and data["radar"][0]["no_info_rate"] == 0.5
     assert data["gaps"][0]["module"] == "src/core" and data["gaps"][0]["verified_rate"] == 0.5
     assert "La función" not in (tmp_path / "usage.json").read_text(encoding="utf-8")  # no question or answer text is stored
+
+
+def test_related_issues_are_a_suggestion_above_the_threshold():
+    from types import SimpleNamespace
+
+    from core import assist
+
+    class Backend:
+        def embed(self, model, texts, num_ctx=None):
+            assert not any(t.startswith("Instruct:") for t in texts)  # issue to issue: no question-to-code prefix
+            return [[1.0, 0.0] if "digest" in t else [0.0, 1.0] for t in texts]
+
+    engine = SimpleNamespace(backend=Backend(), ai_config=SimpleNamespace(embedding_model="qwen3-embedding:0.6b"))
+    issue = {"id": "1", "ref": "#1", "title": "digest auth falla"}
+    out = assist.related_issues(engine, issue, [issue, {"id": "2", "ref": "#2", "title": "digest con espacios"},
+                                                {"id": "3", "ref": "#3", "title": "timeout en docs"}])
+    assert [r["ref"] for r in out] == ["#2"] and out[0]["similarity"] == 1.0
