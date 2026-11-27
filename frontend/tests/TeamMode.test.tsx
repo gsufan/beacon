@@ -94,7 +94,7 @@ describe("modo equipo", () => {
     expect(await screen.findByRole("link", { name: /Mi trabajo/ })).toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Equipo/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("link", { name: /Configuración/ })).not.toBeInTheDocument();
-    expect(screen.getByText("Desarrollador")).toBeInTheDocument();
+    expect(screen.getAllByText("Desarrollador").length).toBeGreaterThan(0);
   });
 
   it("«¿Por dónde empiezo?» muestra la respuesta con sus fuentes", async () => {

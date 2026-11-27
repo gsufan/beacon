@@ -33,7 +33,7 @@ export default function ThemeToggle() {
     <div
       role="group"
       aria-label={t("theme_label")}
-      className="flex gap-1 rounded-[10px] border border-line bg-ground p-[3px]"
+      className="flex gap-1 rounded-[10px] border border-side-line bg-side-card p-[3px]"
     >
       {options.map(({ value, label }) => (
         <button
@@ -42,7 +42,7 @@ export default function ThemeToggle() {
           onClick={() => setTheme(value)}
           aria-pressed={theme === value}
           className={`h-[30px] flex-1 rounded-[7px] text-[13px] transition-colors ${
-            theme === value ? "bg-surface font-semibold text-ink shadow-sm" : "text-muted hover:text-ink"
+            theme === value ? "bg-side-active font-semibold text-side-ink" : "text-side-muted hover:text-side-ink"
           }`}
         >
           {label}

@@ -48,16 +48,16 @@ export default function Login() {
   ];
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-ground px-4 text-ink">
+    <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-[var(--side-bg)] via-[var(--side-bg-2)] to-[var(--hero-to)] px-4 text-ink">
       <div className="flex w-full max-w-[420px] flex-col gap-5">
         <div className="flex items-center justify-between">
           <div className="flex flex-col gap-0.5">
-            <span className="font-display text-2xl font-bold tracking-wide text-accent-ink">Beacon</span>
-            <span className="text-[13px] text-ink-2">{t("login_tagline")}</span>
+            <span className="font-display text-3xl font-bold tracking-wide text-white">Beacon</span>
+            <span className="text-[13px] text-white/80">{t("login_tagline")}</span>
           </div>
           <LanguageSelector id="login-language" />
         </div>
-        <div className="rounded-[14px] border border-line bg-surface p-5">
+        <div className="rounded-2xl border border-line bg-surface p-6 shadow-xl">
           <div role="tablist" className="mb-4 flex gap-1 rounded-lg bg-ground p-1">
             {tabs.map(([id, label]) => (
               <button
@@ -122,7 +122,7 @@ export default function Login() {
             </button>
           </form>
         </div>
-        <p className="text-center text-xs text-muted">{t("login_privacy")}</p>
+        <p className="text-center text-xs text-white/75">{t("login_privacy")}</p>
       </div>
     </div>
   );

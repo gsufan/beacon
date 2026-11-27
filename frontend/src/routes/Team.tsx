@@ -6,6 +6,7 @@ import { useProject } from "../components/ProjectSelector";
 import { ApiError } from "../lib/api";
 import { hub, ROLES, type AuditEvent, type HubProject, type Invitation, type Org, type Plan, type Role, type TeamUser } from "../lib/hub";
 import { cardClass, inputClass, primaryButton, secondaryButton } from "../lib/ui";
+import { Avatar, RoleBadge } from "../components/Colorful";
 
 function Section({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) {
   return (
@@ -86,7 +87,7 @@ export default function Team() {
 
       {org && (
         <Section title={t("team_plan")} description={t("team_plan_hint")}>
-          <div className={`${cardClass} flex flex-wrap items-center gap-x-8 gap-y-2 text-sm`}>
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-2 rounded-2xl bg-gradient-to-r from-[var(--hero-from)] to-[var(--hero-to)] px-5 py-4 text-sm text-white [&_.text-muted]:text-white/75">
             <div>
               <div className="text-xs text-muted">{t("team_current_plan")}</div>
               <div className="font-semibold">{org.plan_label}</div>
@@ -95,7 +96,7 @@ export default function Team() {
               <div className="text-xs text-muted">{org.expired ? t("team_expired_on") : t("team_valid_until")}</div>
               <div className={`font-semibold ${org.expired ? "text-danger-ink" : ""}`}>
                 {new Date(org.period_end * 1000).toLocaleDateString(language)}
-                {!org.expired && <span className="ml-1 font-normal text-ink-2">({t("team_days_left", { n: org.days_left })})</span>}
+                {!org.expired && <span className="ml-1 font-normal text-white/80">({t("team_days_left", { n: org.days_left })})</span>}
               </div>
             </div>
             <div>
@@ -107,8 +108,8 @@ export default function Team() {
           </div>
           {isAdmin && (
             <div className="grid gap-3 sm:grid-cols-2">
-              {plans.map((p) => (
-                <div key={p.id} className={`${cardClass} flex flex-col gap-2`}>
+              {plans.map((p, i) => (
+                <div key={p.id} className={`${cardClass} flex flex-col gap-2 border-t-4`} style={{ borderTopColor: `var(--c${i === 0 ? 1 : 5})` }}>
                   <div className="flex items-baseline justify-between">
                     <span className="font-semibold">{p.label}</span>
                     <span className="text-sm">
@@ -146,8 +147,11 @@ export default function Team() {
               {users.map((u) => (
                 <tr key={u.id} className={`border-b border-line last:border-0 ${u.active ? "" : "text-muted"}`}>
                   <td className="px-4 py-2">
-                    {u.name}
-                    {u.is_admin ? <span className="ml-2 rounded-full bg-accent-tint px-2 py-px text-[11px] text-accent-ink">{t("role_admin")}</span> : null}
+                    <span className="inline-flex items-center gap-2">
+                      <Avatar name={u.name} size={24} />
+                      {u.name}
+                    </span>
+                    {u.is_admin ? <span className="ml-2"><RoleBadge role="admin" label={t("role_admin")} /></span> : null}
                     {!u.active && <span className="ml-2 text-xs">({t("team_inactive")})</span>}
                   </td>
                   {isAdmin && <td className="px-4 py-2 text-ink-2">{u.email}</td>}
@@ -265,7 +269,10 @@ export default function Team() {
               <ul className="flex flex-col divide-y divide-line text-sm">
                 {p.members.map((m) => (
                   <li key={m.id} className="flex items-center justify-between gap-2 py-1.5">
-                    <span>{m.name}</span>
+                    <span className="flex items-center gap-2">
+                      <Avatar name={m.name} size={24} />
+                      {m.name}
+                    </span>
                     {canManage(p) ? (
                       <span className="flex items-center gap-2">
                         <select className={selectClass} value={m.role} onChange={(e) => run(() => hub.setMember(p.id, m.id, e.target.value as Role))}>
@@ -280,7 +287,7 @@ export default function Team() {
                         </button>
                       </span>
                     ) : (
-                      <span className="text-ink-2">{roleLabel(m.role)}</span>
+                      <RoleBadge role={m.role} label={roleLabel(m.role)} />
                     )}
                   </li>
                 ))}

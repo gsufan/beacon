@@ -4,6 +4,7 @@ import { AuthProvider, useAuth } from "./components/AuthProvider";
 import { LanguageProvider, LanguageSelector, useLanguage } from "./components/LanguageSelector";
 import { ProjectProvider, ProjectSelector, useChunkCount, useProject } from "./components/ProjectSelector";
 import ThemeToggle from "./components/ThemeToggle";
+import { Avatar } from "./components/Colorful";
 import Chat from "./routes/Chat";
 import Docs from "./routes/Docs";
 import Login from "./routes/Login";
@@ -58,20 +59,22 @@ function Sidebar() {
     chunkCount === null ? null : String(chunkCount).replace(/\B(?=(\d{3})+(?!\d))/g, language === "es" ? "." : ",");
 
   return (
-    <aside className="flex w-[232px] shrink-0 flex-col gap-6 border-r border-line bg-surface px-4 py-5">
-      <div className="flex items-center gap-2.5 px-2 text-accent-ink">
-        <BeaconMark />
+    <aside className="flex w-[240px] shrink-0 flex-col gap-6 bg-gradient-to-b from-side-bg to-side-bg2 px-4 py-5 text-side-ink">
+      <div className="flex items-center gap-2.5 px-2">
+        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--c5)] to-[var(--c2)] text-white shadow-sm">
+          <BeaconMark />
+        </span>
         <span className="font-display text-xl font-bold tracking-wide">Beacon</span>
       </div>
 
-      <div className="flex flex-col gap-1.5 rounded-xl border border-line bg-ground p-3">
-        <label htmlFor="project-select" className="text-xs font-semibold text-muted">
+      <div className="flex flex-col gap-1.5 rounded-xl border border-side-line bg-side-card p-3">
+        <label htmlFor="project-select" className="text-xs font-semibold text-side-muted">
           {t("sidebar_project")}
         </label>
         <ProjectSelector id="project-select" />
         {formattedCount !== null && (
-          <div className="flex items-center gap-1.5 text-xs text-muted">
-            <span className="h-2 w-2 rounded-full bg-ok" />
+          <div className="flex items-center gap-1.5 text-xs text-side-muted">
+            <span className="h-2 w-2 rounded-full bg-[#4ade80]" />
             <span>{t("sidebar_chunks", { n: formattedCount })}</span>
           </div>
         )}
@@ -85,7 +88,7 @@ function Sidebar() {
             end={end}
             className={({ isActive }) =>
               `flex h-[38px] items-center gap-2.5 rounded-lg px-3 text-sm transition-colors ${
-                isActive ? "bg-accent-tint font-semibold text-accent-ink" : "text-ink-2 hover:bg-surface-2"
+                isActive ? "bg-side-active font-semibold text-side-ink" : "text-side-muted hover:bg-side-hover hover:text-side-ink"
               }`
             }
           >
@@ -97,19 +100,20 @@ function Sidebar() {
 
       <div className="mt-auto flex flex-col gap-2.5">
         {team && user && (
-          <div className="flex items-center justify-between gap-2 rounded-xl border border-line bg-ground px-3 py-2.5">
-            <div className="flex min-w-0 flex-col">
+          <div className="flex items-center gap-2.5 rounded-xl border border-side-line bg-side-card px-3 py-2.5">
+            <Avatar name={user.name} size={30} />
+            <div className="flex min-w-0 flex-1 flex-col">
               <span className="truncate text-sm font-semibold">{user.name}</span>
-              <span className="truncate text-xs text-muted">{role ? t(`role_${role}` as "role_admin") : t("role_none")}</span>
+              <span className="truncate text-xs text-side-muted">{role ? t(`role_${role}` as "role_admin") : t("role_none")}</span>
             </div>
-            <button type="button" onClick={signOut} className="shrink-0 text-muted hover:text-ink" aria-label={t("logout")} title={t("logout")}>
+            <button type="button" onClick={signOut} className="shrink-0 text-side-muted hover:text-side-ink" aria-label={t("logout")} title={t("logout")}>
               <LogOut size={16} />
             </button>
           </div>
         )}
         <ThemeToggle />
         <div className="flex items-center justify-between gap-2">
-          <label htmlFor="language-select" className="text-xs text-muted">
+          <label htmlFor="language-select" className="text-xs text-side-muted">
             {t("sidebar_language")}
           </label>
           <LanguageSelector id="language-select" />

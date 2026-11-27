@@ -1,4 +1,4 @@
-import { ExternalLink, GitCommit, Sparkles } from "lucide-react";
+import { ExternalLink, Sparkles } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { useAuth } from "../components/AuthProvider";
@@ -9,6 +9,7 @@ import SourceCitation from "../components/SourceCitation";
 import { ApiError } from "../lib/api";
 import { hub, type Commit, type Issue, type StartIssueResponse } from "../lib/hub";
 import { inputClass, primaryButton, secondaryButton } from "../lib/ui";
+import { Avatar, LabelChip } from "../components/Colorful";
 
 type Load<T> = { status: "loading" } | { status: "ok"; data: T } | { status: "error"; code: number; message: string };
 
@@ -53,7 +54,7 @@ function IssueCard({ issue, active, onStart }: { issue: Issue; active: boolean; 
   const { t, language } = useLanguage();
   return (
     <li
-      className={`flex flex-col gap-2 rounded-xl border px-4 py-3 ${active ? "border-accent bg-accent-tint" : "border-line bg-surface"}`}
+      className={`flex flex-col gap-2 rounded-xl border px-4 py-3 shadow-sm transition-colors ${active ? "border-accent bg-accent-tint" : "border-line bg-surface hover:border-line-strong"}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="flex min-w-0 flex-col gap-1">
@@ -61,7 +62,10 @@ function IssueCard({ issue, active, onStart }: { issue: Issue; active: boolean; 
             <span className="mr-1.5 font-mono text-[13px] text-muted">#{issue.number}</span>
             {issue.title}
           </span>
-          <span className="text-xs text-muted">
+          <span className="flex items-center gap-1.5 text-xs text-muted">
+            {issue.assignees.map((a) => (
+              <Avatar key={a} name={a} size={18} />
+            ))}
             {issue.assignees.length > 0 ? issue.assignees.join(", ") : t("work_unassigned")} · {relativeDate(issue.updated_at, language)}
           </span>
         </div>
@@ -72,9 +76,7 @@ function IssueCard({ issue, active, onStart }: { issue: Issue; active: boolean; 
       {issue.labels.length > 0 && (
         <div className="flex flex-wrap gap-1">
           {issue.labels.map((l) => (
-            <span key={l} className="rounded-full bg-surface-2 px-2 py-px text-[11px] text-ink-2">
-              {l}
-            </span>
+            <LabelChip key={l} text={l} />
           ))}
         </div>
       )}
@@ -92,7 +94,7 @@ function ActivityList({ commits }: { commits: Commit[] }) {
     <ul className="flex flex-col">
       {commits.map((c) => (
         <li key={c.sha} className="flex gap-3 border-b border-line py-2.5 last:border-0">
-          <GitCommit size={16} className="mt-0.5 shrink-0 text-muted" />
+          <Avatar name={c.author} size={24} />
           <div className="flex min-w-0 flex-col gap-0.5 text-sm">
             <a href={c.url} target="_blank" rel="noreferrer" className="break-words hover:underline">
               {c.message}
@@ -112,8 +114,10 @@ function StartPanel({ state }: { state: { issue: Issue; result?: StartIssueRespo
   const { t } = useLanguage();
   if (!state) {
     return (
-      <div className="flex flex-col gap-2 rounded-xl border border-dashed border-line-strong p-5 text-sm text-ink-2">
-        <Sparkles size={18} className="text-accent-ink" />
+      <div className="flex flex-col gap-2 rounded-2xl border border-line bg-gradient-to-br from-[var(--c5-tint)] to-[var(--c2-tint)] p-5 text-sm text-ink-2">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-[var(--c5)] to-[var(--c2)] text-white">
+          <Sparkles size={18} />
+        </span>
         <p className="font-semibold text-ink">{t("work_start_empty_title")}</p>
         <p>{t("work_start_empty_body")}</p>
       </div>
@@ -207,14 +211,14 @@ export default function Work() {
   return (
     <div className="flex flex-col gap-6 px-10 pb-10 pt-6 lg:flex-row lg:items-start">
       <div className="flex min-w-0 flex-1 flex-col gap-6">
-        <div className="flex flex-col gap-1">
-          <h1 className="font-display text-[22px] font-semibold">
+        <div className="flex flex-col gap-2 rounded-2xl bg-gradient-to-r from-[var(--hero-from)] to-[var(--hero-to)] px-6 py-5 text-white shadow-sm">
+          <h1 className="font-display text-[24px] font-semibold">
             {t("work_greeting", { name: user?.name.split(" ")[0] ?? "" })}
           </h1>
-          <p className="text-[13px] text-ink-2">
-            {project.name}
-            {roleLabel && <> · {t("work_your_role", { role: roleLabel })}</>}
-            {issues.status === "ok" && <> · GitHub: <span className="font-mono">{issues.data.repo}</span></>}
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-white/85">
+            <span className="font-semibold text-white">{project.name}</span>
+            {role && <span className="rounded-full bg-white/20 px-2 py-px text-[11px] font-semibold text-white">{roleLabel}</span>}
+            {issues.status === "ok" && <span className="font-mono text-white/80">github.com/{issues.data.repo}</span>}
           </p>
         </div>
 
@@ -229,7 +233,7 @@ export default function Work() {
                   type="button"
                   aria-selected={mine === m}
                   onClick={() => setMine(m)}
-                  className={`h-7 rounded-md px-3 text-[13px] ${mine === m ? "bg-surface font-semibold text-accent-ink" : "text-ink-2"}`}
+                  className={`h-7 whitespace-nowrap rounded-md px-3 text-[13px] ${mine === m ? "bg-surface font-semibold text-accent-ink" : "text-ink-2"}`}
                 >
                   {m ? t("work_mine") : t("work_all_open")}
                 </button>
