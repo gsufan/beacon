@@ -291,6 +291,23 @@ export interface VerifiedAnswerItem {
   stale_files: string[];
 }
 
+export interface FeedbackItem {
+  id: string;
+  ts: number;
+  vote: "up" | "down";
+  question: string;
+  answer: string;
+  sources: { file_path: string; chunk_type: string; name: string; start_line: number; end_line: number }[];
+  comments: string[];
+  count: number;
+}
+
+export interface FeedbackQueue {
+  to_fix: FeedbackItem[];
+  to_verify: FeedbackItem[];
+  totals: { up: number; down: number; resolved: number };
+}
+
 const json = (body: unknown) => ({ body: JSON.stringify(body) });
 
 export const hub = {
@@ -377,6 +394,13 @@ export const hub = {
   knowledge: (projectId: string) => request<KnowledgeMap>(`/projects/${projectId}/knowledge`),
   summary: (projectId: string, days: number) => request<SprintSummary>(`/projects/${projectId}/summary?days=${days}`),
   insights: (projectId: string) => request<Insights>(`/projects/${projectId}/insights`),
+  sendFeedback: (projectId: string, body: { vote: "up" | "down"; question: string; answer: string; sources: unknown[]; comment: string }) =>
+    request<{ id: string; count: number }>(`/projects/${projectId}/feedback`, { method: "POST", ...json(body) }),
+  feedbackQueue: (projectId: string) => request<FeedbackQueue>(`/projects/${projectId}/feedback`),
+  resolveFeedback: (projectId: string, id: string, outcome: "verified" | "dismissed") =>
+    request<{ status: string }>(`/projects/${projectId}/feedback/${id}/resolve`, { method: "POST", ...json({ outcome }) }),
+  verifyAnswer: (projectId: string, body: { question: string; answer: string; sources: unknown[]; corrected: boolean }) =>
+    request<unknown>(`/projects/${projectId}/answers/verify`, { method: "POST", ...json(body) }),
   verifiedAnswers: (projectId: string) => request<{ answers: VerifiedAnswerItem[] }>(`/projects/${projectId}/answers`),
   deleteVerifiedAnswer: (projectId: string, id: string) => request<{ status: string }>(`/projects/${projectId}/answers/${id}`, { method: "DELETE" }),
   startIssue: (projectId: string, ref: string, language: string) =>

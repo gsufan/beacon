@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from core import assist, devtools, edition, expertise, insight, instance, review, services, storage, team, verification
+from core import assist, devtools, edition, expertise, feedback, insight, instance, review, services, storage, team, verification
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -852,6 +852,7 @@ def verify_answer(project_id: str, body: AnswerVerify, request: Request):
     embedding = embed_query(engine.backend, engine.ai_config.embedding_model, body.question)
     item = verification.add_answer(Path(project.docs_dir).parent, project.repo_path, body.question, body.answer, body.sources,
                                    embedding, signed["token"], signed["reviewer"], body.corrected, answer_id=answer_id)
+    feedback.resolve_question(Path(project.docs_dir).parent, body.question)
     return item
 
 
@@ -866,6 +867,38 @@ def delete_verified_answer(project_id: str, answer_id: str):
     project = get_project(project_id)
     if not verification.remove_answer(Path(project.docs_dir).parent, answer_id):
         raise HTTPException(status_code=404, detail="Respuesta verificada no encontrada.")
+    return {"status": "ok"}
+
+
+class FeedbackRequest(BaseModel):
+    vote: str = Field(..., pattern="^(up|down)$")
+    question: str = Field(..., min_length=3, max_length=4000)
+    answer: str = Field(..., min_length=1, max_length=40000)
+    sources: list = Field(default_factory=list)
+    comment: str = Field(default="", max_length=500)
+
+
+@app.post("/projects/{project_id}/feedback")
+def answer_feedback(project_id: str, body: FeedbackRequest):
+    """Thumbs up or down on an answer, without the name of who voted; it feeds the tech lead's review queue."""
+    item = feedback.add(Path(get_project(project_id).docs_dir).parent, body.vote, body.question, body.answer, body.sources, body.comment)
+    return {"id": item["id"], "count": item["count"]}
+
+
+@app.get("/projects/{project_id}/feedback")
+def feedback_queue(project_id: str):
+    """Answers to correct (thumbs down) and candidates to verify (thumbs up), for the tech lead."""
+    return feedback.queue(Path(get_project(project_id).docs_dir).parent)
+
+
+class FeedbackResolve(BaseModel):
+    outcome: str = Field(..., pattern="^(verified|dismissed)$")
+
+
+@app.post("/projects/{project_id}/feedback/{item_id}/resolve")
+def resolve_feedback(project_id: str, item_id: str, body: FeedbackResolve):
+    if not feedback.resolve(Path(get_project(project_id).docs_dir).parent, item_id, body.outcome):
+        raise HTTPException(status_code=404, detail="Valoración no encontrada o ya resuelta.")
     return {"status": "ok"}
 
 

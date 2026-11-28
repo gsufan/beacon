@@ -234,6 +234,48 @@ describe("modo equipo", () => {
     expect((calls.find((c) => c.path === "/projects/api/query")?.body as { plain: boolean }).plain).toBe(true);
   });
 
+  it("un desarrollador marca una respuesta con errores y el líder técnico la corrige desde Valoraciones", async () => {
+    localStorage.setItem("beacon:session", JSON.stringify(sessionFor(false, { api: "developer" })));
+    installFakeServer({
+      "POST /projects/api/query": () => ({ body: { answer: "El login está en views.py.", sources: [] } }),
+      "POST /projects/api/feedback": () => ({ body: { id: "f1", count: 1 } }),
+    });
+    const user = userEvent.setup();
+    const { unmount } = renderApp("/chat");
+    await user.type(await screen.findByPlaceholderText(/./, { selector: "textarea" }), "¿Dónde está el login?");
+    await user.keyboard("{Control>}{Enter}{/Control}");
+    await user.click(await screen.findByRole("button", { name: "No, tiene errores o le falta algo" }));
+    await user.type(screen.getByLabelText(/Qué está mal/), "Está en auth.py");
+    await user.click(screen.getByRole("button", { name: "Enviar al líder técnico" }));
+    expect(await screen.findByText(/El líder técnico la revisará/)).toBeInTheDocument();
+    expect(calls.find((c) => c.path === "/projects/api/feedback")?.body).toMatchObject({ vote: "down", comment: "Está en auth.py", question: "¿Dónde está el login?" });
+    unmount();
+
+    localStorage.setItem("beacon:session", JSON.stringify(sessionFor(false, { api: "tech_lead" })));
+    const item = { id: "f1", ts: 1, vote: "down", question: "¿Dónde está el login?", answer: "El login está en views.py.", sources: [],
+                   comments: ["Está en auth.py"], count: 2 };
+    let pending = [item];
+    installFakeServer({
+      "POST /hub/auth/refresh": () => ({ body: sessionFor(false, { api: "tech_lead" }) }),
+      "GET /projects/api/knowledge": () => ({ body: { project_bus_factor: 1, people: 1, modules: [] } }),
+      "GET /projects/api/feedback": () => ({ body: { to_fix: pending, to_verify: [], totals: { up: 0, down: 2, resolved: 0 } } }),
+      "POST /projects/api/answers/verify": () => {
+        pending = [];
+        return { body: { id: "a1" } };
+      },
+    });
+    renderApp("/panorama");
+    await user.click(await screen.findByRole("tab", { name: /Valoraciones/ }));
+    expect(await screen.findByText("«Está en auth.py»")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Corregir y verificar" }));
+    const box = screen.getByRole("textbox");
+    await user.clear(box);
+    await user.type(box, "El login está en auth.py.");
+    await user.click(screen.getByRole("button", { name: /Guardar y verificar/ }));
+    expect(await screen.findByText("No hay valoraciones pendientes.")).toBeInTheDocument();
+    expect(calls.find((c) => c.path === "/projects/api/answers/verify")?.body).toMatchObject({ answer: "El login está en auth.py.", corrected: true });
+  });
+
   it("una licencia vencida muestra el aviso", async () => {
     localStorage.setItem("beacon:session", JSON.stringify(sessionFor(true, {})));
     installFakeServer({ "GET /projects": () => ({ status: 402, body: { detail: "La licencia venció." } }) });

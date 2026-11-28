@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import MarkdownViewer from "../components/MarkdownViewer";
 import SourceCitation from "../components/SourceCitation";
 import { useAuth } from "../components/AuthProvider";
+import AnswerFeedback from "../components/AnswerFeedback";
 import { VerifiedCard, VerifyAnswerButton } from "../components/VerifiedAnswer";
 import { useLanguage } from "../components/LanguageSelector";
 import { useProject } from "../components/ProjectSelector";
@@ -356,6 +357,7 @@ export default function Chat() {
                           {t("chat_based_on", { n: turn.result.sources.length })}
                         </span>
                       </div>
+                      {projectId && <AnswerFeedback projectId={projectId} question={turn.question} result={turn.result} />}
                       {projectId && <VerifyAnswerButton projectId={projectId} question={turn.question} result={turn.result} />}
                     </article>
                   )}

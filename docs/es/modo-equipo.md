@@ -48,6 +48,16 @@ aparezca en esos datos y se puede copiar o compartir en Slack.
 Para ver «mis issues», cada persona anota su usuario de GitHub (en Mi trabajo o en Equipo > Personas). Sin token de
 GitHub en la organización, el Hub solo lee repositorios públicos, con el límite de consultas de GitHub.
 
+## Valoraciones de las respuestas
+
+Debajo de cada respuesta del chat, cualquier persona puede marcar si le sirvió. Un pulgar abajo pide, opcionalmente, qué
+está mal o qué falta. Las valoraciones se guardan en Beacon Local sin el nombre de quién votó y llegan al líder técnico
+en Panorama > Valoraciones: «Para corregir» (pulgar abajo, con los comentarios) y «Útiles: candidatas a verificar»
+(pulgar arriba), ordenadas por cantidad de votos. Al corregir y verificar una respuesta, o verificarla tal como está,
+Beacon la ofrece primero a quien pregunte algo parecido y cierra las valoraciones abiertas de esa pregunta; también
+se puede descartar una valoración. Cada Beacon Local guarda las suyas, así que la cola reúne las de quienes usan el
+mismo servidor.
+
 ## Integraciones del equipo
 
 Se configuran en Equipo > Integraciones (solo el administrador); las credenciales quedan en el Hub y nunca llegan a

@@ -49,6 +49,15 @@ work that does not appear in that data and can be copied or shared on Slack.
 To see "my issues", each person enters their GitHub username (in My work or in Team > People). Without a GitHub token
 for the organization, the Hub only reads public repositories, within GitHub's rate limit.
 
+## Answer ratings
+
+Below each chat answer, anyone can mark whether it was useful. A thumbs down optionally asks what is wrong or missing.
+Ratings are stored in Beacon Local without the name of who voted and reach the tech lead in Overview > Ratings: "To
+correct" (thumbs down, with the comments) and "Useful: candidates to verify" (thumbs up), sorted by number of votes.
+When an answer is corrected and verified, or verified as it is, Beacon offers it first to whoever asks something
+similar and closes the open ratings on that question; a rating can also be dismissed. Each Beacon Local keeps its
+own, so the queue gathers those of the people using the same server.
+
 ## Team integrations
 
 They are set up in Team > Integrations (administrator only); the credentials stay in the Hub and never reach the

@@ -1,4 +1,4 @@
-import { BookCheck, CalendarRange, Gauge, Network, Radar, Send, Trash2 } from "lucide-react";
+import { BookCheck, CalendarRange, Gauge, Network, Radar, Send, ThumbsDown, ThumbsUp, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useAuth } from "../components/AuthProvider";
 import { Avatar } from "../components/Colorful";
@@ -6,10 +6,10 @@ import { ImpactView } from "../components/IssueTools";
 import { useLanguage } from "../components/LanguageSelector";
 import { useProject } from "../components/ProjectSelector";
 import { ApiError } from "../lib/api";
-import { hub, type Impact, type Insights, type KnowledgeMap, type SprintSummary, type VerifiedAnswerItem } from "../lib/hub";
+import { hub, type FeedbackItem, type FeedbackQueue, type Impact, type Insights, type KnowledgeMap, type SprintSummary, type VerifiedAnswerItem } from "../lib/hub";
 import { cardClass, inputClass, primaryButton, secondaryButton } from "../lib/ui";
 
-type Tab = "knowledge" | "sprint" | "gaps" | "impact" | "verified";
+type Tab = "knowledge" | "sprint" | "gaps" | "impact" | "verified" | "feedback";
 type Load<T> = { status: "loading" } | { status: "ok"; data: T } | { status: "error"; message: string };
 
 const errorText = (e: unknown) => (e instanceof ApiError ? e.message : String(e));
@@ -298,6 +298,117 @@ function VerifiedTab({ projectId, canVerify }: { projectId: string; canVerify: b
   );
 }
 
+function FeedbackEntry({ projectId, item, onDone }: { projectId: string; item: FeedbackItem; onDone: () => void }) {
+  const { t, language } = useLanguage();
+  const [editing, setEditing] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const act = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    setError("");
+    try {
+      await fn();
+      onDone();
+    } catch (e) {
+      setError(errorText(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+  // Verifying stores the (corrected) answer for similar questions and closes every open vote on this question.
+  const verify = (answer: string) =>
+    act(() => hub.verifyAnswer(projectId, { question: item.question, answer, sources: item.sources, corrected: answer !== item.answer }));
+  return (
+    <li className="flex flex-col gap-1.5 rounded-lg border border-line px-3 py-2 text-[13px]">
+      <div className="flex items-start justify-between gap-2">
+        <span className="font-semibold">{item.question}</span>
+        <span className="shrink-0 text-xs text-muted">
+          {t("feedback_votes", { n: item.count })} · {new Date(item.ts * 1000).toLocaleDateString(language)}
+        </span>
+      </div>
+      {item.comments.map((c, i) => (
+        <p key={i} className="rounded bg-surface-2 px-2 py-1 text-xs italic text-ink-2">«{c}»</p>
+      ))}
+      {editing === null ? (
+        <p className="line-clamp-4 whitespace-pre-wrap text-xs text-ink-2">{item.answer}</p>
+      ) : (
+        <textarea
+          aria-label={t("verify_answer_edit")}
+          className="min-h-[160px] w-full rounded-lg border border-line-strong bg-surface p-3 text-sm outline-none focus:border-accent"
+          value={editing}
+          onChange={(e) => setEditing(e.target.value)}
+        />
+      )}
+      {item.sources.length > 0 && (
+        <p className="font-mono text-[11px] text-muted">{item.sources.map((s) => `${s.file_path}:${s.start_line}`).join("  ")}</p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {editing === null ? (
+          <>
+            <button type="button" className={item.vote === "down" ? primaryButton : secondaryButton} disabled={busy} onClick={() => setEditing(item.answer)}>
+              {t("feedback_correct")}
+            </button>
+            {item.vote === "up" && (
+              <button type="button" className={primaryButton} disabled={busy} onClick={() => verify(item.answer)}>
+                {t("verify_answer")}
+              </button>
+            )}
+            <button type="button" className={secondaryButton} disabled={busy}
+              onClick={() => act(() => hub.resolveFeedback(projectId, item.id, "dismissed"))}>
+              {t("feedback_dismiss")}
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" className={primaryButton} disabled={busy || !editing.trim()} onClick={() => verify(editing)}>
+              {t("review_save_verify")}
+            </button>
+            <button type="button" className={secondaryButton} onClick={() => setEditing(null)}>
+              {t("review_cancel")}
+            </button>
+          </>
+        )}
+      </div>
+      {error && <p className="text-xs text-danger-ink">{error}</p>}
+    </li>
+  );
+}
+
+function FeedbackTab({ projectId }: { projectId: string }) {
+  const { t } = useLanguage();
+  const [load, reload] = useLoad<FeedbackQueue>(() => hub.feedbackQueue(projectId), [projectId]);
+  return (
+    <Status load={load}>
+      {(q) => (
+        <div className="flex flex-col gap-5">
+          <p className="text-sm text-ink-2">{t("feedback_intro", { up: q.totals.up, down: q.totals.down, resolved: q.totals.resolved })}</p>
+          {q.to_fix.length === 0 && q.to_verify.length === 0 && <p className="text-sm text-muted">{t("feedback_empty")}</p>}
+          {q.to_fix.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-muted">
+                <ThumbsDown size={14} /> {t("feedback_to_fix")}
+              </h3>
+              <ul className="flex flex-col gap-2">
+                {q.to_fix.map((i) => <FeedbackEntry key={i.id} projectId={projectId} item={i} onDone={reload} />)}
+              </ul>
+            </section>
+          )}
+          {q.to_verify.length > 0 && (
+            <section className="flex flex-col gap-2">
+              <h3 className="flex items-center gap-1.5 text-[13px] font-semibold text-muted">
+                <ThumbsUp size={14} /> {t("feedback_to_verify")}
+              </h3>
+              <ul className="flex flex-col gap-2">
+                {q.to_verify.map((i) => <FeedbackEntry key={i.id} projectId={projectId} item={i} onDone={reload} />)}
+              </ul>
+            </section>
+          )}
+        </div>
+      )}
+    </Status>
+  );
+}
+
 // Team view for the people who guide the project: who knows what, what changed, where the code is hard and what is verified.
 export default function Panorama() {
   const { t } = useLanguage();
@@ -313,6 +424,7 @@ export default function Panorama() {
     { id: "gaps", label: t("pano_tab_gaps"), icon: Radar },
     { id: "impact", label: t("pano_tab_impact"), icon: Gauge },
     { id: "verified", label: t("pano_tab_verified"), icon: BookCheck },
+    ...(canVerify ? [{ id: "feedback" as const, label: t("pano_tab_feedback"), icon: ThumbsUp }] : []),
   ];
 
   return (
@@ -343,6 +455,7 @@ export default function Panorama() {
             {tab === "gaps" && <GapsTab projectId={projectId} />}
             {tab === "impact" && <ImpactTab projectId={projectId} />}
             {tab === "verified" && <VerifiedTab projectId={projectId} canVerify={canVerify} />}
+            {tab === "feedback" && canVerify && <FeedbackTab projectId={projectId} />}
           </section>
         </>
       )}

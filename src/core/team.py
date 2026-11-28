@@ -98,6 +98,8 @@ def required_permission(method: str, path: str) -> Tuple[Optional[str], Optional
             return R.SYNC, project_id
         if (rest == "/docs" and method == "PUT") or rest in ("/docs/verify", "/answers/verify") or (rest.startswith("/answers/") and method == "DELETE"):
             return R.VERIFY, project_id
+        if rest.startswith("/feedback") and not (rest == "/feedback" and method == "POST"):
+            return R.VERIFY, project_id  # the review queue; voting only requires asking
         if rest in ("/knowledge", "/insights"):
             return R.VIEW_AUDIT, project_id
         return R.ASK, project_id
