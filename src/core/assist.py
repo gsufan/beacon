@@ -3,6 +3,7 @@ a change, a handover summary of someone's work, related issues (a suggestion, ne
 turns an issue into an implementation plan."""
 
 import math
+import re
 
 from core.engine.embeddings import embed_documents
 from core.engine.llm import chat
@@ -191,5 +192,10 @@ def glossary(engine, overview: str, files: list, language: str = "es") -> str:
     system = ("Prepara un glosario para alguien que recién llega al proyecto: entre 8 y 12 términos del dominio y del proyecto "
               "(conceptos del negocio, nombres propios del sistema y siglas), no términos genéricos de programación. Para cada uno, "
               "una línea en Markdown: **término**: qué significa aquí, y entre paréntesis el archivo o la función donde aparece. "
-              "Usa solo lo que muestran los datos. " + DATA_RULE + LANG.get(language, LANG["es"]))
-    return _ask_model(engine, system, "\n".join(lines) + REMINDER.get(language, REMINDER["es"]), max_tokens=700)
+              "Prefiere los conceptos que se repiten en varios archivos. Usa solo lo que muestran los datos. Devuelve solo la "
+              "lista, sin introducción ni cierre. " + DATA_RULE + LANG.get(language, LANG["es"]))
+    text = _ask_model(engine, system, "\n".join(lines) + REMINDER.get(language, REMINDER["es"]), max_tokens=700)
+    # Small models add a greeting and a closing line anyway: keep only the «**term**: meaning» entries, as a list.
+    terms = [re.sub(r"^[-*\d.\s]+(?=\*\*)", "", line.strip()) for line in text.splitlines()]
+    terms = [t for t in terms if t.startswith("**")]
+    return "\n".join(f"- {t}" for t in terms) if terms else text

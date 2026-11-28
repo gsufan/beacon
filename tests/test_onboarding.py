@@ -67,5 +67,5 @@ def test_onboarding_endpoint(monkeypatch, tmp_path):
     client = TestClient(api.app)
     r = client.post("/projects/p/onboarding", json={"issues": [{"id": "2", "ref": "#2", "title": "Factura"}]}).json()
     assert r["files"][0]["file_path"] == "src/money.py" and r["files"][0]["experts"] == []  # not a git repository
-    assert r["issues"][0]["ref"] == "#2" and r["glossary"] == "**centavo**: unidad" and "src/money.py" in prompts[0]
+    assert r["issues"][0]["ref"] == "#2" and r["glossary"] == "- **centavo**: unidad" and "src/money.py" in prompts[0]
     assert client.post("/projects/p/onboarding", json={"glossary": False}).json()["glossary"] == ""
