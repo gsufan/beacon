@@ -112,7 +112,8 @@ def knowledge_map(repo_path: str, depth: int = 2, max_commits: int = 3000) -> di
 # ---------------------------------------------------------------- code linked to an issue
 def issue_code(repo_path: str, ref: str, limit: int = 30) -> dict:
     """Commits whose message mentions the issue (#123 or KEY-123) and the files they changed."""
-    pattern = f"#{ref}\\b" if ref.isdigit() else re.escape(ref)
+    # POSIX ERE without \b: macOS git does not support it.
+    pattern = f"#{ref}([^0-9]|$)" if ref.isdigit() else re.escape(ref)
     repo = git.Repo(repo_path)
     raw = repo.git.log("--no-merges", "-E", f"--grep={pattern}", f"-n{limit}", "--name-only", "--format=@@%h\t%an\t%aI\t%s")
     commits, files = [], Counter()
