@@ -308,6 +308,18 @@ export interface FeedbackQueue {
   totals: { up: number; down: number; resolved: number };
 }
 
+export interface FollowedFile {
+  file_path: string;
+  since: number;
+  reason: string;
+  changes: { sha: string; author: string; date: string; subject: string }[];
+}
+
+export interface FollowStatus {
+  files: FollowedFile[];
+  changed: number;
+}
+
 const json = (body: unknown) => ({ body: JSON.stringify(body) });
 
 export const hub = {
@@ -394,6 +406,13 @@ export const hub = {
   knowledge: (projectId: string) => request<KnowledgeMap>(`/projects/${projectId}/knowledge`),
   summary: (projectId: string, days: number) => request<SprintSummary>(`/projects/${projectId}/summary?days=${days}`),
   insights: (projectId: string) => request<Insights>(`/projects/${projectId}/insights`),
+  follows: (projectId: string) => request<FollowStatus>(`/projects/${projectId}/follows`),
+  follow: (projectId: string, file_path: string) =>
+    request<{ status: string }>(`/projects/${projectId}/follows`, { method: "POST", ...json({ file_path }) }),
+  unfollow: (projectId: string, file_path: string) =>
+    request<{ status: string }>(`/projects/${projectId}/follows?file_path=${encodeURIComponent(file_path)}`, { method: "DELETE" }),
+  followsSeen: (projectId: string, file_path?: string) =>
+    request<{ status: string }>(`/projects/${projectId}/follows/seen`, { method: "POST", ...json({ file_path }) }),
   sendFeedback: (projectId: string, body: { vote: "up" | "down"; question: string; answer: string; sources: unknown[]; comment: string }) =>
     request<{ id: string; count: number }>(`/projects/${projectId}/feedback`, { method: "POST", ...json(body) }),
   feedbackQueue: (projectId: string) => request<FeedbackQueue>(`/projects/${projectId}/feedback`),

@@ -48,6 +48,15 @@ aparezca en esos datos y se puede copiar o compartir en Slack.
 Para ver «mis issues», cada persona anota su usuario de GitHub (en Mi trabajo o en Equipo > Personas). Sin token de
 GitHub en la organización, el Hub solo lee repositorios públicos, con el límite de consultas de GitHub.
 
+## Código que sigues
+
+Cada fuente del chat tiene el botón «Seguir archivo». Al verificar una respuesta o un documento, el líder técnico
+sigue automáticamente sus archivos. Cuando alguien cambia un archivo que sigues, Mi trabajo muestra los commits que lo
+cambiaron desde la última vez que lo miraste, con su autor y fecha; «Visto» los da por revisados y «Dejar de seguir»
+lo quita. Los cambios se calculan desde el último commit visto de cada archivo, así que también aparecen los commits
+que llegan con una sincronización aunque se hayan escrito antes. En una instalación personal, el aviso aparece en el
+chat.
+
 ## Valoraciones de las respuestas
 
 Debajo de cada respuesta del chat, cualquier persona puede marcar si le sirvió. Un pulgar abajo pide, opcionalmente, qué

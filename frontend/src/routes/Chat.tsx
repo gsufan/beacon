@@ -5,6 +5,7 @@ import MarkdownViewer from "../components/MarkdownViewer";
 import SourceCitation from "../components/SourceCitation";
 import { useAuth } from "../components/AuthProvider";
 import AnswerFeedback from "../components/AnswerFeedback";
+import FollowedPanel from "../components/FollowedPanel";
 import { VerifiedCard, VerifyAnswerButton } from "../components/VerifiedAnswer";
 import { useLanguage } from "../components/LanguageSelector";
 import { useProject } from "../components/ProjectSelector";
@@ -267,6 +268,7 @@ export default function Chat() {
       <div className="flex min-h-0 flex-1 flex-col gap-8 lg:flex-row">
         <section className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
           <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto">
+            {mode !== "team" && projectId && <FollowedPanel projectId={projectId} />}
             {turns.length === 0 && projectId && (
               <div className="flex flex-1 flex-col justify-center gap-5 py-6">
                 <div className="flex flex-col gap-1.5">

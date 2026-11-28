@@ -1,7 +1,28 @@
 import { useState } from "react";
 import { Link } from "react-router";
 import { useLanguage } from "./LanguageSelector";
+import { useProject } from "./ProjectSelector";
+import { useFollowing } from "../lib/follows";
 import type { SourceItem } from "../lib/types";
+
+// Follow the file of a source: its changes are then shown in «My work».
+function FollowButton({ file }: { file: string }) {
+  const { t } = useLanguage();
+  const { projectId } = useProject();
+  const { following, toggle } = useFollowing(projectId);
+  if (!projectId) return null;
+  const on = following(file);
+  return (
+    <button
+      type="button"
+      onClick={() => void toggle(file).catch(() => {})}
+      aria-pressed={on}
+      className={`whitespace-nowrap text-xs font-medium hover:underline ${on ? "text-muted" : "text-accent-ink"}`}
+    >
+      {on ? t("follow_following") : t("follow_file")}
+    </button>
+  );
+}
 
 export default function SourceCitation({
   source,
@@ -79,6 +100,7 @@ export default function SourceCitation({
             {t("sources_why")}
           </Link>
         )}
+        {showWhy && !isOverview && <FollowButton file={source.file_path} />}
         {source.code && (
           <button
             type="button"

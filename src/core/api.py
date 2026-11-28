@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from core import assist, devtools, edition, expertise, feedback, insight, instance, review, services, storage, team, verification
+from core import assist, devtools, edition, expertise, feedback, follows, insight, instance, review, services, storage, team, verification
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -821,6 +821,7 @@ def update_doc(project_id: str, file_path: str, body: DocUpdate, request: Reques
     if verify:
         signed = _sign(request, project_id, "doc", file_path, body.content)
         verification.record_doc(docs_dir.parent, file_path, signed["token"], signed["reviewer"], corrected=True)
+        _follow_quietly(request, get_project(project_id), [file_path], "verified")
     return {"review": verification.doc_status(docs_dir.parent, docs_dir, file_path, _hub_public_key())}
 
 
@@ -832,6 +833,7 @@ def verify_doc(project_id: str, file_path: str, request: Request):
         raise HTTPException(status_code=404, detail=f"No hay documentación generada para '{file_path}'.")
     signed = _sign(request, project_id, "doc", file_path, doc_path.read_text(encoding="utf-8"))
     verification.record_doc(docs_dir.parent, file_path, signed["token"], signed["reviewer"], corrected=False)
+    _follow_quietly(request, get_project(project_id), [file_path], "verified")
     return {"review": verification.doc_status(docs_dir.parent, docs_dir, file_path, _hub_public_key())}
 
 
@@ -853,6 +855,7 @@ def verify_answer(project_id: str, body: AnswerVerify, request: Request):
     item = verification.add_answer(Path(project.docs_dir).parent, project.repo_path, body.question, body.answer, body.sources,
                                    embedding, signed["token"], signed["reviewer"], body.corrected, answer_id=answer_id)
     feedback.resolve_question(Path(project.docs_dir).parent, body.question)
+    _follow_quietly(request, project, [s.get("file_path") for s in body.sources if s.get("file_path") and s.get("chunk_type") != "overview"], "verified")
     return item
 
 
@@ -899,6 +902,71 @@ class FeedbackResolve(BaseModel):
 def resolve_feedback(project_id: str, item_id: str, body: FeedbackResolve):
     if not feedback.resolve(Path(get_project(project_id).docs_dir).parent, item_id, body.outcome):
         raise HTTPException(status_code=404, detail="Valoración no encontrada o ya resuelta.")
+    return {"status": "ok"}
+
+
+def _person(request: Request) -> str:
+    """Who is asking: the Hub user in team mode, «local» in a personal installation."""
+    user = getattr(request.state, "user", None)
+    return str(user["sub"]) if user else "local"
+
+
+def _follow_quietly(request: Request, project, files: list, reason: str) -> None:
+    # Following is a convenience: it must never make the main action fail.
+    try:
+        follows.follow_many(Path(project.docs_dir).parent, project.repo_path, _person(request), files, reason)
+    except Exception:  # noqa: BLE001
+        logger.exception("no se pudieron seguir los archivos verificados")
+
+
+class FollowRequest(BaseModel):
+    file_path: str = Field(..., min_length=1, max_length=500)
+
+
+def _followed_path(file_path: str) -> str:
+    try:
+        return expertise._clean(file_path)
+    except expertise.InvalidPathError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.get("/projects/{project_id}/follows")
+def followed_files(project_id: str, request: Request):
+    """Files this person follows, with the commits that changed them since they last looked."""
+    project = get_project(project_id)
+    try:
+        return follows.status(Path(project.docs_dir).parent, project.repo_path, _person(request))
+    except git.GitError as e:
+        raise HTTPException(status_code=409, detail=f"No se pudo leer el historial de git del proyecto: {e}")
+
+
+@app.post("/projects/{project_id}/follows")
+def follow_file(project_id: str, body: FollowRequest, request: Request):
+    project = get_project(project_id)
+    try:
+        follows.follow(Path(project.docs_dir).parent, project.repo_path, _person(request), _followed_path(body.file_path))
+    except git.GitError as e:
+        raise HTTPException(status_code=409, detail=f"No se pudo leer el historial de git del proyecto: {e}")
+    return {"status": "ok"}
+
+
+@app.delete("/projects/{project_id}/follows")
+def unfollow_file(project_id: str, file_path: str, request: Request):
+    if not follows.unfollow(Path(get_project(project_id).docs_dir).parent, _person(request), _followed_path(file_path)):
+        raise HTTPException(status_code=404, detail="No sigues ese archivo.")
+    return {"status": "ok"}
+
+
+class SeenRequest(BaseModel):
+    file_path: Optional[str] = Field(default=None, max_length=500)
+
+
+@app.post("/projects/{project_id}/follows/seen")
+def followed_seen(project_id: str, body: SeenRequest, request: Request):
+    """Marks the changes of one followed file (or all of them) as seen."""
+    project = get_project(project_id)
+    path = _followed_path(body.file_path) if body.file_path else None
+    follows.mark_seen(Path(project.docs_dir).parent, project.repo_path, _person(request), path)
     return {"status": "ok"}
 
 

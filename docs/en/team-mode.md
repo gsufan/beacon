@@ -49,6 +49,14 @@ work that does not appear in that data and can be copied or shared on Slack.
 To see "my issues", each person enters their GitHub username (in My work or in Team > People). Without a GitHub token
 for the organization, the Hub only reads public repositories, within GitHub's rate limit.
 
+## Code you follow
+
+Each chat source has a "Follow file" button. When a tech lead verifies an answer or a document, they automatically
+follow its files. When someone changes a file you follow, My work shows the commits that changed it since you last
+looked, with their author and date; "Seen" marks them as reviewed and "Unfollow" removes it. Changes are counted from
+the last commit seen for each file, so commits that arrive with a sync appear even if they were written earlier. In
+a personal installation, the notice appears in the chat.
+
 ## Answer ratings
 
 Below each chat answer, anyone can mark whether it was useful. A thumbs down optionally asks what is wrong or missing.

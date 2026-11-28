@@ -1,4 +1,5 @@
 import { CalendarCheck, ClipboardCheck, Copy, ExternalLink, ListChecks, MessageSquarePlus, Send, Sparkles, UserRoundCog, Users } from "lucide-react";
+import FollowedPanel from "../components/FollowedPanel";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { useAuth } from "../components/AuthProvider";
@@ -580,7 +581,8 @@ export default function Work() {
           {activity.status === "ok" && <ActivityList commits={activity.data} />}
         </section>
       </div>
-      <aside className="w-full shrink-0 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:w-[440px] lg:overflow-y-auto lg:pr-1">
+      <aside className="flex w-full shrink-0 flex-col gap-4 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:w-[440px] lg:overflow-y-auto lg:pr-1">
+        <FollowedPanel projectId={projectId} />
         {standup && !start ? (
           <StandupPanel state={standup} projectId={projectId} org={org} />
         ) : handover && handover.status !== "loading" && !start ? (

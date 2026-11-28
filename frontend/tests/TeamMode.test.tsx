@@ -276,6 +276,31 @@ describe("modo equipo", () => {
     expect(calls.find((c) => c.path === "/projects/api/answers/verify")?.body).toMatchObject({ answer: "El login está en auth.py.", corrected: true });
   });
 
+  it("sigue un archivo desde una fuente y «Mi trabajo» avisa cuando cambió", async () => {
+    localStorage.setItem("beacon:session", JSON.stringify(sessionFor(false, { api: "developer" })));
+    let changes = [{ sha: "abc1234", author: "Ana", date: "2026-11-27", subject: "fix: tildes en el login (#7)" }];
+    installFakeServer({
+      "GET /projects/api/follows": () => ({ body: { files: [{ file_path: "auth.py", since: 1, reason: "manual", changes }], changed: changes.length } }),
+      "POST /projects/api/follows/seen": () => {
+        changes = [];
+        return { body: { status: "ok" } };
+      },
+      "POST /projects/api/follows": () => ({ body: { status: "ok" } }),
+    });
+    const user = userEvent.setup();
+    renderApp();
+    expect(await screen.findByText("fix: tildes en el login (#7)")).toBeInTheDocument();
+    expect(screen.getByText("Código que sigues con cambios: 1")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Visto" }));
+    await waitFor(() => expect(screen.queryByText("fix: tildes en el login (#7)")).not.toBeInTheDocument());
+    expect(calls.find((c) => c.path === "/projects/api/follows/seen")?.body).toMatchObject({ file_path: "auth.py" });
+
+    await user.click(screen.getByRole("button", { name: /Por dónde empiezo/ }));
+    const follow = (await screen.findAllByRole("button", { name: "Seguir archivo" }))[0];
+    await user.click(follow);
+    await waitFor(() => expect(calls.some((c) => c.method === "POST" && c.path === "/projects/api/follows")).toBe(true));
+  });
+
   it("una licencia vencida muestra el aviso", async () => {
     localStorage.setItem("beacon:session", JSON.stringify(sessionFor(true, {})));
     installFakeServer({ "GET /projects": () => ({ status: 402, body: { detail: "La licencia venció." } }) });
