@@ -320,6 +320,30 @@ export interface FollowStatus {
   changed: number;
 }
 
+export interface OnboardingRoute {
+  files: {
+    file_path: string;
+    callers: number;
+    purpose: string;
+    key_functions: { name: string; callers: number }[];
+    experts: { name: string; commits: number }[];
+  }[];
+  issues: {
+    id: string;
+    ref: string;
+    title: string;
+    url: string;
+    labels: string[];
+    easy_label: boolean;
+    callers: number | null;
+    radius: "small" | "medium" | "large" | "unknown";
+    files: string[];
+    functions: string[];
+  }[];
+  glossary: string;
+  has_overview: boolean;
+}
+
 const json = (body: unknown) => ({ body: JSON.stringify(body) });
 
 export const hub = {
@@ -406,6 +430,8 @@ export const hub = {
   knowledge: (projectId: string) => request<KnowledgeMap>(`/projects/${projectId}/knowledge`),
   summary: (projectId: string, days: number) => request<SprintSummary>(`/projects/${projectId}/summary?days=${days}`),
   insights: (projectId: string) => request<Insights>(`/projects/${projectId}/insights`),
+  onboarding: (projectId: string, body: { issues: Issue[]; language: string }) =>
+    request<OnboardingRoute>(`/projects/${projectId}/onboarding`, { method: "POST", ...json(body) }),
   follows: (projectId: string) => request<FollowStatus>(`/projects/${projectId}/follows`),
   follow: (projectId: string, file_path: string) =>
     request<{ status: string }>(`/projects/${projectId}/follows`, { method: "POST", ...json({ file_path }) }),

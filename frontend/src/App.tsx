@@ -1,4 +1,4 @@
-import { Briefcase, Bug, FileText, LayoutDashboard, LogOut, MessageSquare, Settings as SettingsIcon, Users } from "lucide-react";
+import { Briefcase, Bug, FileText, Footprints, LayoutDashboard, LogOut, MessageSquare, Settings as SettingsIcon, Users } from "lucide-react";
 import { Navigate, NavLink, Route, Routes, useLocation } from "react-router";
 import { AuthProvider, useAuth } from "./components/AuthProvider";
 import { LanguageProvider, LanguageSelector, useLanguage } from "./components/LanguageSelector";
@@ -10,6 +10,7 @@ import Chat from "./routes/Chat";
 import Debug from "./routes/Debug";
 import Docs from "./routes/Docs";
 import Login from "./routes/Login";
+import Onboarding from "./routes/Onboarding";
 import Panorama from "./routes/Panorama";
 import Settings from "./routes/Settings";
 import Study from "./routes/Study";
@@ -51,6 +52,7 @@ function Sidebar() {
         { to: "/chat", label: t("nav_chat"), icon: MessageSquare, end: false },
         { to: "/docs", label: t("nav_docs"), icon: FileText, end: false },
         { to: "/debug", label: t("nav_debug"), icon: Bug, end: false },
+        { to: "/onboarding", label: t("nav_onboarding"), icon: Footprints, end: false },
         ...(guidesSomething ? [{ to: "/panorama", label: t("nav_panorama"), icon: LayoutDashboard, end: false }] : []),
         ...(managesSomething ? [{ to: "/team", label: t("nav_team"), icon: Users, end: false }] : []),
         ...(isAdmin ? [{ to: "/settings", label: t("nav_settings"), icon: SettingsIcon, end: false }] : []),
@@ -59,6 +61,7 @@ function Sidebar() {
         { to: "/", label: t("nav_chat"), icon: MessageSquare, end: true },
         { to: "/docs", label: t("nav_docs"), icon: FileText, end: false },
         { to: "/debug", label: t("nav_debug"), icon: Bug, end: false },
+        { to: "/onboarding", label: t("nav_onboarding"), icon: Footprints, end: false },
         { to: "/settings", label: t("nav_settings"), icon: SettingsIcon, end: false },
       ];
   const role = roleIn(projectId);
@@ -160,6 +163,7 @@ function Shell() {
             <Route path="/chat" element={<Chat />} />
             <Route path="/docs" element={<Docs />} />
             <Route path="/debug" element={<Debug />} />
+            <Route path="/onboarding" element={<Onboarding />} />
             <Route path="/panorama" element={team ? <Panorama /> : <Navigate to="/" />} />
             <Route path="/team" element={team ? <Team /> : <Navigate to="/" />} />
             <Route path="/settings" element={isAdmin ? <Settings /> : <Navigate to="/" />} />

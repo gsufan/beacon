@@ -1,6 +1,6 @@
 import { ChevronRight, FileText, Folder, FolderOpen } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router";
+import { Link, useSearchParams } from "react-router";
 import DocReview, { ReviewBadge } from "../components/DocReview";
 import MarkdownViewer from "../components/MarkdownViewer";
 import { useLanguage } from "../components/LanguageSelector";
@@ -124,6 +124,7 @@ function TreeLevel({ node, depth, selected, isOpen, onToggle, onSelect, reviews 
 export default function Docs() {
   const { projectId } = useProject();
   const { t } = useLanguage();
+  const [params] = useSearchParams();
   const [files, setFiles] = useState<string[]>([]);
   const [filter, setFilter] = useState("");
   // Folders the user opened or closed by hand; the rest follow the default.
@@ -148,6 +149,8 @@ export default function Docs() {
       .then((res) => {
         setFiles(res.files);
         setReviews(res.reviews ?? {});
+        const wanted = params.get("file");  // opened from another page (e.g. First steps)
+        if (wanted && res.files.includes(wanted)) setSelected(wanted);
       })
       .catch((e) => setError(e instanceof ApiError ? e.message : t("settings_error_generic")));
   }, [projectId]);

@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from core import assist, devtools, edition, expertise, feedback, follows, insight, instance, review, services, storage, team, verification
+from core import assist, devtools, edition, expertise, feedback, follows, insight, instance, onboarding, review, services, storage, team, verification
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -701,6 +701,32 @@ def pre_pr_review(project_id: str, body: ReviewRequest):
                              if body.describe and result["files"] else "")
     result.pop("_diff")
     return result
+
+
+class OnboardingRequest(BaseModel):
+    issues: list = Field(default_factory=list, max_length=100)
+    glossary: bool = True
+    language: str = Field(default="es", pattern="^(es|en)$")
+
+
+@app.post("/projects/{project_id}/onboarding")
+def onboarding_route(project_id: str, body: OnboardingRequest):
+    """Route for someone new: files to read first (most depended on), who knows them, a domain glossary and the open
+    issues with the smallest impact radius."""
+    engine = _get_engine(project_id)
+    project = get_project(project_id)
+    docs_dir = Path(project.docs_dir)
+    cmap = onboarding.call_map(engine.collection)
+    files = onboarding.reading_order(cmap, docs_dir)
+    try:
+        per_file = {f["path"]: f["authors"][:2] for f in expertise.experts(project.repo_path, [f["file_path"] for f in files], top=2)["files"]}
+    except (git.GitError, expertise.InvalidPathError):
+        per_file = {}
+    for f in files:
+        f["experts"] = per_file.get(f["file_path"], [])
+    issues = _model_call(lambda: onboarding.first_issues(engine.retriever, cmap, body.issues)) if body.issues else []
+    text = _model_call(lambda: assist.glossary(engine, onboarding.overview_text(docs_dir), files, body.language)) if body.glossary and files else ""
+    return {"files": files, "issues": issues, "glossary": text, "has_overview": (docs_dir / "OVERVIEW.md").exists()}
 
 
 @app.get("/projects/{project_id}/knowledge")

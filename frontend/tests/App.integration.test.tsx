@@ -395,6 +395,26 @@ describe("depurar", () => {
     expect(calls.find((c) => c.path === "/projects/demo/why")?.body).toMatchObject({ name: "rebuild_method", file_path: "src/requests/sessions.py" });
   });
 
+  it("arma la ruta de primeros pasos: qué leer primero y el glosario", async () => {
+    installFakeServer({
+      "POST /projects/demo/onboarding": () => ({
+        body: {
+          files: [{ file_path: "src/requests/sessions.py", callers: 6, purpose: "La clase Session.", key_functions: [{ name: "request", callers: 20 }],
+                    experts: [{ name: "Ana", commits: 9 }] }],
+          issues: [], glossary: "**Sesión**: conjunto de ajustes que se reutilizan entre solicitudes.", has_overview: true,
+        },
+      }),
+    });
+    const user = userEvent.setup();
+    renderApp("/onboarding");
+    await user.click(await screen.findByRole("button", { name: "Armar mi ruta" }));
+    expect(await screen.findByText("src/requests/sessions.py")).toBeInTheDocument();
+    expect(screen.getByText("lo usan 6 archivos")).toBeInTheDocument();
+    expect(screen.getByText(/conjunto de ajustes/)).toBeInTheDocument();
+    expect(screen.queryByText("Primeras issues")).not.toBeInTheDocument();  // personal mode: no backlog
+    expect(calls.find((c) => c.path === "/projects/demo/onboarding")?.body).toMatchObject({ issues: [], language: "es" });
+  });
+
   it("revisa los cambios locales antes del PR", async () => {
     const fn = { name: "discount", file_path: "src/cart.py", new: true, callers: 0, tests: [], tested_in_change: false, missing_test: true };
     installFakeServer({

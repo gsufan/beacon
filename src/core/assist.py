@@ -177,3 +177,19 @@ def pr_description(engine, review: dict, language: str = "es") -> str:
               "menciona las funciones con muchos llamadores y las que no tienen pruebas. Cierra con «Closes #N» por cada issue, si hay. "
               "No inventes cambios que no aparecen en el diff. " + DATA_RULE + LANG.get(language, LANG["es"]))
     return _ask_model(engine, system, "\n".join(lines) + REMINDER.get(language, REMINDER["es"]), max_tokens=700)
+
+
+def glossary(engine, overview: str, files: list, language: str = "es") -> str:
+    """Domain glossary for someone new: the terms of the business and the project, each with where it lives in the code."""
+    lines = [f"Resumen del proyecto:\n{overview or '(sin resumen generado)'}", "Archivos centrales y su propósito:"]
+    for f in files:
+        names = ", ".join(k["name"] for k in f["key_functions"])
+        lines.append(f"- {f['file_path']}: {f['purpose'] or '(sin documentación)'}" + (f" · funciones clave: {names}" if names else ""))
+        code = _code_of(engine, f["key_functions"][0]["name"], 700) if f["key_functions"] else ""
+        if code:
+            lines.append(code)
+    system = ("Prepara un glosario para alguien que recién llega al proyecto: entre 8 y 12 términos del dominio y del proyecto "
+              "(conceptos del negocio, nombres propios del sistema y siglas), no términos genéricos de programación. Para cada uno, "
+              "una línea en Markdown: **término**: qué significa aquí, y entre paréntesis el archivo o la función donde aparece. "
+              "Usa solo lo que muestran los datos. " + DATA_RULE + LANG.get(language, LANG["es"]))
+    return _ask_model(engine, system, "\n".join(lines) + REMINDER.get(language, REMINDER["es"]), max_tokens=700)
