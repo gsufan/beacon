@@ -140,6 +140,14 @@ def audit_action(method: str, path: str) -> Optional[Tuple[str, Optional[str]]]:
         return "plan de pruebas", project_id
     if method == "POST" and rest == "/handover":
         return "resumen de traspaso", project_id
+    if method == "POST" and rest == "/explain-error":
+        return "error explicado", project_id
+    if method == "POST" and rest == "/why":
+        return "historia de un fragmento de código", project_id
+    if method == "POST" and rest == "/standup":
+        return "borrador del daily", project_id
+    if method == "POST" and rest == "/review":
+        return "revisión antes del pull request", project_id
     if method == "POST" and rest == "/sync":
         return "sincronización", project_id
     if method == "PUT" and rest == "/auto-watch":

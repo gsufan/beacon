@@ -394,4 +394,26 @@ describe("depurar", () => {
     expect(screen.getByText("fix: 303 cambia a GET (#2210)")).toBeInTheDocument();
     expect(calls.find((c) => c.path === "/projects/demo/why")?.body).toMatchObject({ name: "rebuild_method", file_path: "src/requests/sessions.py" });
   });
+
+  it("revisa los cambios locales antes del PR", async () => {
+    const fn = { name: "discount", file_path: "src/cart.py", new: true, callers: 0, tests: [], tested_in_change: false, missing_test: true };
+    installFakeServer({
+      "POST /projects/demo/review": () => ({
+        body: {
+          base: "main", base_sha: "abc", branch: "feature/42", issues: ["#42"], commits: [],
+          files: [{ path: "src/cart.py", old_path: "src/cart.py", status: "M", added: 5, removed: 1, test: false }],
+          functions: [fn], missing_tests: [fn], tests_to_run: ["tests/test_checkout.py"],
+          verified_answers: [{ id: "a1", question: "¿Cómo se calcula el total?", reviewer: "Ana", files: ["src/cart.py"] }],
+          verified_docs: [], reviewers: [{ name: "Ana", commits: 3 }], description: "Agrega descuentos al carro.",
+        },
+      }),
+    });
+    const user = userEvent.setup();
+    renderApp("/debug?tab=pr");
+    await user.click(await screen.findByRole("button", { name: "Revisar mis cambios" }));
+    expect(await screen.findByText("Agrega descuentos al carro.")).toBeInTheDocument();
+    expect(screen.getByText("sin pruebas")).toBeInTheDocument();
+    expect(screen.getByText(/¿Cómo se calcula el total\?/)).toBeInTheDocument();
+    expect(screen.getByText("tests/test_checkout.py")).toBeInTheDocument();
+  });
 });

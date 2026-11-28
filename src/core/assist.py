@@ -155,3 +155,25 @@ def standup(engine, person: str, commits: list, remote_commits: list, issues: li
               "confírmalo»). Cita issues por su número. No inventes trabajo que no aparece en los datos. " + DATA_RULE
               + LANG.get(language, LANG["es"]))
     return _ask_model(engine, system, "\n".join(lines) + REMINDER.get(language, REMINDER["es"]), max_tokens=500)
+
+
+def pr_description(engine, review: dict, language: str = "es") -> str:
+    """Draft of a pull request description from the local changes and their impact."""
+    lines = [f"Rama: {review['branch'] or '(sin rama)'} sobre {review['base']}", "Issues: " + (", ".join(review["issues"]) or "ninguna"),
+             "Commits:"]
+    lines += [f"- {c['subject']}" for c in review["commits"][:20]] or ["- (cambios sin commit)"]
+    lines.append("Archivos cambiados:")
+    lines += [f"- [{f['status']}] {f['path']} (+{f['added']} −{f['removed']})" for f in review["files"][:30]]
+    lines.append("Funciones cambiadas y cuántos lugares dependen de ellas:")
+    lines += [f"- {fn['name']} ({fn['file_path']}): {fn['callers']} llamadores" + (" · nueva" if fn["new"] else "") +
+              (" · sin pruebas" if fn["missing_test"] else "") for fn in review["functions"][:20]] or ["- ninguna detectada"]
+    lines.append("Pruebas relacionadas: " + (", ".join(review["tests_to_run"][:12]) or "ninguna"))
+    lines.append(f"Diff (recortado):\n{review['_diff'][:5000]}")
+    headings = ("«Summary», «Changes», «How to test» and «Risks»" if language == "en" else
+                "«Resumen», «Cambios», «Cómo probarlo» y «Riesgos»")
+    system = ("Escribe la descripción de un pull request a partir de los cambios locales, en Markdown, con los títulos " + headings + ". "
+              "El resumen explica en dos o tres frases qué cambia y por qué, según los commits y las issues. «Cambios» agrupa los archivos "
+              "por propósito. «Cómo probarlo» nombra las pruebas relacionadas y los pasos manuales que se desprenden del diff. «Riesgos» "
+              "menciona las funciones con muchos llamadores y las que no tienen pruebas. Cierra con «Closes #N» por cada issue, si hay. "
+              "No inventes cambios que no aparecen en el diff. " + DATA_RULE + LANG.get(language, LANG["es"]))
+    return _ask_model(engine, system, "\n".join(lines) + REMINDER.get(language, REMINDER["es"]), max_tokens=700)

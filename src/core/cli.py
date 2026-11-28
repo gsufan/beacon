@@ -12,6 +12,7 @@ Usage:
     beacon sync <id>                       # incremental indexing
     beacon docs <id>                       # generate the documentation
     beacon ask <id> "question"
+    beacon review [<id>] [--base main]     # review local changes before opening a pull request
     beacon export <id>                     # pack index and documentation into a .zip
     beacon import <file.zip>               # register a project from an exported .zip
     beacon serve                           # start the API and the web interface
@@ -30,6 +31,7 @@ from rich.console import Console
 from rich.progress import Progress, BarColumn, TextColumn, TimeElapsedColumn
 from rich.table import Table
 
+from core import cli_lang
 from core.cli_lang import tr
 from core.version import INSTALLED, VERSION
 from core.engine.backends import BackendAuthError, BackendError, BackendUnavailableError, ExternalServerError, ModelNotFoundError, create_backend, model_available
@@ -291,6 +293,86 @@ def cmd_ask(project_id: str, question: str, top_k: int = 5):
         origin = tr("grafo de llamadas", "call graph") if s.expanded else tr(f"semántico ({s.distance:.3f})", f"semantic ({s.distance:.3f})")
         table.add_row(f"{s.file_path}:{s.start_line}-{s.end_line}", s.chunk_type, s.name, origin)
     console.print(table)
+
+
+def _project_of_cwd():
+    """The registered project whose repository contains the current folder."""
+    try:
+        top = Path(git.Repo(Path.cwd(), search_parent_directories=True).working_tree_dir).resolve()
+    except (git.InvalidGitRepositoryError, git.NoSuchPathError):
+        top = None
+    for p in list_projects():
+        if top and Path(p.repo_path).resolve() == top:
+            return p
+    console.print(tr("[red]Esta carpeta no es el repositorio de ningún proyecto registrado. Indica el proyecto: beacon review <id>[/red]",
+                     "[red]This folder is not the repository of any registered project. Name the project: beacon review <id>[/red]"))
+    raise typer.Exit(code=1)
+
+
+@app.command("review", help=tr("Revisa los cambios locales antes de abrir el pull request: funciones cambiadas y quién depende de ellas, "
+                               "pruebas que faltan, conocimiento verificado que quedaría pendiente, revisores sugeridos y un borrador "
+                               "de la descripción.",
+                               "Review the local changes before opening the pull request: changed functions and what depends on them, "
+                               "missing tests, verified knowledge that would become pending, suggested reviewers and a description draft."))
+def cmd_review(project_id: Optional[str] = typer.Argument(None, help=tr("Proyecto; por defecto, el de la carpeta actual.",
+                                                                         "Project; by default, the one of the current folder.")),
+               base: Optional[str] = typer.Option(None, "--base", help=tr("Rama base (por defecto origin/HEAD, main o master).",
+                                                                          "Base branch (default origin/HEAD, main or master).")),
+               describe: bool = typer.Option(True, "--describe/--no-describe", help=tr("Redacta la descripción con el modelo.",
+                                                                                       "Write the description with the model."))):
+    from core import assist, review, team
+
+    project = _resolve_or_exit(project_id) if project_id else _project_of_cwd()
+    engine = RAGEngine(project, load_config().ai_provider)
+    docs_dir = Path(project.docs_dir)
+    try:
+        settings = team.hub_settings()
+    except Exception:  # noqa: BLE001 - without the Hub, verifications cannot be checked; the review still works
+        settings = None
+    try:
+        result = review.build(engine.collection, project.repo_path, docs_dir.parent, docs_dir, settings.public_key if settings else None, base)
+    except (review.InvalidBaseError, git.GitError) as e:
+        console.print(f"[red]{e}[/red]")
+        raise typer.Exit(code=1)
+    if not result["files"]:
+        console.print(tr(f"No hay cambios respecto de {result['base']}.", f"No changes against {result['base']}."))
+        return
+
+    console.print(tr(f"\n[bold]Cambios de {result['branch'] or 'HEAD'} sobre {result['base']}[/bold] ({result['base_sha']})",
+                     f"\n[bold]Changes of {result['branch'] or 'HEAD'} on {result['base']}[/bold] ({result['base_sha']})"))
+    files = Table(title=tr("Archivos", "Files"))
+    for col in ("", tr("archivo", "file"), "+", "−"):
+        files.add_column(col)
+    for f in result["files"]:
+        files.add_row(f["status"], f["path"] + (tr(" (prueba)", " (test)") if f["test"] else ""), str(f["added"]), str(f["removed"]))
+    console.print(files)
+
+    if result["functions"]:
+        fns = Table(title=tr("Funciones cambiadas", "Changed functions"))
+        for col in (tr("función", "function"), tr("archivo", "file"), tr("dependen", "callers"), tr("pruebas", "tests")):
+            fns.add_column(col)
+        for fn in result["functions"]:
+            tests = (tr("[yellow]ninguna[/yellow]", "[yellow]none[/yellow]") if fn["missing_test"] else
+                     tr("en este cambio", "in this change") if fn["tested_in_change"] and not fn["tests"] else ", ".join(fn["tests"][:3]))
+            fns.add_row(fn["name"] + (tr(" (nueva)", " (new)") if fn["new"] else ""), fn["file_path"], str(fn["callers"]), tests)
+        console.print(fns)
+    if result["missing_tests"]:
+        console.print(tr("[yellow]Sin pruebas:[/yellow] ", "[yellow]No tests:[/yellow] ") + ", ".join(fn["name"] for fn in result["missing_tests"]))
+    if result["tests_to_run"]:
+        console.print(tr("[bold]Pruebas que conviene correr:[/bold] ", "[bold]Tests worth running:[/bold] ") + " ".join(result["tests_to_run"][:15]))
+    for a in result["verified_answers"]:
+        console.print(tr(f"[yellow]Respuesta verificada por {a['reviewer']} que este cambio podría dejar obsoleta:[/yellow] «{a['question']}» ({', '.join(a['files'])})",
+                         f"[yellow]Answer verified by {a['reviewer']} that this change may leave outdated:[/yellow] «{a['question']}» ({', '.join(a['files'])})"))
+    for d in result["verified_docs"]:
+        console.print(tr(f"[yellow]Documento verificado que quedará pendiente de revisión:[/yellow] {d['file_path']}",
+                         f"[yellow]Verified document that will become pending review:[/yellow] {d['file_path']}"))
+    if result["reviewers"]:
+        console.print(tr("[bold]Revisores sugeridos:[/bold] ", "[bold]Suggested reviewers:[/bold] ") +
+                      ", ".join(f"{r['name']} ({r['commits']} commits)" for r in result["reviewers"]))
+    if describe:
+        with console.status(tr("Redactando la descripción del pull request...", "Writing the pull request description...")):
+            text = _run_safely(lambda: assist.pr_description(engine, result, cli_lang.LANG), repo_path=project.repo_path)
+        console.print(tr("\n[bold]Borrador de la descripción[/bold]\n", "\n[bold]Description draft[/bold]\n") + text)
 
 
 @app.command("export", help=tr("Empaqueta el índice (ChromaDB) y la documentación de un proyecto en un .zip portable. "

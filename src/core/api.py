@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from core import assist, devtools, edition, expertise, insight, instance, services, storage, team, verification
+from core import assist, devtools, edition, expertise, insight, instance, review, services, storage, team, verification
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -676,6 +676,31 @@ def standup(project_id: str, body: StandupRequest):
     remote = [c for c in body.commits if (c.get("date") or "")[:10] >= since.date().isoformat()]
     draft = _model_call(lambda: assist.standup(engine, body.person, local, remote, body.issues, since.isoformat(), body.language))
     return {"draft": draft, "since": since.date().isoformat(), "local_commits": local[:15], "remote_commits": len(remote)}
+
+
+class ReviewRequest(BaseModel):
+    base: Optional[str] = Field(default=None, max_length=120)
+    describe: bool = True
+    language: str = Field(default="es", pattern="^(es|en)$")
+
+
+@app.post("/projects/{project_id}/review")
+def pre_pr_review(project_id: str, body: ReviewRequest):
+    """Review before the pull request: changed functions and their impact, missing tests, verified knowledge the change
+    would leave pending, suggested reviewers and a draft of the description."""
+    engine = _get_engine(project_id)
+    project = get_project(project_id)
+    docs_dir = Path(project.docs_dir)
+    try:
+        result = review.build(engine.collection, project.repo_path, docs_dir.parent, docs_dir, _hub_public_key(), body.base)
+    except review.InvalidBaseError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except git.GitError as e:
+        raise HTTPException(status_code=409, detail=f"No se pudieron leer los cambios locales del repositorio: {e}")
+    result["description"] = (_model_call(lambda: assist.pr_description(engine, result, body.language))
+                             if body.describe and result["files"] else "")
+    result.pop("_diff")
+    return result
 
 
 @app.get("/projects/{project_id}/knowledge")

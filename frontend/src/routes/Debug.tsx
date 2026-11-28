@@ -1,4 +1,4 @@
-import { Bug, GitCommit, History, Users } from "lucide-react";
+import { Bug, Copy, GitCommit, GitPullRequest, History, Users } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useSearchParams } from "react-router";
 import { Avatar } from "../components/Colorful";
@@ -7,20 +7,20 @@ import MarkdownViewer from "../components/MarkdownViewer";
 import { useProject } from "../components/ProjectSelector";
 import SourceCitation from "../components/SourceCitation";
 import { ApiError } from "../lib/api";
-import { hub, type CodeHistory, type ErrorExplanation } from "../lib/hub";
-import { cardClass, inputClass, primaryButton } from "../lib/ui";
+import { hub, type CodeHistory, type ErrorExplanation, type PreReview } from "../lib/hub";
+import { cardClass, inputClass, primaryButton, secondaryButton } from "../lib/ui";
 
-type Tab = "error" | "why";
+type Tab = "error" | "why" | "pr";
 type Run<T> = { status: "idle" } | { status: "loading" } | { status: "ok"; data: T } | { status: "error"; message: string };
 
 const errorText = (e: unknown) => (e instanceof ApiError ? e.message : String(e));
 
-function Experts({ experts }: { experts: { name: string; commits: number }[] }) {
+function Experts({ experts, label }: { experts: { name: string; commits: number }[]; label?: string }) {
   const { t } = useLanguage();
   if (experts.length === 0) return null;
   return (
     <p className="flex flex-wrap items-center gap-1.5 text-xs text-ink-2">
-      <Users size={12} /> {t("debug_experts")}
+      <Users size={12} /> {label ?? t("debug_experts")}
       {experts.map((e) => (
         <span key={e.name} className="inline-flex items-center gap-1">
           <Avatar name={e.name} size={16} /> {e.name}
@@ -233,18 +233,141 @@ function WhyTab({ projectId }: { projectId: string }) {
   );
 }
 
+function PrTab({ projectId }: { projectId: string }) {
+  const { t, language } = useLanguage();
+  const [base, setBase] = useState("");
+  const [run, setRun] = useState<Run<PreReview>>({ status: "idle" });
+  const [copied, setCopied] = useState(false);
+  useEffect(() => setRun({ status: "idle" }), [projectId]);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setRun({ status: "loading" });
+    setCopied(false);
+    try {
+      setRun({ status: "ok", data: await hub.review(projectId, { base: base.trim() || undefined, language }) });
+    } catch (err) {
+      setRun({ status: "error", message: errorText(err) });
+    }
+  };
+  const r = run.status === "ok" ? run.data : null;
+  const copy = async () => {
+    if (!r) return;
+    try {
+      await navigator.clipboard.writeText(r.description);
+      setCopied(true);
+    } catch {
+      setCopied(false);
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-4">
+      <form onSubmit={submit} className="flex flex-col gap-3">
+        <p className="text-sm text-ink-2">{t("debug_pr_intro")}</p>
+        <label className="flex max-w-xs flex-col gap-1 text-[13px] font-semibold text-muted">
+          {t("debug_pr_base")}
+          <input className={`${inputClass} font-mono`} value={base} onChange={(e) => setBase(e.target.value)} placeholder="main" />
+        </label>
+        <button type="submit" className={primaryButton} disabled={run.status === "loading"}>
+          {run.status === "loading" ? t("work_loading") : t("debug_pr_run")}
+        </button>
+      </form>
+      {run.status === "loading" && <p className="text-sm text-ink-2">{t("debug_pr_loading")}</p>}
+      {run.status === "error" && (
+        <p role="alert" className="rounded-xl border border-danger-line bg-danger-bg px-4 py-3 text-sm text-danger-ink">
+          {run.message}
+        </p>
+      )}
+      {r && r.files.length === 0 && <p className="text-sm text-ink-2">{t("debug_pr_none", { base: r.base })}</p>}
+      {r && r.files.length > 0 && (
+        <div className="flex flex-col gap-4">
+          <p className="font-mono text-[13px] text-ink-2">
+            {t("debug_pr_header", { branch: r.branch || "HEAD", base: r.base, files: r.files.length })}
+            {r.issues.length > 0 && <> · {r.issues.join(" ")}</>}
+          </p>
+          <ul className="flex flex-col gap-0.5 font-mono text-xs">
+            {r.files.map((f) => (
+              <li key={f.path} className={f.test ? "text-muted" : "text-ink"}>
+                <span className="inline-block w-4 font-semibold">{f.status}</span> {f.path} <span className="text-muted">+{f.added} −{f.removed}</span>
+              </li>
+            ))}
+          </ul>
+          {r.functions.length > 0 && (
+            <div className="flex flex-col gap-1.5">
+              <h3 className="text-[13px] font-semibold text-muted">{t("debug_pr_functions")}</h3>
+              <ul className="flex flex-col gap-1 text-sm">
+                {r.functions.map((fn) => (
+                  <li key={`${fn.file_path}-${fn.name}`} className="flex flex-wrap items-baseline gap-x-2">
+                    <span className="font-mono font-semibold">{fn.name}</span>
+                    <span className="font-mono text-xs text-muted">{fn.file_path}</span>
+                    <span className="text-xs text-ink-2">{fn.new ? t("debug_pr_new") : t("debug_pr_callers", { n: fn.callers })}</span>
+                    {fn.missing_test && (
+                      <span className="rounded border border-danger-line bg-danger-bg px-1.5 text-xs text-danger-ink">{t("debug_pr_no_tests")}</span>
+                    )}
+                    {fn.tested_in_change && fn.tests.length === 0 && <span className="text-xs text-ink-2">{t("debug_pr_tested_here")}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {r.tests_to_run.length > 0 && (
+            <div className="flex flex-col gap-1">
+              <h3 className="text-[13px] font-semibold text-muted">{t("debug_pr_tests")}</h3>
+              <p className="break-words font-mono text-xs">{r.tests_to_run.join("  ")}</p>
+            </div>
+          )}
+          {r.verified_answers.length > 0 && (
+            <div className="flex flex-col gap-1 rounded-xl border border-line-strong bg-surface-2 px-4 py-3 text-sm">
+              <h3 className="font-semibold">{t("debug_pr_answers")}</h3>
+              {r.verified_answers.map((a) => (
+                <p key={a.id}>
+                  «{a.question}» · {a.reviewer} · <span className="font-mono text-xs">{a.files.join(", ")}</span>
+                </p>
+              ))}
+            </div>
+          )}
+          {r.verified_docs.length > 0 && (
+            <div className="flex flex-col gap-1 rounded-xl border border-line-strong bg-surface-2 px-4 py-3 text-sm">
+              <h3 className="font-semibold">{t("debug_pr_docs")}</h3>
+              <p className="font-mono text-xs">{r.verified_docs.map((d) => d.file_path).join(", ")}</p>
+            </div>
+          )}
+          <Experts experts={r.reviewers} label={t("debug_pr_reviewers")} />
+          {r.description && (
+            <div className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[13px] font-semibold text-muted">{t("debug_pr_description")}</h3>
+                <button type="button" className={`${secondaryButton} flex items-center gap-1.5`} onClick={copy}>
+                  <Copy size={14} /> {copied ? t("standup_copied") : t("standup_copy")}
+                </button>
+              </div>
+              <div className="rounded-xl border border-line bg-surface px-4 py-3">
+                <MarkdownViewer content={r.description} />
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Debug() {
   const { t } = useLanguage();
   const { projectId, projects } = useProject();
   const [params] = useSearchParams();
-  const [tab, setTab] = useState<Tab>(params.get("tab") === "why" ? "why" : "error");
+  const fromUrl = (): Tab => (params.get("tab") === "why" ? "why" : params.get("tab") === "pr" ? "pr" : "error");
+  const [tab, setTab] = useState<Tab>(fromUrl);
   const project = projects.find((p) => p.id === projectId);
   useEffect(() => {
-    if (params.get("tab") === "why") setTab("why");
+    if (params.get("tab")) setTab(fromUrl());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params]);
   const tabs = [
     { id: "error" as const, label: t("debug_tab_error"), icon: Bug },
     { id: "why" as const, label: t("debug_tab_why"), icon: History },
+    { id: "pr" as const, label: t("debug_tab_pr"), icon: GitPullRequest },
   ];
   return (
     <div className="flex flex-col gap-6 px-10 pb-10 pt-6">
@@ -269,7 +392,9 @@ export default function Debug() {
             ))}
           </div>
           <section className={`${cardClass} max-w-4xl`}>
-            {tab === "error" ? <ErrorTab projectId={projectId} /> : <WhyTab key={params.toString() + projectId} projectId={projectId} />}
+            {tab === "error" && <ErrorTab projectId={projectId} />}
+            {tab === "why" && <WhyTab key={params.toString() + projectId} projectId={projectId} />}
+            {tab === "pr" && <PrTab projectId={projectId} />}
           </section>
         </>
       )}

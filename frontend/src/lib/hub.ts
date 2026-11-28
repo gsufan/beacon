@@ -164,6 +164,32 @@ export interface ErrorFrame {
   name: string | null;
 }
 
+export interface ReviewFunction {
+  name: string;
+  file_path: string;
+  new: boolean;
+  callers: number;
+  tests: string[];
+  tested_in_change: boolean;
+  missing_test: boolean;
+}
+
+export interface PreReview {
+  base: string;
+  base_sha: string;
+  branch: string;
+  files: { path: string; old_path: string | null; status: string; added: number; removed: number; test: boolean }[];
+  commits: { sha: string; author: string; subject: string; issues: string[] }[];
+  functions: ReviewFunction[];
+  missing_tests: ReviewFunction[];
+  tests_to_run: string[];
+  verified_answers: { id: string; question: string; reviewer: string; files: string[] }[];
+  verified_docs: { file_path: string; status: string; reviewer?: string }[];
+  reviewers: { name: string; commits: number }[];
+  issues: string[];
+  description: string;
+}
+
 export interface ErrorExplanation {
   message: string;
   frames: ErrorFrame[];
@@ -346,6 +372,8 @@ export const hub = {
     request<CodeHistory>(`/projects/${projectId}/why`, { method: "POST", ...json(body) }),
   standup: (projectId: string, body: { person: string; git_author?: string; issues: Issue[]; commits: Commit[]; language: string }) =>
     request<Standup>(`/projects/${projectId}/standup`, { method: "POST", ...json(body) }),
+  review: (projectId: string, body: { base?: string; language: string }) =>
+    request<PreReview>(`/projects/${projectId}/review`, { method: "POST", ...json(body) }),
   knowledge: (projectId: string) => request<KnowledgeMap>(`/projects/${projectId}/knowledge`),
   summary: (projectId: string, days: number) => request<SprintSummary>(`/projects/${projectId}/summary?days=${days}`),
   insights: (projectId: string) => request<Insights>(`/projects/${projectId}/insights`),
