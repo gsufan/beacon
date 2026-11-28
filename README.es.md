@@ -87,4 +87,4 @@ Sobre `psf/requests` (30 preguntas), el fragmento que responde aparece entre los
 
 ## Licencia
 
-Propietaria — ver [LICENSE](LICENSE). Las versiones publicadas antes del 27 de noviembre de 2026 conservan la licencia MIT.
+Código disponible, uso no comercial — ver [LICENSE](LICENSE). Se puede descargar, usar, estudiar y modificar gratis con fines académicos, educativos, de investigación o personales. El uso comercial requiere una suscripción o permiso escrito de los autores. Las versiones publicadas antes del 27 de noviembre de 2026 conservan la licencia MIT.

@@ -2,7 +2,8 @@
 
 # License, delivery and terms of use
 
-Beacon is proprietary software contracted by subscription. This document summarizes how the product is protected
+Beacon's code is public and its academic, educational, research or personal use is free; commercial use requires a
+subscription or written permission from the authors (see [LICENSE](../../LICENSE)). This document summarizes how the product is protected
 and what an organization accepts when using it. It is an academic exercise: the company that sells it (Almenara
 Software SpA) is fictitious.
 
@@ -20,10 +21,11 @@ that a leak can be traced.
 
 ## Terms of use (summary)
 
-1. **Subscription.** The organization may use Beacon while it keeps a valid subscription, within the plan, number of
+1. **Commercial use.** The organization may use Beacon while it keeps a valid subscription, within the plan, number of
    users and period its license states. The free trial lasts 30 days.
-2. **Prohibitions.** Copying, redistributing, sublicensing, decompiling, modifying, or removing or bypassing Beacon's
-   license check is not allowed.
+2. **Prohibitions.** Without written permission, selling or redistributing Beacon commercially, offering it as a
+   service, or removing or bypassing the license check in a copy others use is not allowed. Noncommercial use
+   (studying, modifying and sharing the code for those purposes) is free.
 3. **Audit.** Almenara may verify, with prior notice, that the use matches the contracted license.
 4. **Data.** The source code, the index, the documentation and the questions stay in the organization's
    infrastructure; Almenara does not access them. Beacon Hub processes users' personal data (name, email, GitHub and

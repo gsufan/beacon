@@ -89,4 +89,4 @@ On `psf/requests` (30 questions), the fragment that answers the question appears
 
 ## License
 
-Proprietary — see [LICENSE](LICENSE). Versions published before November 27, 2026 remain under the MIT License.
+Source-available, noncommercial — see [LICENSE](LICENSE). Beacon may be downloaded, used, studied and modified free of charge for academic, educational, research or personal purposes. Commercial use requires a subscription or written permission from the authors. Versions published before November 27, 2026 remain under the MIT License.

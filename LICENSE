@@ -1,14 +1,17 @@
-Beacon — Proprietary License
+Beacon — Source-Available License (Noncommercial)
 
 Copyright (c) 2026 Gabriel Sufán and Tomás Villablanca. All rights reserved.
 
-This software and its documentation are proprietary. Use is permitted only to organizations that hold a valid
-subscription license issued by Beacon Hub, within the plan, number of users and period that license states.
-Copying, redistributing, sublicensing, reverse engineering or removing the license checks is not permitted without
-written permission from the copyright holders.
+1. Noncommercial use. You may read, download, run, study and modify Beacon, free of charge, for academic,
+   educational, research, personal or evaluation purposes, and share it for those same purposes, provided you keep
+   this notice and give credit to the authors.
 
-Versions of Beacon published before November 27, 2026 under the MIT License remain available under that license.
-This notice applies to later versions.
+2. Commercial use requires permission. Any other use requires a subscription license issued by Beacon Hub or written
+   permission from the copyright holders. This includes using Beacon in an organization's ordinary work, offering it
+   as a service, selling it, bundling it with a product, or removing or bypassing its license checks in a copy that
+   others use.
+
+3. Versions of Beacon published before November 27, 2026 under the MIT License remain available under that license.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED. IN NO EVENT SHALL THE COPYRIGHT
 HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM THE USE OF THE SOFTWARE.
