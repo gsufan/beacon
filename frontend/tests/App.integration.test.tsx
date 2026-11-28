@@ -409,7 +409,7 @@ describe("depurar", () => {
     renderApp("/onboarding");
     await user.click(await screen.findByRole("button", { name: "Armar mi ruta" }));
     expect(await screen.findByText("src/requests/sessions.py")).toBeInTheDocument();
-    expect(screen.getByText("lo usan 6 archivos")).toBeInTheDocument();
+    expect(screen.getByText("archivos que lo usan: 6")).toBeInTheDocument();
     expect(screen.getByText(/conjunto de ajustes/)).toBeInTheDocument();
     expect(screen.queryByText("Primeras issues")).not.toBeInTheDocument();  // personal mode: no backlog
     expect(calls.find((c) => c.path === "/projects/demo/onboarding")?.body).toMatchObject({ issues: [], language: "es" });
