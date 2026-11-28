@@ -26,6 +26,7 @@ beacon docs <project_id>             # genera documentación .md (requiere 'sync
 beacon docs <project_id> --full      # regenera toda la documentación
 beacon ask <project_id> "pregunta"   # consulta el RAG desde la terminal
 beacon review [<project_id>]         # revisa los cambios locales antes de abrir el pull request
+beacon mcp [--project <project_id>]  # servidor MCP para el editor o un agente de código (ver abajo)
 beacon export <project_id>           # empaqueta el índice+docs en un .zip portable
 beacon import <archivo.zip>          # registra un proyecto desde un .zip exportado
 beacon serve                         # levanta la API + UI en http://127.0.0.1:8000
@@ -40,6 +41,29 @@ beacon serve                         # levanta la API + UI en http://127.0.0.1:8
 > Terminal**, donde funciona sin problemas.
 
 **Idioma de la consola**: la ayuda y los mensajes salen en español si el sistema operativo está en español (cualquier variante) y en inglés en cualquier otro caso. Para forzar uno, define `BEACON_LANG=es` o `BEACON_LANG=en`. Los nombres de los comandos y de las opciones son siempre en inglés.
+
+## Beacon en el editor (MCP)
+
+`beacon mcp` expone Beacon como servidor MCP (Model Context Protocol) por la entrada y salida estándar, para que un
+editor o un agente de código lo use sin abrir la interfaz web. Ofrece cinco herramientas: `beacon_ask` (preguntar al
+código, con sus fuentes), `beacon_explain_error` (explicar una traza), `beacon_why` (por qué un fragmento está así),
+`beacon_impact` (qué depende de unas funciones) y `beacon_review` (revisión antes del pull request). Corre en la
+instalación de cada persona, con el mismo índice y el mismo servidor de modelos; no necesita `beacon serve`.
+
+Con Claude Code:
+
+```powershell
+claude mcp add beacon -- beacon mcp --project mi-proyecto
+```
+
+En VS Code (`.vscode/mcp.json`) u otro cliente que use el mismo formato:
+
+```json
+{ "servers": { "beacon": { "type": "stdio", "command": "beacon", "args": ["mcp", "--project", "mi-proyecto"] } } }
+```
+
+Sin `--project`, cada herramienta acepta el argumento `project`; si hay un solo proyecto registrado, se usa ese.
+`--lang en` pide las respuestas en inglés.
 
 ## Preguntas abiertas sobre todo el repositorio
 

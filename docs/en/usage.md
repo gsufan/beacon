@@ -26,6 +26,7 @@ beacon docs <project_id>             # generates .md documentation (requires an 
 beacon docs <project_id> --full      # regenerates all the documentation
 beacon ask <project_id> "question"   # queries the RAG from the terminal
 beacon review [<project_id>]         # reviews the local changes before opening a pull request
+beacon mcp [--project <project_id>]  # MCP server for the editor or a coding agent (see below)
 beacon export <project_id>           # packs the index + docs into a portable .zip
 beacon import <file.zip>             # registers a project from an exported .zip
 beacon serve                         # starts the API + UI at http://127.0.0.1:8000
@@ -40,6 +41,29 @@ beacon serve                         # starts the API + UI at http://127.0.0.1:8
 > works without problems.
 
 **Console language**: help and messages are shown in Spanish if the operating system is in Spanish (any variant) and in English otherwise. To force one, set `BEACON_LANG=es` or `BEACON_LANG=en`. Command and option names are always in English.
+
+## Beacon in the editor (MCP)
+
+`beacon mcp` exposes Beacon as an MCP server (Model Context Protocol) over standard input and output, so an editor or
+a coding agent can use it without opening the web interface. It offers five tools: `beacon_ask` (ask the code, with
+its sources), `beacon_explain_error` (explain a stack trace), `beacon_why` (why a piece of code is like this),
+`beacon_impact` (what depends on some functions) and `beacon_review` (review before the pull request). It runs in each
+person's installation, with the same index and model server; it does not need `beacon serve`.
+
+With Claude Code:
+
+```powershell
+claude mcp add beacon -- beacon mcp --project my-project
+```
+
+In VS Code (`.vscode/mcp.json`) or another client that uses the same format:
+
+```json
+{ "servers": { "beacon": { "type": "stdio", "command": "beacon", "args": ["mcp", "--project", "my-project"] } } }
+```
+
+Without `--project`, each tool accepts a `project` argument; if only one project is registered, that one is used.
+`--lang en` asks for answers in English.
 
 ## Open questions about the whole repository
 

@@ -13,6 +13,7 @@ Usage:
     beacon docs <id>                       # generate the documentation
     beacon ask <id> "question"
     beacon review [<id>] [--base main]     # review local changes before opening a pull request
+    beacon mcp [--project <id>]            # MCP server for editors and coding agents (stdio)
     beacon export <id>                     # pack index and documentation into a .zip
     beacon import <file.zip>               # register a project from an exported .zip
     beacon serve                           # start the API and the web interface
@@ -373,6 +374,19 @@ def cmd_review(project_id: Optional[str] = typer.Argument(None, help=tr("Proyect
         with console.status(tr("Redactando la descripción del pull request...", "Writing the pull request description...")):
             text = _run_safely(lambda: assist.pr_description(engine, result, cli_lang.LANG), repo_path=project.repo_path)
         console.print(tr("\n[bold]Borrador de la descripción[/bold]\n", "\n[bold]Description draft[/bold]\n") + text)
+
+
+@app.command("mcp", help=tr("Servidor MCP por la entrada y salida estándar, para usar Beacon desde el editor o un agente de código "
+                            "(preguntar, explicar un error, por qué está así, impacto y revisión antes del PR).",
+                            "MCP server over standard input and output, to use Beacon from the editor or a coding agent "
+                            "(ask, explain an error, why it is like this, impact and review before the PR)."))
+def cmd_mcp(project: Optional[str] = typer.Option(None, "--project", help=tr("Proyecto por defecto.", "Default project.")),
+            lang: str = typer.Option(cli_lang.LANG, "--lang", help=tr("Idioma de las respuestas: es o en.", "Answer language: es or en."))):
+    from core import mcp_server
+
+    if project:
+        _resolve_or_exit(project)
+    mcp_server.serve(project, "en" if lang == "en" else "es")
 
 
 @app.command("export", help=tr("Empaqueta el índice (ChromaDB) y la documentación de un proyecto en un .zip portable. "
