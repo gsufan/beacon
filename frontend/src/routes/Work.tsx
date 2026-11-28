@@ -1,4 +1,4 @@
-import { ClipboardCheck, ExternalLink, ListChecks, MessageSquarePlus, Send, Sparkles, UserRoundCog, Users } from "lucide-react";
+import { CalendarCheck, ClipboardCheck, Copy, ExternalLink, ListChecks, MessageSquarePlus, Send, Sparkles, UserRoundCog, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router";
 import { useAuth } from "../components/AuthProvider";
@@ -9,12 +9,13 @@ import { useProject } from "../components/ProjectSelector";
 import IssueTools, { functionTargets, ImpactView } from "../components/IssueTools";
 import SourceCitation from "../components/SourceCitation";
 import { ApiError } from "../lib/api";
-import { hub, type Commit, type Experts, type HubProject, type Impact, type Issue, type IssuesResponse, type Org, type StartIssueResponse } from "../lib/hub";
+import { hub, type Commit, type Experts, type HubProject, type Impact, type Issue, type IssuesResponse, type Org, type Standup, type StartIssueResponse } from "../lib/hub";
 import { inputClass, primaryButton, secondaryButton } from "../lib/ui";
 
 type Load<T> = { status: "loading" } | { status: "ok"; data: T } | { status: "error"; code: number; message: string };
 type Filter = "mine" | "all" | number;
 type Kind = "start" | "plan" | "qa";
+type StandupState = { status: "loading" } | { status: "ok"; data: Standup } | { status: "error"; text: string };
 interface StartState {
   issue: Issue;
   kind: Kind;
@@ -286,11 +287,61 @@ function StartPanel({
           <h3 className="text-[13px] font-semibold text-muted">{t("sources_count", { n: state.result.sources.length })}</h3>
           <div className="flex flex-col gap-2">
             {state.result.sources.map((s, i) => (
-              <SourceCitation key={`${s.file_path}-${s.start_line}-${i}`} source={s} />
+              <SourceCitation key={`${s.file_path}-${s.start_line}-${i}`} source={s} showWhy />
             ))}
           </div>
         </>
       )}
+    </div>
+  );
+}
+
+function StandupPanel({ state, projectId, org }: { state: StandupState; projectId: string; org: Org | null }) {
+  const { t } = useLanguage();
+  const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  if (state.status === "loading") return <p className="rounded-xl border border-line bg-surface px-4 py-3 text-sm text-ink-2">{t("standup_loading")}</p>;
+  if (state.status === "error")
+    return (
+      <p role="alert" className="rounded-xl border border-danger-line bg-danger-bg px-4 py-3 text-sm text-danger-ink">
+        {state.text}
+      </p>
+    );
+  const { data } = state;
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(data.draft);
+      setNote({ ok: true, text: t("standup_copied") });
+    } catch (e) {
+      setNote({ ok: false, text: errorText(e) });
+    }
+  };
+  const share = async () => {
+    if (!window.confirm(t("work_slack_confirm"))) return;
+    try {
+      await hub.shareSlack(projectId, data.draft);
+      setNote({ ok: true, text: t("work_slack_done") });
+    } catch (e) {
+      setNote({ ok: false, text: errorText(e) });
+    }
+  };
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="rounded-xl border border-line bg-surface px-4 py-3 text-sm">
+        <p className="mb-1 text-[13px] font-semibold text-muted">{t("standup_title")}</p>
+        <MarkdownViewer content={data.draft} />
+      </div>
+      <p className="text-xs text-muted">{t("standup_since", { date: data.since, local: data.local_commits.length, remote: data.remote_commits })}</p>
+      <div className="flex flex-wrap gap-2">
+        <button type="button" className={`${secondaryButton} flex items-center gap-1.5`} onClick={copy}>
+          <Copy size={14} /> {t("standup_copy")}
+        </button>
+        {org?.slack_connected && (
+          <button type="button" className={`${secondaryButton} flex items-center gap-1.5`} onClick={share}>
+            <Send size={14} /> {t("work_slack")}
+          </button>
+        )}
+      </div>
+      {note && <p className={`text-sm ${note.ok ? "text-ok" : "text-danger-ink"}`}>{note.text}</p>}
     </div>
   );
 }
@@ -304,6 +355,7 @@ export default function Work() {
   const [activity, setActivity] = useState<Load<Commit[]>>({ status: "loading" });
   const [start, setStart] = useState<StartState | null>(null);
   const [handover, setHandover] = useState<{ status: "loading" | "ok" | "error"; text: string } | null>(null);
+  const [standup, setStandup] = useState<StandupState | null>(null);
   const [org, setOrg] = useState<Org | null>(null);
   const [team, setTeam] = useState<HubProject | null>(null);
   const project = projects.find((p) => p.id === projectId);
@@ -336,12 +388,14 @@ export default function Work() {
   useEffect(() => {
     setStart(null);
     setHandover(null);
+    setStandup(null);
     load();
   }, [load]);
 
   const startIssue = async (issue: Issue, kind: Kind) => {
     if (!projectId) return;
     setHandover(null);
+    setStandup(null);
     setStart({ issue, kind });
     try {
       if (kind === "plan") {
@@ -374,6 +428,26 @@ export default function Work() {
       setHandover({ status: "ok", text: res.summary });
     } catch (e) {
       setHandover({ status: "error", text: errorText(e) });
+    }
+  };
+
+  const runStandup = async () => {
+    if (!projectId || !user) return;
+    setStart(null);
+    setHandover(null);
+    setStandup({ status: "loading" });
+    try {
+      const data = await hub.standup(projectId, {
+        person: user.name,
+        git_author: user.github ? `${user.name}\\|${user.github}` : user.name,
+        issues: issues.status === "ok" ? issues.data.issues : [],
+        // Without a GitHub login the activity shows the whole team: only the person's own commits count.
+        commits: activity.status === "ok" && user.github ? activity.data.filter((c) => c.author.toLowerCase() === user.github!.toLowerCase()) : [],
+        language,
+      });
+      setStandup({ status: "ok", data });
+    } catch (e) {
+      setStandup({ status: "error", text: errorText(e) });
     }
   };
 
@@ -423,6 +497,16 @@ export default function Work() {
                   </button>
                 ))}
               </div>
+              {filter === "mine" && (
+                <button
+                  type="button"
+                  className={`${secondaryButton} flex items-center gap-1.5`}
+                  disabled={standup?.status === "loading" || issues.status === "loading" || activity.status === "loading"}
+                  onClick={runStandup}
+                >
+                  <CalendarCheck size={14} /> {t("standup_run")}
+                </button>
+              )}
               {others.length > 0 && (
                 <select
                   aria-label={t("work_of_person")}
@@ -497,7 +581,9 @@ export default function Work() {
         </section>
       </div>
       <aside className="w-full shrink-0 lg:sticky lg:top-6 lg:max-h-[calc(100vh-3rem)] lg:w-[440px] lg:overflow-y-auto lg:pr-1">
-        {handover && handover.status !== "loading" && !start ? (
+        {standup && !start ? (
+          <StandupPanel state={standup} projectId={projectId} org={org} />
+        ) : handover && handover.status !== "loading" && !start ? (
           <div className={`rounded-xl border px-4 py-3 text-sm ${handover.status === "ok" ? "border-line bg-surface" : "border-danger-line bg-danger-bg text-danger-ink"}`}>
             {handover.status === "ok" ? (
               <>

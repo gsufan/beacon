@@ -349,3 +349,49 @@ describe("configuración", () => {
     expect(screen.queryByText(/No se detectaron modelos/)).not.toBeInTheDocument();
   });
 });
+
+describe("depurar", () => {
+  it("explica un error pegado y muestra la traza ubicada en el código", async () => {
+    installFakeServer({
+      "POST /projects/demo/explain-error": () => ({
+        body: {
+          message: "ZeroDivisionError: division by zero", in_project: true, explanation: "Divide por cero cuando el carro está vacío.",
+          frames: [
+            { path: "/venv/site-packages/lib.py", line: 9, func: "get", file_path: null, name: null },
+            { path: "/app/src/requests/sessions.py", line: 380, func: "rebuild_method", file_path: "src/requests/sessions.py", name: "rebuild_method" },
+          ],
+          sources: [{ ...SOURCE, distance: -1 }], experts: [{ name: "Ana", commits: 4 }],
+        },
+      }),
+    });
+    const user = userEvent.setup();
+    renderApp("/debug");
+    await user.type(await screen.findByLabelText("Traza o mensaje de error"), "Traceback ... ZeroDivisionError");
+    await user.click(screen.getByRole("button", { name: "Explicar el error" }));
+    expect(await screen.findByText("Divide por cero cuando el carro está vacío.")).toBeInTheDocument();
+    expect(screen.getByText("(fuera del proyecto)")).toBeInTheDocument();
+    expect(screen.getByText("ubicado por la traza")).toBeInTheDocument();
+    expect(calls.find((c) => c.path === "/projects/demo/explain-error")?.body).toMatchObject({ language: "es" });
+  });
+
+  it("abre «¿Por qué está así?» desde una fuente y consulta el historial de esas líneas", async () => {
+    installFakeServer({
+      "POST /projects/demo/why": () => ({
+        body: {
+          file_path: "src/requests/sessions.py", start_line: 370, end_line: 392, name: "rebuild_method", lines: 23, shallow: false,
+          explanation: "Se agregó para cumplir el RFC 7231 (#2210).", other_definitions: [], issues: [],
+          commits: [{ sha: "abc1234", lines: 20, author: "Ana", date: "2019-01-02", subject: "fix: 303 cambia a GET (#2210)", body: "", issues: ["#2210"] }],
+          created: { sha: "0f0f0f0", author: "Kenneth", date: "2011-02-13", subject: "sesiones", issues: [] },
+        },
+      }),
+    });
+    const user = userEvent.setup();
+    renderApp();
+    await user.type(await screen.findByLabelText(/Pregunta sobre/), "¿Qué hace rebuild_method?");
+    await user.click(screen.getByRole("button", { name: "Preguntar" }));
+    await user.click((await screen.findAllByRole("link", { name: "¿Por qué está así?" }))[0]);
+    expect(await screen.findByText("Se agregó para cumplir el RFC 7231 (#2210).")).toBeInTheDocument();
+    expect(screen.getByText("fix: 303 cambia a GET (#2210)")).toBeInTheDocument();
+    expect(calls.find((c) => c.path === "/projects/demo/why")?.body).toMatchObject({ name: "rebuild_method", file_path: "src/requests/sessions.py" });
+  });
+});

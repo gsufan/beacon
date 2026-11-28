@@ -114,7 +114,7 @@ function SourcesPanel({ turn, index }: { turn: Turn | null; index: number }) {
             <p className="text-xs text-muted">{t("sources_overview_hint")}</p>
           </div>
           {overview.map((s, i) => (
-            <SourceCitation key={`${s.file_path}-${i}`} source={s} defaultOpen={i === 0} />
+            <SourceCitation key={`${s.file_path}-${i}`} source={s} defaultOpen={i === 0} showWhy />
           ))}
         </>
       )}
@@ -125,7 +125,7 @@ function SourcesPanel({ turn, index }: { turn: Turn | null; index: number }) {
             {t("sources_semantic")} · {semantic.length}
           </div>
           {semantic.map((s, i) => (
-            <SourceCitation key={`${s.file_path}-${s.start_line}-${i}`} source={s} defaultOpen={i === 0} />
+            <SourceCitation key={`${s.file_path}-${s.start_line}-${i}`} source={s} defaultOpen={i === 0} showWhy />
           ))}
         </>
       )}
@@ -139,7 +139,7 @@ function SourcesPanel({ turn, index }: { turn: Turn | null; index: number }) {
             <p className="text-xs text-muted">{t("sources_graph_hint")}</p>
           </div>
           {graph.map((s, i) => (
-            <SourceCitation key={`${s.file_path}-${s.start_line}-${i}`} source={s} />
+            <SourceCitation key={`${s.file_path}-${s.start_line}-${i}`} source={s} showWhy />
           ))}
         </>
       )}

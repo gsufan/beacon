@@ -126,6 +126,36 @@ describe("modo equipo", () => {
     expect(String((comment?.body as { body: string }).body)).toContain("auth.py (10-30)");
   });
 
+  it("arma el borrador del daily con mis issues y commits, y lo comparte en Slack", async () => {
+    localStorage.setItem("beacon:session", JSON.stringify(sessionFor(false, { api: "developer" })));
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    installFakeServer({
+      "POST /projects/api/standup": () => ({
+        body: { draft: "**Ayer**\n- Normalicé tildes (#7)", since: "2026-11-27", local_commits: [], remote_commits: 1 },
+      }),
+      "POST /hub/projects/api/slack": () => ({ body: { status: "ok" } }),
+      "GET /hub/projects/api/github/activity": () => ({
+        body: { repo: "acme/api", commits: [
+          { sha: "abc1234", message: "fix: normaliza tildes (#7)", author: "diego", date: new Date().toISOString(), url: "c", issues: [7] },
+          { sha: "def5678", message: "docs: README", author: "ana", date: new Date().toISOString(), url: "d", issues: [] },
+        ] },
+      }),
+    });
+    const user = userEvent.setup();
+    renderApp();
+    await screen.findByText(/Login falla con tildes/);
+    await screen.findByText("docs: README");
+    await user.click(await screen.findByRole("button", { name: /Borrador del daily/ }));
+    expect(await screen.findByText(/Normalicé tildes/)).toBeInTheDocument();
+    const body = calls.find((c) => c.path === "/projects/api/standup")?.body as { person: string; git_author: string; issues: unknown[]; commits: unknown[] };
+    expect(body.person).toBe("Diego Dev");
+    expect(body.git_author).toBe("Diego Dev\\|diego");
+    expect(body.issues).toHaveLength(1);
+    expect(body.commits).toHaveLength(1);
+    await user.click(screen.getByRole("button", { name: /Compartir en Slack/ }));
+    expect(calls.some((c) => c.path === "/hub/projects/api/slack")).toBe(true);
+  });
+
   it("el líder técnico verifica un documento y el chat muestra una respuesta verificada", async () => {
     localStorage.setItem("beacon:session", JSON.stringify(sessionFor(false, { api: "tech_lead" })));
     installFakeServer({

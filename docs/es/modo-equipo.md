@@ -41,6 +41,10 @@ todas las abiertas) y los últimos commits del equipo, con su autor y las issues
 empiezo?» toma el título y la descripción de una issue y pregunta al código qué archivos y funciones revisar
 primero; la respuesta cita sus fuentes como cualquier otra.
 
+El botón «Borrador del daily» arma el daily de la persona en tres secciones (ayer, hoy y bloqueos) con sus commits desde
+el último día hábil (el viernes, si es lunes), locales y en GitHub, y sus issues abiertas; no agrega trabajo que no
+aparezca en esos datos y se puede copiar o compartir en Slack.
+
 Para ver «mis issues», cada persona anota su usuario de GitHub (en Mi trabajo o en Equipo > Personas). Sin token de
 GitHub en la organización, el Hub solo lee repositorios públicos, con el límite de consultas de GitHub.
 

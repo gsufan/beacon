@@ -1,19 +1,25 @@
 import { useState } from "react";
+import { Link } from "react-router";
 import { useLanguage } from "./LanguageSelector";
 import type { SourceItem } from "../lib/types";
 
 export default function SourceCitation({
   source,
   defaultOpen = false,
+  showWhy = false,
 }: {
   source: SourceItem;
   defaultOpen?: boolean;
+  showWhy?: boolean;
 }) {
   const { t } = useLanguage();
   const [open, setOpen] = useState(defaultOpen);
   // Cosine distance: 0 = identical, so similarity is its complement.
   const similarity = Math.min(1, Math.max(0, 1 - source.distance));
   const isOverview = source.chunk_type === "overview";
+  const located = source.distance < 0; // placed by a stack trace, not ranked by similarity
+  const whyParams = new URLSearchParams({ tab: "why", file: source.file_path, start: String(source.start_line), end: String(source.end_line) });
+  if (source.name) whyParams.set("name", source.name);
 
   return (
     <div
@@ -56,7 +62,9 @@ export default function SourceCitation({
       <div className="flex items-center gap-2">
         {source.expanded ? (
           <span className="whitespace-nowrap text-xs font-medium text-graph-ink">{t("chat_call_graph_badge")}</span>
-        ) : isOverview ? null : (
+        ) : isOverview ? null : located ? (
+          <span className="whitespace-nowrap text-xs font-medium text-accent-ink">{t("sources_located")}</span>
+        ) : (
           <>
             <div className="h-1 flex-1 rounded-full bg-accent-tint" aria-hidden="true">
               <div className="h-1 rounded-full bg-accent" style={{ width: `${similarity * 100}%` }} />
@@ -65,6 +73,11 @@ export default function SourceCitation({
               {t("chat_distance")} {source.distance.toFixed(3)}
             </span>
           </>
+        )}
+        {showWhy && !isOverview && (
+          <Link to={`/debug?${whyParams}`} className="whitespace-nowrap text-xs font-medium text-accent-ink hover:underline">
+            {t("sources_why")}
+          </Link>
         )}
         {source.code && (
           <button

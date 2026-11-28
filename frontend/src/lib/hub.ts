@@ -1,7 +1,7 @@
 // Calls to Beacon Hub, through Beacon Local's /hub proxy (the browser only talks to Beacon Local).
 import { request } from "./api";
 import type { StoredSession } from "./session";
-import type { QueryResponse } from "./types";
+import type { QueryResponse, SourceItem } from "./types";
 
 export type Role = "product_owner" | "scrum_master" | "tech_lead" | "developer" | "qa" | "support" | "product" | "security" | "observer";
 export const ROLES: Role[] = ["product_owner", "scrum_master", "tech_lead", "developer", "qa", "support", "product", "security", "observer"];
@@ -156,6 +156,54 @@ export interface ImpactRef {
   via?: string;
 }
 
+export interface ErrorFrame {
+  path: string;
+  line: number;
+  func: string | null;
+  file_path: string | null;
+  name: string | null;
+}
+
+export interface ErrorExplanation {
+  message: string;
+  frames: ErrorFrame[];
+  in_project: boolean;
+  explanation: string;
+  sources: SourceItem[];
+  experts: { name: string; commits: number }[];
+}
+
+export interface HistoryCommit {
+  sha: string;
+  lines: number;
+  author: string;
+  date: string;
+  subject: string;
+  body: string;
+  issues: string[];
+}
+
+export interface CodeHistory {
+  file_path: string;
+  start_line: number;
+  end_line: number;
+  name: string;
+  lines: number;
+  commits: HistoryCommit[];
+  created: { sha: string; author: string; date: string; subject: string; issues: string[] } | null;
+  shallow: boolean;
+  explanation: string;
+  other_definitions: { file_path: string; start_line: number }[];
+  issues: { ref: string; title: string; url: string; state: string }[];
+}
+
+export interface Standup {
+  draft: string;
+  since: string;
+  local_commits: { sha: string; date: string; message: string; files: string[]; issues: string[] }[];
+  remote_commits: number;
+}
+
 export interface Impact {
   targets: { target: string; definitions: ImpactRef[]; callers: ImpactRef[]; indirect: ImpactRef[]; tests: ImpactRef[]; untested: boolean }[];
   files: string[];
@@ -292,6 +340,12 @@ export const hub = {
       method: "POST",
       ...json(body),
     }),
+  explainError: (projectId: string, trace: string, language: string) =>
+    request<ErrorExplanation>(`/projects/${projectId}/explain-error`, { method: "POST", ...json({ trace, language }) }),
+  why: (projectId: string, body: { name?: string; file_path?: string; start_line?: number; end_line?: number; language: string }) =>
+    request<CodeHistory>(`/projects/${projectId}/why`, { method: "POST", ...json(body) }),
+  standup: (projectId: string, body: { person: string; git_author?: string; issues: Issue[]; commits: Commit[]; language: string }) =>
+    request<Standup>(`/projects/${projectId}/standup`, { method: "POST", ...json(body) }),
   knowledge: (projectId: string) => request<KnowledgeMap>(`/projects/${projectId}/knowledge`),
   summary: (projectId: string, days: number) => request<SprintSummary>(`/projects/${projectId}/summary?days=${days}`),
   insights: (projectId: string) => request<Insights>(`/projects/${projectId}/insights`),

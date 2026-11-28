@@ -42,6 +42,10 @@ ones) and the team's latest commits, with their author and the issues they menti
 takes an issue's title and description and asks the code which files and functions to review first; the answer
 cites its sources like any other.
 
+The "Daily stand-up draft" button writes the person's stand-up in three sections (yesterday, today and blockers) from
+their commits since the last working day (Friday on Mondays), local and on GitHub, and their open issues; it adds no
+work that does not appear in that data and can be copied or shared on Slack.
+
 To see "my issues", each person enters their GitHub username (in My work or in Team > People). Without a GitHub token
 for the organization, the Hub only reads public repositories, within GitHub's rate limit.
 

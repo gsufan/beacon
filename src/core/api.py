@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from core import assist, edition, expertise, insight, instance, services, storage, team, verification
+from core import assist, devtools, edition, expertise, insight, instance, services, storage, team, verification
 from core.config import (
     InvalidProjectIdError,
     ProjectAlreadyExistsError,
@@ -554,6 +554,128 @@ def handover(project_id: str, body: HandoverRequest):
         pass
     summary = _model_call(lambda: assist.handover_summary(engine, body.person, body.issues, body.commits, local, body.language))
     return {"summary": summary, "local_commits": local[:15]}
+
+
+class ErrorRequest(BaseModel):
+    trace: str = Field(..., min_length=3, max_length=20000)
+    language: str = Field(default="es", pattern="^(es|en)$")
+
+
+def _experts_for(repo_path: str, files: list[str]) -> list:
+    try:
+        return expertise.experts(repo_path, files[:10])["overall"] if files else []
+    except (git.GitError, expertise.InvalidPathError):
+        return []
+
+
+@app.post("/projects/{project_id}/explain-error")
+def explain_error(project_id: str, body: ErrorRequest, request: Request):
+    """«Paste your error»: the frames of a stack trace located in the project's code, what the error means, where it
+    happens, its probable cause and what to check, plus who knows those files."""
+    engine = _get_engine(project_id)
+    project = get_project(project_id)
+    try:
+        repo_files = git.Repo(project.repo_path).git.ls_files().splitlines()
+    except git.GitError:
+        repo_files = []
+    frames = devtools.locate(engine.collection, devtools.parse_frames(body.trace), repo_files)
+    message = devtools.error_message(body.trace)
+    public = [{k: f[k] for k in ("path", "line", "func", "file_path")} | {"name": (f["chunk"] or {}).get("name")} for f in frames]
+    if not any(f["chunk"] for f in frames):
+        # No line of the trace points to indexed code: search the code with the error text instead.
+        lead = ("Explain this error and where in the code it could come from:" if body.language == "en" else
+                "Explica este error y en qué parte del código podría originarse:")
+        question = f"{lead}\n{body.trace[-1500:]}"
+        answer = query(project_id, QueryRequest(question=question, top_k=8, language=body.language), request)
+        return {"message": message, "frames": public, "in_project": False, "explanation": answer["answer"],
+                "sources": answer["sources"], "experts": []}
+    explanation = _model_call(lambda: assist.explain_error(engine, body.trace, message, frames, body.language))
+    sources, seen = [], set()
+    for f in reversed(frames):
+        c = f["chunk"]
+        if c and (c["file_path"], c["start_line"]) not in seen:
+            seen.add((c["file_path"], c["start_line"]))
+            sources.append({**c, "distance": -1.0, "expanded": False})
+    return {"message": message, "frames": public, "in_project": True, "explanation": explanation, "sources": sources,
+            "experts": _experts_for(project.repo_path, list(dict.fromkeys(s["file_path"] for s in sources)))}
+
+
+class WhyRequest(BaseModel):
+    name: Optional[str] = Field(default=None, max_length=200)
+    file_path: Optional[str] = Field(default=None, max_length=500)
+    start_line: Optional[int] = Field(default=None, ge=1)
+    end_line: Optional[int] = Field(default=None, ge=1)
+    language: str = Field(default="es", pattern="^(es|en)$")
+
+
+@app.post("/projects/{project_id}/why")
+def why_code(project_id: str, body: WhyRequest, request: Request):
+    """«Why is this code like this?»: the commits that wrote a function (or a range of lines), the issues they
+    mention and an explanation of when and why it was introduced and changed."""
+    engine = _get_engine(project_id)
+    project = get_project(project_id)
+    others: list = []
+    if body.name:
+        defs = [c for c in engine.retriever.chunks_named(body.name.strip()) if c.chunk_type != "overview"]
+        if body.file_path:
+            defs = [c for c in defs if c.file_path == body.file_path] or defs
+        if not defs:
+            raise HTTPException(status_code=404, detail=f"No encontré «{body.name}» en el índice de este proyecto.")
+        chunk = defs[0]
+        others = [{"file_path": c.file_path, "start_line": c.start_line} for c in defs[1:6]]
+        code = {"name": chunk.name, "code": chunk.code, "chunk_type": chunk.chunk_type}
+        file_path, start, end = chunk.file_path, chunk.start_line, chunk.end_line
+    elif body.file_path and body.start_line:
+        try:
+            file_path = expertise._clean(body.file_path)
+        except expertise.InvalidPathError as e:
+            raise HTTPException(status_code=400, detail=str(e))
+        start, end = body.start_line, max(body.end_line or body.start_line, body.start_line)
+        res = engine.collection.get(where={"file_path": file_path}, include=["metadatas", "documents"])
+        inside = [(m, d) for m, d in zip(res["metadatas"], res["documents"]) if m.get("chunk_type") != "overview"
+                  and m.get("start_line", 0) <= start and end <= m.get("end_line", 0)]
+        m, d = min(inside, key=lambda md: md[0]["end_line"] - md[0]["start_line"]) if inside else ({}, "")
+        code = {"name": m.get("name", ""), "code": d, "chunk_type": m.get("chunk_type", "raw")}
+    else:
+        raise HTTPException(status_code=400, detail="Indica una función o un archivo con sus líneas.")
+    try:
+        history = devtools.code_history(project.repo_path, file_path, start, end)
+    except git.GitError as e:
+        raise HTTPException(status_code=409, detail=f"No se pudo leer el historial de git de {file_path}: {e}")
+    refs = list(dict.fromkeys(r for c in history["commits"] for r in c["issues"]))[:3]
+    issues = []
+    if team.hub_url():
+        for ref in refs:
+            try:
+                issues.append(_fetch_issue(request, project_id, ref.lstrip("#")))
+            except HTTPException:
+                pass
+    explanation = _model_call(lambda: assist.explain_history(engine, code, history, issues, body.language))
+    return {**history, "name": code["name"], "explanation": explanation, "other_definitions": others,
+            "issues": [{k: i.get(k) for k in ("ref", "title", "url", "state")} for i in issues]}
+
+
+class StandupRequest(BaseModel):
+    person: str = Field(..., min_length=1, max_length=80)
+    git_author: Optional[str] = None
+    issues: list = Field(default_factory=list, max_length=100)
+    commits: list = Field(default_factory=list, max_length=200)
+    language: str = Field(default="es", pattern="^(es|en)$")
+
+
+@app.post("/projects/{project_id}/standup")
+def standup(project_id: str, body: StandupRequest):
+    """Draft of a person's daily stand-up (yesterday, today, blockers) from their commits since the last working day
+    and their open issues."""
+    engine = _get_engine(project_id)
+    since = devtools.last_working_day()
+    try:
+        local = devtools.commits_since(get_project(project_id).repo_path, body.git_author or body.person, since)
+    except git.GitError:
+        local = []
+    remote = [c for c in body.commits if (c.get("date") or "")[:10] >= since.date().isoformat()]
+    draft = _model_call(lambda: assist.standup(engine, body.person, local, remote, body.issues, since.isoformat(), body.language))
+    return {"draft": draft, "since": since.date().isoformat(), "local_commits": local[:15], "remote_commits": len(remote)}
 
 
 @app.get("/projects/{project_id}/knowledge")
