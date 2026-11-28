@@ -41,6 +41,12 @@ def main() -> int:
             if sys.platform.startswith("linux"):
                 print("On Debian/Ubuntu install the missing package first: sudo apt install python3-venv")
             return 1
+    # pip 24.2+ trusts the system certificate store, which antivirus software that inspects HTTPS relies on.
+    upgrade = [python, "-m", "pip", "install", "--upgrade", "pip"]
+    try:
+        run(upgrade + ["--use-feature=truststore"])
+    except subprocess.CalledProcessError:
+        run(upgrade)
     run([python, "-m", "pip", "install", "-r", "requirements.txt"])
     run([python, "-m", "pip", "install", "-e", "."])
 
